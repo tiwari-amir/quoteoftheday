@@ -12,6 +12,13 @@ void main() {
     expect(service.readingDurationInSeconds(''), 1);
   });
 
+  test('canonicalizeTag merges inspirational duplicates', () {
+    final service = QuoteService();
+    expect(service.canonicalizeTag('inspiration'), 'inspirational');
+    expect(service.canonicalizeTag('inspirational'), 'inspirational');
+    expect(service.canonicalizeTag('inspirational-quote'), 'inspirational');
+  });
+
   test('quotes.json can be decoded into QuoteModel list', () {
     final raw = File('assets/quotes.json').readAsStringSync();
     final decoded = jsonDecode(raw) as List<dynamic>;

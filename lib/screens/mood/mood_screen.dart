@@ -5,14 +5,41 @@ import 'package:go_router/go_router.dart';
 
 import '../../providers/quote_providers.dart';
 import '../../widgets/animated_gradient_background.dart';
+import '../../widgets/glass_card.dart';
 import '../../widgets/scale_tap.dart';
 
-class MoodScreen extends ConsumerWidget {
+class MoodScreen extends ConsumerStatefulWidget {
   const MoodScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MoodScreen> createState() => _MoodScreenState();
+}
+
+class _MoodScreenState extends ConsumerState<MoodScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  static const List<String> _moodOrder = [
+    'happy',
+    'calm',
+    'hopeful',
+    'motivated',
+    'confident',
+    'sad',
+    'lonely',
+    'angry',
+  ];
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final moodsAsync = ref.watch(moodCountsProvider);
+    final quoteService = ref.read(quoteServiceProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -32,36 +59,79 @@ class MoodScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Browse by Mood',
+                        'Browse Moods',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  GlassCard(
+                    borderRadius: 16,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) =>
+                          setState(() => _query = value.trim()),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        prefixIcon: Icon(Icons.search_rounded),
+                        hintText: 'Search mood',
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   Expanded(
                     child: moodsAsync.when(
                       data: (moods) {
                         final entries = moods.entries.toList();
+                        final ordered = <MapEntry<String, int>>[];
+
+                        for (final mood in _moodOrder) {
+                          final match = entries
+                              .where((entry) => entry.key == mood)
+                              .firstOrNull;
+                          if (match != null) ordered.add(match);
+                        }
+
+                        final extras =
+                            entries
+                                .where(
+                                  (entry) => !_moodOrder.contains(entry.key),
+                                )
+                                .toList()
+                              ..sort((a, b) => b.value.compareTo(a.value));
+                        ordered.addAll(extras);
+
+                        final filtered = ordered.where((entry) {
+                          final label = quoteService
+                              .displayTag(entry.key)
+                              .toLowerCase();
+                          return label.contains(_query.toLowerCase());
+                        }).toList();
+
                         return GridView.builder(
-                          itemCount: entries.length,
+                          itemCount: filtered.length,
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 12,
                                 mainAxisSpacing: 12,
-                                childAspectRatio: 1.15,
+                                childAspectRatio: 1.06,
                               ),
                           itemBuilder: (context, index) {
-                            final entry = entries[index];
-                            final tag = entry.key;
+                            final entry = filtered[index];
+                            final mood = entry.key;
                             final count = entry.value;
 
                             return ScaleTap(
                                   onTap: () => context.push(
-                                    '/viewer/mood/${Uri.encodeComponent(tag)}',
+                                    '/viewer/mood/${Uri.encodeComponent(mood)}',
                                   ),
                                   child: Hero(
-                                    tag: 'tag-$tag',
+                                    tag: 'tag-$mood',
                                     child: Container(
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(20),
@@ -73,13 +143,13 @@ class MoodScreen extends ConsumerWidget {
                                               alpha: 0.2,
                                             ),
                                             Colors.lightBlueAccent.withValues(
-                                              alpha: 0.15,
+                                              alpha: 0.14,
                                             ),
                                           ],
                                         ),
                                         border: Border.all(
                                           color: Colors.tealAccent.withValues(
-                                            alpha: 0.5,
+                                            alpha: 0.45,
                                           ),
                                         ),
                                         boxShadow: [
@@ -98,7 +168,7 @@ class MoodScreen extends ConsumerWidget {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            tag,
+                                            quoteService.displayTag(mood),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                             style: Theme.of(
@@ -117,9 +187,8 @@ class MoodScreen extends ConsumerWidget {
                                     ),
                                   ),
                                 )
-                                .animate(delay: (index * 30).ms)
-                                .fadeIn(duration: 240.ms)
-                                .slideY(begin: 0.1, end: 0);
+                                .animate(delay: (index * 35).ms)
+                                .fadeIn(duration: 240.ms);
                           },
                         );
                       },
@@ -137,4 +206,8 @@ class MoodScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+extension<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

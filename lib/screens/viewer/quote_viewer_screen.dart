@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../models/quote_model.dart';
+import '../../models/quote_viewer_filter.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
-import '../../services/quote_service.dart';
 import '../../widgets/animated_gradient_background.dart';
 import '../../widgets/glass_card.dart';
 
@@ -26,6 +26,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen>
   late final PageController _pageController;
   late final AnimationController _timerController;
 
+  late final QuoteViewerFilter _filter;
+
   int _currentIndex = 0;
   int? _activeQuoteId;
   final Set<int> _likedIds = <int>{};
@@ -33,6 +35,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen>
   @override
   void initState() {
     super.initState();
+    _filter = QuoteViewerFilter(type: widget.type, tag: widget.tag);
     _pageController = PageController();
     _timerController = AnimationController(vsync: this)
       ..addStatusListener((status) {
@@ -55,16 +58,16 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen>
     }
 
     _activeQuoteId = quote.id;
-    final durationSeconds = QuoteService().readingDurationInSeconds(
-      quote.quote,
-    );
+    final durationSeconds = ref
+        .read(quoteServiceProvider)
+        .readingDurationInSeconds(quote.quote);
     _timerController
       ..duration = Duration(seconds: durationSeconds)
       ..forward(from: 0);
   }
 
   Future<void> _goToNextQuote() async {
-    final quotes = await ref.read(quotesByTagProvider(widget.tag).future);
+    final quotes = await ref.read(quotesByFilterProvider(_filter).future);
     if (!mounted || quotes.isEmpty) return;
 
     if (_currentIndex >= quotes.length - 1) {
@@ -78,18 +81,15 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen>
     );
   }
 
-  void _copyToClipboard(QuoteModel quote) {
-    Clipboard.setData(
-      ClipboardData(text: '"${quote.quote}" - ${quote.author}'),
-    );
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Quote copied to clipboard')));
+  void _shareQuote(QuoteModel quote) {
+    final text = '"${quote.quote}"\n\n- ${quote.author}';
+    Share.share(text, subject: 'Quote of the Day');
   }
 
   @override
   Widget build(BuildContext context) {
-    final quotesAsync = ref.watch(quotesByTagProvider(widget.tag));
+    final quotesAsync = ref.watch(quotesByFilterProvider(_filter));
+    final tagLabel = ref.read(quoteServiceProvider).displayTag(widget.tag);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -102,7 +102,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen>
                 if (quotes.isEmpty) {
                   return Center(
                     child: Text(
-                      'No quotes found for "${widget.tag}"',
+                      'No quotes found for "$tagLabel"',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   );
@@ -132,7 +132,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen>
                               child: Material(
                                 color: Colors.transparent,
                                 child: Text(
-                                  '${widget.type.toUpperCase()}: ${widget.tag}',
+                                  '${widget.type.toUpperCase()}: $tagLabel',
                                   textAlign: TextAlign.center,
                                   style: Theme.of(
                                     context,
@@ -258,8 +258,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen>
                                     _ActionButton(
                                       icon: Icons.share_rounded,
                                       color: Colors.white,
-                                      onTap: () =>
-                                          _copyToClipboard(currentQuote),
+                                      onTap: () => _shareQuote(currentQuote),
                                     ),
                                   ],
                                 ),

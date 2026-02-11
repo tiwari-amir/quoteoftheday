@@ -5,14 +5,30 @@ import 'package:go_router/go_router.dart';
 
 import '../../providers/quote_providers.dart';
 import '../../widgets/animated_gradient_background.dart';
+import '../../widgets/glass_card.dart';
 import '../../widgets/scale_tap.dart';
 
-class CategoryScreen extends ConsumerWidget {
+class CategoryScreen extends ConsumerStatefulWidget {
   const CategoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CategoryScreen> createState() => _CategoryScreenState();
+}
+
+class _CategoryScreenState extends ConsumerState<CategoryScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(categoryCountsProvider);
+    final quoteService = ref.read(quoteServiceProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -32,99 +48,154 @@ class CategoryScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Browse by Category',
+                        'Browse Categories',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  GlassCard(
+                    borderRadius: 16,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) =>
+                          setState(() => _query = value.trim()),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        prefixIcon: Icon(Icons.search_rounded),
+                        hintText: 'Search category',
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   Expanded(
                     child: categoriesAsync.when(
                       data: (categories) {
                         final entries = categories.entries.toList();
-                        return GridView.builder(
-                          itemCount: entries.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                childAspectRatio: 1.15,
-                              ),
-                          itemBuilder: (context, index) {
-                            final entry = entries[index];
-                            final tag = entry.key;
-                            final count = entry.value;
+                        final filtered = entries.where((entry) {
+                          final label = quoteService
+                              .displayTag(entry.key)
+                              .toLowerCase();
+                          return label.contains(_query.toLowerCase());
+                        }).toList();
 
-                            return ScaleTap(
+                        final popular = filtered.take(12).toList();
+                        final grouped = <String, List<MapEntry<String, int>>>{};
+
+                        for (final entry
+                            in filtered
+                              ..sort((a, b) => a.key.compareTo(b.key))) {
+                          final label = quoteService.displayTag(entry.key);
+                          final letter = label.substring(0, 1).toUpperCase();
+                          grouped
+                              .putIfAbsent(
+                                letter,
+                                () => <MapEntry<String, int>>[],
+                              )
+                              .add(entry);
+                        }
+
+                        return ListView(
+                          children: [
+                            if (popular.isNotEmpty && _query.isEmpty) ...[
+                              Text(
+                                'Popular',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  for (final entry in popular)
+                                    _TagPill(
+                                      label: quoteService.displayTag(entry.key),
+                                      count: entry.value,
+                                      onTap: () => context.push(
+                                        '/viewer/category/${Uri.encodeComponent(entry.key)}',
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                            Text(
+                              'All Categories (${filtered.length})',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            for (final letter in grouped.keys) ...[
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  top: 10,
+                                  bottom: 6,
+                                ),
+                                child: Text(
+                                  letter,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                              ),
+                              for (final entry in grouped[letter]!)
+                                ScaleTap(
                                   onTap: () => context.push(
-                                    '/viewer/category/${Uri.encodeComponent(tag)}',
+                                    '/viewer/category/${Uri.encodeComponent(entry.key)}',
                                   ),
                                   child: Hero(
-                                    tag: 'tag-$tag',
+                                    tag: 'tag-${entry.key}',
                                     child: Container(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 12,
+                                      ),
                                       decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(20),
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                                .withValues(alpha: 0.28),
-                                            Theme.of(context)
-                                                .colorScheme
-                                                .secondary
-                                                .withValues(alpha: 0.14),
-                                          ],
+                                        borderRadius: BorderRadius.circular(16),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.06,
                                         ),
                                         border: Border.all(
                                           color: Theme.of(context)
                                               .colorScheme
                                               .secondary
-                                              .withValues(alpha: 0.45),
+                                              .withValues(alpha: 0.28),
                                         ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .secondary
-                                                .withValues(alpha: 0.22),
-                                            blurRadius: 18,
-                                            spreadRadius: 1,
-                                          ),
-                                        ],
                                       ),
-                                      padding: const EdgeInsets.all(14),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                      child: Row(
                                         children: [
-                                          Text(
-                                            tag,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.titleMedium,
+                                          Expanded(
+                                            child: Text(
+                                              quoteService.displayTag(
+                                                entry.key,
+                                              ),
+                                              style: Theme.of(
+                                                context,
+                                              ).textTheme.titleMedium,
+                                            ),
                                           ),
-                                          const Spacer(),
                                           Text(
-                                            '$count quotes',
+                                            '${entry.value}',
                                             style: Theme.of(
                                               context,
                                             ).textTheme.bodyMedium,
+                                          ),
+                                          const SizedBox(width: 10),
+                                          const Icon(
+                                            Icons.arrow_forward_ios_rounded,
+                                            size: 14,
                                           ),
                                         ],
                                       ),
                                     ),
                                   ),
-                                )
-                                .animate(delay: (index * 30).ms)
-                                .fadeIn(duration: 240.ms)
-                                .slideY(begin: 0.1, end: 0);
-                          },
+                                ).animate().fadeIn(duration: 220.ms),
+                            ],
+                          ],
                         );
                       },
                       loading: () =>
@@ -139,6 +210,47 @@ class CategoryScreen extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TagPill extends StatelessWidget {
+  const _TagPill({
+    required this.label,
+    required this.count,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: Theme.of(
+            context,
+          ).colorScheme.secondary.withValues(alpha: 0.14),
+          border: Border.all(
+            color: Theme.of(
+              context,
+            ).colorScheme.secondary.withValues(alpha: 0.42),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: Theme.of(context).textTheme.bodyLarge),
+            const SizedBox(width: 8),
+            Text('$count', style: Theme.of(context).textTheme.bodyMedium),
+          ],
+        ),
       ),
     );
   }

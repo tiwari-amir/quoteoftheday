@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/constants.dart';
 import '../models/quote_model.dart';
+import '../models/quote_viewer_filter.dart';
 import '../repository/quote_repository.dart';
 import '../services/quote_service.dart';
 import 'storage_provider.dart';
@@ -33,15 +33,16 @@ final categoryCountsProvider = FutureProvider<Map<String, int>>((ref) async {
 
 final moodCountsProvider = FutureProvider<Map<String, int>>((ref) async {
   final quotes = await ref.watch(allQuotesProvider.future);
-  return ref
-      .read(quoteServiceProvider)
-      .buildTagCounts(quotes, includeOnly: moodTags);
+  return ref.read(quoteServiceProvider).buildTagCounts(quotes, moodsOnly: true);
 });
 
-final quotesByTagProvider = FutureProvider.family<List<QuoteModel>, String>((
-  ref,
-  tag,
-) async {
-  final quotes = await ref.watch(allQuotesProvider.future);
-  return ref.read(quoteServiceProvider).filterByTag(quotes, tag);
-});
+final quotesByFilterProvider =
+    FutureProvider.family<List<QuoteModel>, QuoteViewerFilter>((
+      ref,
+      filter,
+    ) async {
+      final quotes = await ref.watch(allQuotesProvider.future);
+      return ref
+          .read(quoteServiceProvider)
+          .filterByTag(quotes, filter.tag, isMood: filter.isMood);
+    });
