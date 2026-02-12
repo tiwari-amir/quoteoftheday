@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_test/flutter_test.dart';
 import 'package:quoteoftheday/models/quote_model.dart';
 import 'package:quoteoftheday/services/quote_service.dart';
 
@@ -12,11 +12,29 @@ void main() {
     expect(service.readingDurationInSeconds(''), 1);
   });
 
-  test('canonicalizeTag merges inspirational duplicates', () {
+  test('toTitleCase formats tags for display', () {
     final service = QuoteService();
-    expect(service.canonicalizeTag('inspiration'), 'inspirational');
-    expect(service.canonicalizeTag('inspirational'), 'inspirational');
-    expect(service.canonicalizeTag('inspirational-quote'), 'inspirational');
+    expect(service.toTitleCase('self-growth'), 'Self Growth');
+    expect(service.toTitleCase('hopeful'), 'Hopeful');
+  });
+
+  test('QuoteModel parses revised_tags list or string', () {
+    final fromList = QuoteModel.fromJson({
+      'id': 1,
+      'quote': 'q',
+      'author': 'a',
+      'revised_tags': ['happy', ' calm '],
+    });
+
+    final fromString = QuoteModel.fromJson({
+      'id': 2,
+      'quote': 'q',
+      'author': 'a',
+      'revised_tags': 'happy,calm',
+    });
+
+    expect(fromList.revisedTags, containsAll(['happy', 'calm']));
+    expect(fromString.revisedTags, containsAll(['happy', 'calm']));
   });
 
   test('quotes.json can be decoded into QuoteModel list', () {
@@ -26,7 +44,7 @@ void main() {
         .map((entry) => QuoteModel.fromJson(entry as Map<String, dynamic>))
         .toList();
 
-    expect(quotes, isNotEmpty);
+    expect(quotes.length, greaterThanOrEqualTo(12));
     expect(quotes.first.quote, isNotEmpty);
     expect(quotes.first.revisedTags, isNotEmpty);
   });

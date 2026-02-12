@@ -21,9 +21,9 @@ class _ScaleTapState extends State<ScaleTap> {
       onTapUp: (_) => setState(() => _pressed = false),
       onTap: widget.onTap,
       child: AnimatedScale(
-        scale: _pressed ? 0.98 : 1,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
+        scale: _pressed ? 0.96 : 1,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
         child: widget.child,
       ),
     );

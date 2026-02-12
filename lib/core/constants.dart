@@ -1,29 +1,20 @@
 const String quotesAssetPath = 'assets/quotes.json';
 
-const String prefDailyQuoteId = 'pref_daily_quote_id';
-const String prefDailyQuoteDate = 'pref_daily_quote_date';
-const String prefSavedQuoteIds = 'pref_saved_quote_ids';
+const String prefDailyQuoteId = 'daily_quote_id';
+const String prefDailyQuoteDate = 'last_date';
+const String prefSavedQuoteIds = 'saved_quote_ids';
 
-const Set<String> moodTags = {
+const List<String> moodAllowlist = [
   'happy',
   'sad',
   'motivated',
-  'angry',
   'calm',
   'confident',
   'lonely',
-  'hope',
+  'angry',
+  'grateful',
+  'anxious',
+  'romantic',
   'hopeful',
-  'inspirational',
-  'fear',
-  'love',
-  'peace',
-  'grief',
-  'anxiety',
-  'focus',
-  'joy',
-  'healing',
-  'optimism',
-  'courage',
-  'strength',
-};
+  'stressed',
+];

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,25 +12,69 @@ final goRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     routes: [
-      GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
+      GoRoute(
+        path: '/',
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: const HomeScreen(),
+        ),
+      ),
       GoRoute(
         path: '/categories',
-        builder: (context, state) => const CategoryScreen(),
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: const CategoryScreen(),
+        ),
       ),
-      GoRoute(path: '/moods', builder: (context, state) => const MoodScreen()),
+      GoRoute(
+        path: '/moods',
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: const MoodScreen(),
+        ),
+      ),
       GoRoute(
         path: '/viewer/:type/:tag',
-        builder: (context, state) {
-          return QuoteViewerScreen(
-            type: state.pathParameters['type'] ?? 'category',
-            tag: Uri.decodeComponent(state.pathParameters['tag'] ?? ''),
+        pageBuilder: (context, state) {
+          return _buildTransitionPage(
+            key: state.pageKey,
+            child: QuoteViewerScreen(
+              type: state.pathParameters['type'] ?? 'category',
+              tag: Uri.decodeComponent(state.pathParameters['tag'] ?? ''),
+            ),
           );
         },
       ),
       GoRoute(
         path: '/saved',
-        builder: (context, state) => const SavedQuotesScreen(),
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: const SavedQuotesScreen(),
+        ),
       ),
     ],
   );
 });
+
+CustomTransitionPage<void> _buildTransitionPage({
+  required LocalKey key,
+  required Widget child,
+}) {
+  return CustomTransitionPage<void>(
+    key: key,
+    transitionDuration: const Duration(milliseconds: 320),
+    reverseTransitionDuration: const Duration(milliseconds: 260),
+    child: child,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final slideAnimation = Tween<Offset>(
+        begin: const Offset(0, 0.03),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+
+      return FadeTransition(
+        opacity: animation,
+        child: SlideTransition(position: slideAnimation, child: child),
+      );
+    },
+  );
+}

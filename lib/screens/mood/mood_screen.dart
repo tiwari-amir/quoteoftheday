@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/quote_providers.dart';
 import '../../widgets/animated_gradient_background.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/glass_icon_button.dart';
 import '../../widgets/scale_tap.dart';
 
 class MoodScreen extends ConsumerStatefulWidget {
@@ -19,17 +20,6 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
 
-  static const List<String> _moodOrder = [
-    'happy',
-    'calm',
-    'hopeful',
-    'motivated',
-    'confident',
-    'sad',
-    'lonely',
-    'angry',
-  ];
-
   @override
   void dispose() {
     _searchController.dispose();
@@ -39,46 +29,37 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
   @override
   Widget build(BuildContext context) {
     final moodsAsync = ref.watch(moodCountsProvider);
-    final quoteService = ref.read(quoteServiceProvider);
+    final service = ref.read(quoteServiceProvider);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           const AnimatedGradientBackground(),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      IconButton(
-                        onPressed: context.pop,
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Browse Moods',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
+                      GlassIconButton(icon: Icons.close_rounded, onTap: context.pop),
+                      const SizedBox(width: 12),
+                      Text('Browse by Mood', style: Theme.of(context).textTheme.titleLarge),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   GlassCard(
-                    borderRadius: 16,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
+                    borderRadius: 18,
+                    blur: 18,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     child: TextField(
                       controller: _searchController,
-                      onChanged: (value) =>
-                          setState(() => _query = value.trim()),
+                      onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
                       decoration: const InputDecoration(
+                        icon: Icon(Icons.search_rounded),
                         border: InputBorder.none,
-                        prefixIcon: Icon(Icons.search_rounded),
-                        hintText: 'Search mood',
+                        hintText: 'Search moods',
                       ),
                     ),
                   ),
@@ -86,116 +67,44 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
                   Expanded(
                     child: moodsAsync.when(
                       data: (moods) {
-                        final entries = moods.entries.toList();
-                        final ordered = <MapEntry<String, int>>[];
+                        final list = moods.entries
+                            .map((entry) => _MoodCount(
+                                  mood: entry.key,
+                                  label: service.toTitleCase(entry.key),
+                                  count: entry.value,
+                                ))
+                            .where((item) => item.label.toLowerCase().contains(_query))
+                            .toList()
+                          ..sort((a, b) => a.label.compareTo(b.label));
 
-                        for (final mood in _moodOrder) {
-                          final match = entries
-                              .where((entry) => entry.key == mood)
-                              .firstOrNull;
-                          if (match != null) ordered.add(match);
+                        if (list.isEmpty) {
+                          return const Center(child: Text('No moods available in dataset'));
                         }
 
-                        final extras =
-                            entries
-                                .where(
-                                  (entry) => !_moodOrder.contains(entry.key),
-                                )
-                                .toList()
-                              ..sort((a, b) => b.value.compareTo(a.value));
-                        ordered.addAll(extras);
-
-                        final filtered = ordered.where((entry) {
-                          final label = quoteService
-                              .displayTag(entry.key)
-                              .toLowerCase();
-                          return label.contains(_query.toLowerCase());
-                        }).toList();
-
                         return GridView.builder(
-                          itemCount: filtered.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                childAspectRatio: 1.06,
-                              ),
+                          itemCount: list.length,
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 14,
+                            mainAxisSpacing: 14,
+                            childAspectRatio: 1.08,
+                          ),
                           itemBuilder: (context, index) {
-                            final entry = filtered[index];
-                            final mood = entry.key;
-                            final count = entry.value;
-
+                            final item = list[index];
                             return ScaleTap(
                                   onTap: () => context.push(
-                                    '/viewer/mood/${Uri.encodeComponent(mood)}',
+                                    '/viewer/mood/${Uri.encodeComponent(item.mood)}',
                                   ),
-                                  child: Hero(
-                                    tag: 'tag-$mood',
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(20),
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            Colors.tealAccent.withValues(
-                                              alpha: 0.2,
-                                            ),
-                                            Colors.lightBlueAccent.withValues(
-                                              alpha: 0.14,
-                                            ),
-                                          ],
-                                        ),
-                                        border: Border.all(
-                                          color: Colors.tealAccent.withValues(
-                                            alpha: 0.45,
-                                          ),
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.tealAccent.withValues(
-                                              alpha: 0.2,
-                                            ),
-                                            blurRadius: 18,
-                                            spreadRadius: 1,
-                                          ),
-                                        ],
-                                      ),
-                                      padding: const EdgeInsets.all(14),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            quoteService.displayTag(mood),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.titleMedium,
-                                          ),
-                                          const Spacer(),
-                                          Text(
-                                            '$count quotes',
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodyMedium,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
+                                  child: _MoodCard(item: item),
                                 )
-                                .animate(delay: (index * 35).ms)
-                                .fadeIn(duration: 240.ms);
+                                .animate(delay: (index * 24).ms)
+                                .fadeIn(duration: 260.ms)
+                                .slideY(begin: 0.08, end: 0);
                           },
                         );
                       },
-                      loading: () =>
-                          const Center(child: CircularProgressIndicator()),
-                      error: (error, stack) =>
-                          Center(child: Text('Failed to load moods: $error')),
+                      loading: () => const Center(child: CircularProgressIndicator()),
+                      error: (error, stack) => Center(child: Text('Failed to load: $error')),
                     ),
                   ),
                 ],
@@ -208,6 +117,70 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
   }
 }
 
-extension<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
+class _MoodCard extends StatefulWidget {
+  const _MoodCard({required this.item});
+
+  final _MoodCount item;
+
+  @override
+  State<_MoodCard> createState() => _MoodCardState();
+}
+
+class _MoodCardState extends State<_MoodCard> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: Colors.white.withValues(alpha: 0.09),
+          border: Border.all(
+            color: _hovering
+                ? const Color(0xFF55FFD8).withValues(alpha: 0.65)
+                : Colors.white.withValues(alpha: 0.16),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _hovering
+                  ? const Color(0xFF55FFD8).withValues(alpha: 0.25)
+                  : Colors.black.withValues(alpha: 0.25),
+              blurRadius: _hovering ? 22 : 14,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.item.label,
+              style: Theme.of(context).textTheme.titleMedium,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const Spacer(),
+            Text(
+              '${widget.item.count} quotes',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MoodCount {
+  const _MoodCount({required this.mood, required this.label, required this.count});
+
+  final String mood;
+  final String label;
+  final int count;
 }

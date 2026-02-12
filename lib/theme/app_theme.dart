@@ -3,60 +3,63 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   static ThemeData get darkTheme {
-    const colorScheme = ColorScheme.dark(
-      primary: Color(0xFF1C2C5A),
-      secondary: Color(0xFF5AF2FF),
-      surface: Color(0xFF101827),
-      onSurface: Colors.white,
-    );
+    const neonBlue = Color(0xFF50D6FF);
 
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      colorScheme: colorScheme,
       scaffoldBackgroundColor: Colors.transparent,
+      colorScheme: const ColorScheme.dark(
+        primary: neonBlue,
+        secondary: Color(0xFF5C7CFF),
+        surface: Color(0xFF0E1118),
+      ),
     );
 
-    final textTheme = GoogleFonts.poppinsTextTheme(base.textTheme).copyWith(
-      headlineMedium: GoogleFonts.poppins(
-        fontSize: 30,
+    final textTheme = GoogleFonts.interTextTheme(base.textTheme).copyWith(
+      headlineMedium: GoogleFonts.inter(
+        fontSize: 28,
         fontWeight: FontWeight.w700,
+        letterSpacing: -0.2,
         color: Colors.white,
-        letterSpacing: -0.5,
       ),
-      headlineSmall: GoogleFonts.poppins(
+      headlineSmall: GoogleFonts.inter(
         fontSize: 24,
-        height: 1.35,
         fontWeight: FontWeight.w600,
+        letterSpacing: -0.2,
         color: Colors.white,
+        height: 1.35,
       ),
-      titleLarge: GoogleFonts.poppins(
+      titleLarge: GoogleFonts.inter(
         fontSize: 20,
         fontWeight: FontWeight.w600,
         color: Colors.white,
       ),
-      titleMedium: GoogleFonts.poppins(
+      titleMedium: GoogleFonts.inter(
         fontSize: 16,
         fontWeight: FontWeight.w600,
         color: Colors.white,
       ),
-      bodyLarge: GoogleFonts.poppins(
-        fontSize: 16,
-        color: Colors.white.withValues(alpha: 0.92),
+      bodyLarge: GoogleFonts.inter(
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+        color: Colors.white.withValues(alpha: 0.9),
+        height: 1.45,
       ),
-      bodyMedium: GoogleFonts.poppins(
-        fontSize: 14,
-        color: Colors.white.withValues(alpha: 0.78),
+      bodyMedium: GoogleFonts.inter(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        color: Colors.white.withValues(alpha: 0.72),
       ),
     );
 
     return base.copyWith(
       textTheme: textTheme,
-      appBarTheme: const AppBarTheme(backgroundColor: Colors.transparent),
-      iconTheme: const IconThemeData(color: Colors.white),
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
       cardTheme: CardThemeData(
         color: Colors.white.withValues(alpha: 0.08),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       ),
     );
   }

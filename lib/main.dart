@@ -1,18 +1,14 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
-import 'providers/storage_provider.dart';
+import 'core/supabase_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
+  SupabaseConfig.validate();
+  await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey);
 
-  runApp(
-    ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-      child: const QuoteOfTheDayApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: QuoteOfTheDayApp()));
 }
