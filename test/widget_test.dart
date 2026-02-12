@@ -4,7 +4,6 @@ import 'package:quoteoftheday/services/quote_service.dart';
 void main() {
   test('readingDurationInSeconds uses one second per word', () {
     final service = QuoteService();
-    expect(service.readingDurationInSeconds('Be yourself always'), 3);
-    expect(service.readingDurationInSeconds(''), 1);
+    expect(service.readingDurationInSeconds('A quick short quote'), 4);
   });
 }

@@ -6,32 +6,66 @@ class QuoteModel {
     required this.revisedTags,
   });
 
-  final int id;
+  final String id;
   final String quote;
   final String author;
   final List<String> revisedTags;
 
   factory QuoteModel.fromJson(Map<String, dynamic> json) {
-    final tagsRaw =
-        (json['revisedTags'] as List<dynamic>? ?? <dynamic>[])
-            .map((tag) => tag.toString().trim().toLowerCase())
-            .where((tag) => tag.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
+    final tags = _extractTags(json);
 
     return QuoteModel(
-      id: (json['id'] as num).toInt(),
-      quote: (json['quote'] ?? '').toString().trim(),
+      id: (json['id'] ?? '').toString().trim(),
+      quote: (json['quote'] ?? json['text'] ?? '').toString().trim(),
       author: (json['author'] ?? 'Unknown').toString().trim(),
-      revisedTags: tagsRaw,
+      revisedTags: tags,
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'quote': quote,
-    'author': author,
-    'revisedTags': revisedTags,
-  };
+  static List<String> _extractTags(Map<String, dynamic> json) {
+    final rawTags = json['revised_tags'] ?? json['revisedTags'];
+    final directTags = _normalizeTags(rawTags);
+    if (directTags.isNotEmpty) {
+      return directTags;
+    }
+
+    final quoteTagsRaw = json['quote_tags'];
+    if (quoteTagsRaw is! List) {
+      return const [];
+    }
+
+    final tags = <String>[];
+    for (final item in quoteTagsRaw) {
+      if (item is! Map<String, dynamic>) continue;
+      final nested = item['tags'] ?? item['tag'];
+      if (nested is Map<String, dynamic>) {
+        final slug = (nested['slug'] ?? '').toString().trim().toLowerCase();
+        if (slug.isNotEmpty) tags.add(slug);
+      }
+    }
+
+    return tags.toSet().toList(growable: false);
+  }
+
+  static List<String> _normalizeTags(dynamic raw) {
+    final values = <String>[];
+
+    if (raw is List) {
+      for (final item in raw) {
+        final tag = item.toString().trim().toLowerCase();
+        if (tag.isNotEmpty) values.add(tag);
+      }
+    } else if (raw is String) {
+      final source = raw.trim();
+      if (source.isNotEmpty) {
+        final parts = source.split(RegExp(r'[,|/]'));
+        for (final part in parts) {
+          final tag = part.trim().toLowerCase();
+          if (tag.isNotEmpty) values.add(tag);
+        }
+      }
+    }
+
+    return values.toSet().toList(growable: false);
+  }
 }
