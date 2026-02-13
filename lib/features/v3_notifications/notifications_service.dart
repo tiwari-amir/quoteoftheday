@@ -55,29 +55,25 @@ class V3NotificationsService {
 
   Future<void> cancelDailyReminder() async {
     if (!isSupported) return;
-    await _plugin.cancel(7001);
+    for (var id = 7001; id <= 7031; id++) {
+      await _plugin.cancel(id);
+    }
   }
 
-  Future<void> scheduleDailyReminder({
-    required int hour,
-    required int minute,
+  Future<void> scheduleReminder({
+    required int id,
+    required tz.TZDateTime schedule,
+    required String title,
     required String body,
     String? payload,
   }) async {
     if (!isSupported) return;
     await initialize();
-
-    await _plugin.cancel(7001);
-
-    final now = tz.TZDateTime.now(tz.local);
-    var schedule = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
-    if (schedule.isBefore(now)) {
-      schedule = schedule.add(const Duration(days: 1));
-    }
+    await _plugin.cancel(id);
 
     await _plugin.zonedSchedule(
-      7001,
-      'Quote reminder',
+      id,
+      title,
       body,
       schedule,
       const NotificationDetails(
@@ -94,7 +90,6 @@ class V3NotificationsService {
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.time,
     );
   }
 

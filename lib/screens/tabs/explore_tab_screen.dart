@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/v3_search/search_service.dart';
+import '../../core/constants.dart';
+import '../../models/quote_model.dart';
 import '../../providers/quote_providers.dart';
 import '../../services/quote_service.dart';
 import '../../widgets/editorial_background.dart';
@@ -158,7 +160,7 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                         const SizedBox(height: 14),
                         categoriesAsync.when(
                           data: (cats) {
-                            final tags = <String>['all', ...cats.keys.take(11)];
+                            final tags = <String>['all', ...cats.keys.take(18)];
                             return _TagSection(
                               title: 'Categories',
                               tags: tags,
@@ -180,10 +182,9 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                         const SizedBox(height: 14),
                         moodsAsync.when(
                           data: (moods) {
-                            final tags = moods.keys.take(12).toList();
-                            return _TagSection(
-                              title: 'Moods',
-                              tags: tags,
+                            final moodTags = _pickExploreMoods(moods);
+                            return _MoodGridSection(
+                              moods: moodTags,
                               display: service,
                               onTap: (tag) => context.push(
                                 '/viewer/mood/${Uri.encodeComponent(tag)}',
@@ -208,12 +209,12 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
     );
   }
 
-  List<dynamic> _applyFilters(List<dynamic> input) {
+  List<QuoteModel> _applyFilters(List<QuoteModel> input) {
     return input
         .where((quote) {
           if (_lengthFilter != null) {
             final words = quote.quote
-                .split(RegExp(r'\\s+'))
+                .split(RegExp(r'\s+'))
                 .where((w) => w.trim().isNotEmpty)
                 .length;
             final ok = switch (_lengthFilter) {
@@ -232,7 +233,7 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
         .toList(growable: false);
   }
 
-  List<String> _topTags(List<dynamic> quotes) {
+  List<String> _topTags(List<QuoteModel> quotes) {
     final counts = <String, int>{};
     for (final quote in quotes) {
       for (final tag in quote.revisedTags) {
@@ -243,12 +244,32 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
       ..sort((a, b) => b.value.compareTo(a.value));
     return entries.map((e) => e.key).toList(growable: false);
   }
+
+  List<String> _pickExploreMoods(Map<String, int> moodCounts) {
+    final sortedMoods = moodCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final picked = <String>[];
+
+    for (final entry in sortedMoods) {
+      if (picked.length == 6) break;
+      picked.add(entry.key);
+    }
+
+    if (picked.length < 6) {
+      for (final fallback in moodAllowlist) {
+        if (picked.length == 6) break;
+        if (!picked.contains(fallback)) picked.add(fallback);
+      }
+    }
+
+    return picked.take(6).toList(growable: false);
+  }
 }
 
 class _SearchResultsSection extends StatelessWidget {
   const _SearchResultsSection({required this.results});
 
-  final List<dynamic> results;
+  final List<QuoteModel> results;
 
   @override
   Widget build(BuildContext context) {
@@ -286,7 +307,7 @@ class _PreviewSection extends StatelessWidget {
   const _PreviewSection({required this.title, required this.items});
 
   final String title;
-  final List<dynamic> items;
+  final List<QuoteModel> items;
 
   @override
   Widget build(BuildContext context) {
@@ -363,22 +384,117 @@ class _TagSection extends StatelessWidget {
       children: [
         Text(title, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
-        SizedBox(
-          height: 54,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: tags.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final tag = tags[index];
-              return ActionChip(
-                label: Text(tag == 'all' ? 'All' : display.toTitleCase(tag)),
-                onPressed: () => onTap(tag),
-              );
-            },
-          ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final tag in tags)
+              _FlowPillChip(
+                label: tag == 'all' ? 'All' : display.toTitleCase(tag),
+                onTap: () => onTap(tag),
+              ),
+          ],
         ),
       ],
+    );
+  }
+}
+
+class _MoodGridSection extends StatelessWidget {
+  const _MoodGridSection({
+    required this.moods,
+    required this.display,
+    required this.onTap,
+  });
+
+  final List<String> moods;
+  final QuoteService display;
+  final ValueChanged<String> onTap;
+
+  static const Map<String, IconData> _moodIcons = {
+    'happy': Icons.sentiment_very_satisfied_rounded,
+    'calm': Icons.spa_rounded,
+    'motivated': Icons.bolt_rounded,
+    'confident': Icons.self_improvement_rounded,
+    'grateful': Icons.volunteer_activism_rounded,
+    'hopeful': Icons.wb_sunny_rounded,
+    'sad': Icons.sentiment_dissatisfied_rounded,
+    'anxious': Icons.psychology_alt_rounded,
+    'romantic': Icons.favorite_rounded,
+    'stressed': Icons.air_rounded,
+    'lonely': Icons.person_outline_rounded,
+    'angry': Icons.local_fire_department_rounded,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleMoods = moods.take(6).toList(growable: false);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Moods', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final tag in visibleMoods)
+              _FlowPillChip(
+                label: display.toTitleCase(tag),
+                icon: _moodIcons[tag] ?? Icons.mood_rounded,
+                onTap: () => onTap(tag),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _FlowPillChip extends StatelessWidget {
+  const _FlowPillChip({
+    required this.label,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: const Color(0xFF173229).withValues(alpha: 0.82),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: Colors.white),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -117,7 +117,7 @@ class HomeScreen extends ConsumerWidget {
                     const SizedBox(height: 10),
                     categoriesAsync.when(
                       data: (categories) {
-                        final preview = categories.keys.take(3).toList();
+                        final preview = categories.keys.take(8).toList();
                         return Wrap(
                           spacing: 10,
                           runSpacing: 10,

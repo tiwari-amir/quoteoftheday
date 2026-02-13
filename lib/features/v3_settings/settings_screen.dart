@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,6 +9,59 @@ import 'settings_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
+
+  Future<void> _showDatasetLicense(BuildContext context) async {
+    final licenseText = await rootBundle.loadString('assets/licenses/dataset_mit_license.txt');
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.75,
+          maxChildSize: 0.95,
+          minChildSize: 0.45,
+          builder: (context, controller) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Dataset License (MIT)', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: controller,
+                      child: SelectableText(
+                        licenseText,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.5),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -88,6 +142,11 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Export saved quotes'),
             subtitle: Text(kIsWeb ? 'Copy to clipboard' : 'Share as text'),
             onTap: () => settingsActions.exportSavedQuotes(isWeb: kIsWeb),
+          ),
+          ListTile(
+            title: const Text('Dataset license (MIT)'),
+            subtitle: const Text('View third-party attribution'),
+            onTap: () => _showDatasetLicense(context),
           ),
         ],
       ),

@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants.dart';
@@ -24,8 +22,7 @@ class QuoteService {
       if (existing != null) return existing;
     }
 
-    final random = Random(now.year + now.month + now.day);
-    final selected = quotes[random.nextInt(quotes.length)];
+    final selected = pickQuoteForDate(quotes, now);
 
     prefs
       ..setString(prefDailyQuoteDate, today)
@@ -46,8 +43,9 @@ class QuoteService {
     if (quotes.isEmpty) {
       throw StateError('No quotes available.');
     }
-    final random = Random(date.year + date.month + date.day);
-    return quotes[random.nextInt(quotes.length)];
+    final dayIndex = _dayNumber(date);
+    final quoteIndex = dayIndex % quotes.length;
+    return quotes[quoteIndex];
   }
 
   String toTitleCase(String value) {
@@ -65,6 +63,11 @@ class QuoteService {
     final month = now.month.toString().padLeft(2, '0');
     final day = now.day.toString().padLeft(2, '0');
     return '${now.year}-$month-$day';
+  }
+
+  int _dayNumber(DateTime date) {
+    final localDay = DateTime(date.year, date.month, date.day);
+    return localDay.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay;
   }
 }
 

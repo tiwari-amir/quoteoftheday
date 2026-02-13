@@ -1,7 +1,7 @@
 name: quoteoftheday
 description: Premium Quote of the Day app.
 publish_to: 'none'
-version: 1.3.0+4
+version: 1.3.2+6
 
 environment:
   sdk: ^3.10.8
@@ -33,6 +33,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/quotes.json
+    - assets/licenses/dataset_mit_license.txt
 
 flutter_launcher_icons:
   android: true
