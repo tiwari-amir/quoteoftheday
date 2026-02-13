@@ -487,6 +487,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      enableDrag: true,
+      isDismissible: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
         return _AuthorInfoSheet(
@@ -959,71 +961,70 @@ class _AuthorInfoSheet extends StatelessWidget {
         ),
         child: SafeArea(
           top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onVerticalDragUpdate: (details) {
-                  if ((details.primaryDelta ?? 0) > 8) {
-                    Navigator.of(context).pop();
-                  }
-                },
-                onVerticalDragEnd: (details) {
-                  if ((details.primaryVelocity ?? 0) > 220) {
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 8, 0, 6),
-                  child: Container(
-                    width: 42,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.36),
-                      borderRadius: BorderRadius.circular(999),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.82,
+            ),
+            child: Column(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragUpdate: (details) {
+                    if ((details.primaryDelta ?? 0) > 8) {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  onVerticalDragEnd: (details) {
+                    if ((details.primaryVelocity ?? 0) > 220) {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(0, 8, 0, 6),
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.36),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Flexible(
-                child: FutureBuilder<_AuthorInfo?>(
-                  future: loader(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 46),
-                        child: Center(child: CircularProgressIndicator()),
-                      );
-                    }
+                Expanded(
+                  child: FutureBuilder<_AuthorInfo?>(
+                    future: loader(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 46),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
 
-                    final info = snapshot.data;
-                    if (info == null) {
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              author,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              'No reliable Wikipedia match found for this author.',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      );
-                    }
+                      final info = snapshot.data;
+                      if (info == null) {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                author,
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                'No reliable Wikipedia match found for this author.',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ],
+                          ),
+                        );
+                      }
 
-                    return ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.8,
-                      ),
-                      child: SingleChildScrollView(
+                      return SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1047,12 +1048,12 @@ class _AuthorInfoSheet extends StatelessWidget {
                             ),
                           ],
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
