@@ -5,6 +5,7 @@ const String prefDailyQuoteDate = 'last_date';
 const String prefSavedQuoteIds = 'saved_quote_ids';
 const String prefStreakCount = 'streak_count';
 const String prefStreakLastDate = 'streak_last_date';
+const String prefViewerShuffleEnabled = 'viewer_shuffle_enabled';
 
 const List<String> moodAllowlist = [
   'happy',

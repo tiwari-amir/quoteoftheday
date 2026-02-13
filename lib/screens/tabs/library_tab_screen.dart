@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,9 +6,7 @@ import '../../features/v3_collections/collections_model.dart';
 import '../../features/v3_collections/collections_providers.dart';
 import '../../features/v3_collections/collections_ui/add_to_collection_sheet.dart';
 import '../../features/v3_collections/collections_ui/collection_chips_bar.dart';
-import '../../features/v3_notifications/notification_providers.dart';
 import '../../features/v3_search/search_providers.dart';
-import '../../features/v3_settings/settings_providers.dart';
 import '../../models/quote_model.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
@@ -35,10 +32,6 @@ class LibraryTabScreen extends ConsumerWidget {
     final quotesAsync = ref.watch(allQuotesProvider);
     final queryState = ref.watch(searchQueryProvider);
     final queryNotifier = ref.read(searchQueryProvider.notifier);
-    final notif = ref.watch(notificationSettingsProvider);
-    final notifNotifier = ref.read(notificationSettingsProvider.notifier);
-    final actions = ref.read(settingsActionsProvider);
-
     return Scaffold(
       body: Stack(
         children: [
@@ -55,9 +48,15 @@ class LibraryTabScreen extends ConsumerWidget {
                   );
                   return ListView(
                     children: [
-                      Text(
-                        'Library',
-                        style: Theme.of(context).textTheme.headlineMedium,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Library',
+                              style: Theme.of(context).textTheme.headlineMedium,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       const CollectionChipsBar(),
@@ -116,75 +115,6 @@ class LibraryTabScreen extends ConsumerWidget {
                               ),
                             ),
                           ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'Settings',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 8),
-                      Card(
-                        child: Column(
-                          children: [
-                            SwitchListTile(
-                              title: const Text('Notifications'),
-                              subtitle: const Text('Daily reminder'),
-                              value: notif.enabled,
-                              onChanged: kIsWeb
-                                  ? null
-                                  : (v) => notifNotifier.update(
-                                      notif.copyWith(enabled: v),
-                                    ),
-                            ),
-                            ListTile(
-                              title: const Text('Reminder time'),
-                              subtitle: Text(
-                                '${notif.hour.toString().padLeft(2, '0')}:${notif.minute.toString().padLeft(2, '0')}',
-                              ),
-                              onTap: kIsWeb
-                                  ? null
-                                  : () async {
-                                      final selected = await showTimePicker(
-                                        context: context,
-                                        initialTime: TimeOfDay(
-                                          hour: notif.hour,
-                                          minute: notif.minute,
-                                        ),
-                                      );
-                                      if (selected == null) return;
-                                      await notifNotifier.update(
-                                        notif.copyWith(
-                                          hour: selected.hour,
-                                          minute: selected.minute,
-                                        ),
-                                      );
-                                    },
-                            ),
-                            ListTile(
-                              title: const Text('Reset preferences'),
-                              onTap: actions.resetPersonalization,
-                            ),
-                            ListTile(
-                              title: const Text('Reset streak'),
-                              onTap: actions.resetStreak,
-                            ),
-                            ListTile(
-                              title: const Text('Clear recent history'),
-                              onTap: actions.clearRecentHistory,
-                            ),
-                            ListTile(
-                              title: const Text('Export saved quotes'),
-                              onTap: () =>
-                                  actions.exportSavedQuotes(isWeb: kIsWeb),
-                            ),
-                            const ListTile(
-                              title: Text('About'),
-                              subtitle: Text(
-                                'Quote of the Day v1.2.0 | Built by HBP',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ],
                   );
                 },

@@ -10,10 +10,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/constants.dart';
 import '../../models/quote_model.dart';
 import '../../models/quote_viewer_filter.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
+import '../../providers/storage_provider.dart';
 import '../../services/quote_service.dart';
 import '../../widgets/animated_gradient_background.dart';
 import '../../widgets/glass_icon_button.dart';
@@ -61,6 +63,10 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       tag: widget.tag.toLowerCase(),
     );
     _pageController = PageController();
+    _shuffleEnabled = ref
+        .read(sharedPreferencesProvider)
+        .getBool(prefViewerShuffleEnabled) ??
+        false;
 
     _hintTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
@@ -143,6 +149,9 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     setState(() {
       final turningOn = !_shuffleEnabled;
       _shuffleEnabled = turningOn;
+      ref
+          .read(sharedPreferencesProvider)
+          .setBool(prefViewerShuffleEnabled, _shuffleEnabled);
 
       if (turningOn) {
         final seenIds = _displayQuotes
@@ -489,6 +498,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       isScrollControlled: true,
       enableDrag: true,
       isDismissible: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
         return _AuthorInfoSheet(
@@ -650,7 +660,13 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                           children: [
                             GlassIconButton(
                               icon: Icons.close_rounded,
-                              onTap: () => context.go('/today'),
+                              onTap: () {
+                                if (context.canPop()) {
+                                  context.pop();
+                                } else {
+                                  context.go('/today');
+                                }
+                              },
                             ),
                             const Spacer(),
                             IconButton(
@@ -969,16 +985,6 @@ class _AuthorInfoSheet extends StatelessWidget {
               children: [
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onVerticalDragUpdate: (details) {
-                    if ((details.primaryDelta ?? 0) > 8) {
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  onVerticalDragEnd: (details) {
-                    if ((details.primaryVelocity ?? 0) > 220) {
-                      Navigator.of(context).pop();
-                    }
-                  },
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(0, 8, 0, 6),
                     child: Container(
@@ -1025,10 +1031,19 @@ class _AuthorInfoSheet extends StatelessWidget {
                       }
 
                       return SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Text(
+                              'Author snapshot',
+                              style: Theme.of(context).textTheme.labelLarge
+                                  ?.copyWith(
+                                    color: Colors.white.withValues(alpha: 0.72),
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
                             if (info.imageUrl != null)
                               _AuthorImageCard(imageUrl: info.imageUrl!),
                             if (info.imageUrl != null)

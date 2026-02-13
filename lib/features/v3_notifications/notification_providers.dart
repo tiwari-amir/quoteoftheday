@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:timezone/timezone.dart' as tz;
 
+import '../../providers/quote_providers.dart';
 import '../../providers/storage_provider.dart';
 import 'notification_settings_model.dart';
 import 'notifications_service.dart';
@@ -57,14 +59,47 @@ class NotificationSettingsNotifier extends StateNotifier<NotificationSettingsMod
       await service.cancelDailyReminder();
       return;
     }
+    await service.initialize();
 
-    final payload = '/today';
-    await service.scheduleDailyReminder(
-      hour: state.hour,
-      minute: state.minute,
-      body: 'Open today\'s quote in your feed',
-      payload: payload,
+    final repo = _ref.read(quoteRepositoryProvider);
+    final quoteService = _ref.read(quoteServiceProvider);
+    final allQuotes = await repo.getAllQuotes();
+    if (allQuotes.isEmpty) return;
+
+    await service.cancelDailyReminder();
+
+    final now = tz.TZDateTime.now(tz.local);
+    var firstTrigger = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      state.hour,
+      state.minute,
     );
+    if (!firstTrigger.isAfter(now)) {
+      firstTrigger = firstTrigger.add(const Duration(days: 1));
+    }
+
+    for (var offset = 0; offset < 30; offset++) {
+      final schedule = firstTrigger.add(Duration(days: offset));
+      final localDate = DateTime(
+        schedule.year,
+        schedule.month,
+        schedule.day,
+      );
+      final remote = await repo.getDailyQuote(localDate);
+      final quote = remote ?? quoteService.pickQuoteForDate(allQuotes, localDate);
+      final body = '"${quote.quote}" — ${quote.author}';
+
+      await service.scheduleReminder(
+        id: 7001 + offset,
+        schedule: schedule,
+        title: 'Today\'s Quote',
+        body: body,
+        payload: '/today',
+      );
+    }
   }
 }
 
