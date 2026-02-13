@@ -1,4 +1,4 @@
-package com.example.quoteoftheday
+package com.hbp.quoteoftheday
 
 import io.flutter.embedding.android.FlutterActivity
 
