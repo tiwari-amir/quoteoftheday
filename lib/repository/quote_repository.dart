@@ -63,7 +63,9 @@ class QuoteRepository {
     try {
       final rows = await _client
           .from('daily_quotes')
-          .select('date,quote:quotes!inner(id,text,author,quote_tags(tags(slug,type)))')
+          .select(
+            'date,quote:quotes!inner(id,text,author,quote_tags(tags(slug,type)))',
+          )
           .eq('date', day)
           .limit(1);
 
@@ -104,6 +106,7 @@ class QuoteRepository {
   Future<List<QuoteModel>> getQuotesByTag(String tag) async {
     final normalized = tag.trim().toLowerCase();
     final quotes = await getAllQuotes();
+    if (normalized.isEmpty) return quotes;
 
     return quotes
         .where((q) => q.revisedTags.contains(normalized))
@@ -136,26 +139,36 @@ class QuoteRepository {
     }
   }
 
-  Future<void> saveQuote({required String userId, required String quoteId}) async {
+  Future<bool> saveQuote({
+    required String userId,
+    required String quoteId,
+  }) async {
     try {
-      await _client.from('user_saved_quotes').insert({
+      await _client.from('user_saved_quotes').upsert({
         'user_id': userId,
         'quote_id': quoteId,
-      });
+      }, onConflict: 'user_id,quote_id');
+      return true;
     } catch (error) {
       debugPrint('Supabase saveQuote failed: $error');
+      return false;
     }
   }
 
-  Future<void> unsaveQuote({required String userId, required String quoteId}) async {
+  Future<bool> unsaveQuote({
+    required String userId,
+    required String quoteId,
+  }) async {
     try {
       await _client
           .from('user_saved_quotes')
           .delete()
           .eq('user_id', userId)
           .eq('quote_id', quoteId);
+      return true;
     } catch (error) {
       debugPrint('Supabase unsaveQuote failed: $error');
+      return false;
     }
   }
 

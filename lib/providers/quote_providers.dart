@@ -53,8 +53,14 @@ final moodCountsProvider = FutureProvider<Map<String, int>>((ref) async {
   };
 });
 
-final quotesByFilterProvider = FutureProvider.family<List<QuoteModel>, QuoteViewerFilter>(
-  (ref, filter) async {
-    return ref.read(quoteRepositoryProvider).getQuotesByTag(filter.tag);
-  },
-);
+final quotesByFilterProvider =
+    FutureProvider.family<List<QuoteModel>, QuoteViewerFilter>((
+      ref,
+      filter,
+    ) async {
+      final tag = filter.tag.trim().toLowerCase();
+      if (tag.isEmpty || tag == 'all') {
+        return ref.read(quoteRepositoryProvider).getAllQuotes();
+      }
+      return ref.read(quoteRepositoryProvider).getQuotesByTag(filter.tag);
+    });

@@ -36,14 +36,18 @@ class HomeScreen extends ConsumerWidget {
                         Expanded(
                           child: Text(
                             'Quote of the Day',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                  letterSpacing: 0.2,
-                                ),
+                            style: Theme.of(context).textTheme.headlineMedium
+                                ?.copyWith(letterSpacing: 0.2),
                           ),
                         ),
                         GlassIconButton(
                           icon: Icons.bookmark_outline_rounded,
                           onTap: () => context.push('/saved'),
+                        ),
+                        const SizedBox(width: 10),
+                        GlassIconButton(
+                          icon: Icons.settings_outlined,
+                          onTap: () => context.push('/settings'),
                         ),
                       ],
                     ),
@@ -51,7 +55,12 @@ class HomeScreen extends ConsumerWidget {
                     dailyQuoteAsync.when(
                       data: (quote) {
                         return GlassCard(
-                              padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
+                              padding: const EdgeInsets.fromLTRB(
+                                24,
+                                24,
+                                24,
+                                18,
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -59,8 +68,13 @@ class HomeScreen extends ConsumerWidget {
                                   const SizedBox(height: 14),
                                   Text(
                                     quote.author,
-                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                          color: Colors.white.withValues(alpha: 0.65),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.65,
+                                          ),
                                         ),
                                   ),
                                   const SizedBox(height: 14),
@@ -68,8 +82,12 @@ class HomeScreen extends ConsumerWidget {
                                     spacing: 8,
                                     runSpacing: 8,
                                     children: [
-                                      for (final tag in quote.revisedTags.take(2))
-                                        NeonChip(label: service.toTitleCase(tag)),
+                                      for (final tag in quote.revisedTags.take(
+                                        2,
+                                      ))
+                                        NeonChip(
+                                          label: service.toTitleCase(tag),
+                                        ),
                                     ],
                                   ),
                                 ],
@@ -77,7 +95,11 @@ class HomeScreen extends ConsumerWidget {
                             )
                             .animate()
                             .fadeIn(duration: 380.ms)
-                            .slideY(begin: 0.12, end: 0, curve: Curves.easeOutCubic);
+                            .slideY(
+                              begin: 0.12,
+                              end: 0,
+                              curve: Curves.easeOutCubic,
+                            );
                       },
                       loading: () => const SizedBox(
                         height: 220,
@@ -112,9 +134,12 @@ class HomeScreen extends ConsumerWidget {
                       },
                       loading: () => const SizedBox(
                         height: 36,
-                        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ),
-                      error: (error, stack) => Text('Failed to load categories: $error'),
+                      error: (error, stack) =>
+                          Text('Failed to load categories: $error'),
                     ),
                     const SizedBox(height: 26),
                     _SectionHeader(
@@ -141,9 +166,12 @@ class HomeScreen extends ConsumerWidget {
                       },
                       loading: () => const SizedBox(
                         height: 36,
-                        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ),
-                      error: (error, stack) => Text('Failed to load moods: $error'),
+                      error: (error, stack) =>
+                          Text('Failed to load moods: $error'),
                     ),
                   ],
                 ),
