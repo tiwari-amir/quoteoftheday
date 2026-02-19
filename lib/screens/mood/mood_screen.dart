@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/quote_providers.dart';
-import '../../widgets/animated_gradient_background.dart';
+import '../../widgets/editorial_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/glass_icon_button.dart';
 import '../../widgets/scale_tap.dart';
@@ -34,7 +34,7 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          const AnimatedGradientBackground(),
+          const EditorialBackground(),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
@@ -43,19 +43,29 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
                 children: [
                   Row(
                     children: [
-                      GlassIconButton(icon: Icons.close_rounded, onTap: context.pop),
+                      GlassIconButton(
+                        icon: Icons.close_rounded,
+                        onTap: context.pop,
+                      ),
                       const SizedBox(width: 12),
-                      Text('Browse by Mood', style: Theme.of(context).textTheme.titleLarge),
+                      Text(
+                        'Browse by Mood',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   GlassCard(
                     borderRadius: 18,
                     blur: 18,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 4,
+                    ),
                     child: TextField(
                       controller: _searchController,
-                      onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+                      onChanged: (value) =>
+                          setState(() => _query = value.trim().toLowerCase()),
                       decoration: const InputDecoration(
                         icon: Icon(Icons.search_rounded),
                         border: InputBorder.none,
@@ -67,28 +77,37 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
                   Expanded(
                     child: moodsAsync.when(
                       data: (moods) {
-                        final list = moods.entries
-                            .map((entry) => _MoodCount(
-                                  mood: entry.key,
-                                  label: service.toTitleCase(entry.key),
-                                  count: entry.value,
-                                ))
-                            .where((item) => item.label.toLowerCase().contains(_query))
-                            .toList()
-                          ..sort((a, b) => a.label.compareTo(b.label));
+                        final list =
+                            moods.entries
+                                .map(
+                                  (entry) => _MoodCount(
+                                    mood: entry.key,
+                                    label: service.toTitleCase(entry.key),
+                                    count: entry.value,
+                                  ),
+                                )
+                                .where(
+                                  (item) =>
+                                      item.label.toLowerCase().contains(_query),
+                                )
+                                .toList()
+                              ..sort((a, b) => a.label.compareTo(b.label));
 
                         if (list.isEmpty) {
-                          return const Center(child: Text('No moods available in dataset'));
+                          return const Center(
+                            child: Text('No moods available in dataset'),
+                          );
                         }
 
                         return GridView.builder(
                           itemCount: list.length,
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 14,
-                            mainAxisSpacing: 14,
-                            childAspectRatio: 1.08,
-                          ),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 14,
+                                childAspectRatio: 1.08,
+                              ),
                           itemBuilder: (context, index) {
                             final item = list[index];
                             return ScaleTap(
@@ -103,8 +122,10 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
                           },
                         );
                       },
-                      loading: () => const Center(child: CircularProgressIndicator()),
-                      error: (error, stack) => Center(child: Text('Failed to load: $error')),
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (error, stack) =>
+                          Center(child: Text('Failed to load: $error')),
                     ),
                   ),
                 ],
@@ -131,6 +152,11 @@ class _MoodCardState extends State<_MoodCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final borderIdle = Colors.white.withValues(alpha: 0.16);
+    final borderHover = scheme.primary.withValues(alpha: 0.7);
+    final glow = scheme.primary.withValues(alpha: 0.28);
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -139,17 +165,11 @@ class _MoodCardState extends State<_MoodCard> {
         curve: Curves.easeOut,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          color: Colors.white.withValues(alpha: 0.09),
-          border: Border.all(
-            color: _hovering
-                ? const Color(0xFF55FFD8).withValues(alpha: 0.65)
-                : Colors.white.withValues(alpha: 0.16),
-          ),
+          color: scheme.surface.withValues(alpha: 0.5),
+          border: Border.all(color: _hovering ? borderHover : borderIdle),
           boxShadow: [
             BoxShadow(
-              color: _hovering
-                  ? const Color(0xFF55FFD8).withValues(alpha: 0.25)
-                  : Colors.black.withValues(alpha: 0.25),
+              color: _hovering ? glow : Colors.black.withValues(alpha: 0.25),
               blurRadius: _hovering ? 22 : 14,
               offset: const Offset(0, 10),
             ),
@@ -178,7 +198,11 @@ class _MoodCardState extends State<_MoodCard> {
 }
 
 class _MoodCount {
-  const _MoodCount({required this.mood, required this.label, required this.count});
+  const _MoodCount({
+    required this.mood,
+    required this.label,
+    required this.count,
+  });
 
   final String mood;
   final String label;

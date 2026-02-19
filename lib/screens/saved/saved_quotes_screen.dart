@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../features/v3_collections/collections_model.dart';
 import '../../features/v3_collections/collections_providers.dart';
 import '../../features/v3_collections/collections_ui/add_to_collection_sheet.dart';
 import '../../features/v3_collections/collections_ui/collection_chips_bar.dart';
+import '../../features/v3_share/story_share_sheet.dart';
 import '../../features/v3_search/search_bar_widget.dart';
 import '../../features/v3_search/search_providers.dart';
 import '../../models/quote_model.dart';
 import '../../providers/saved_quotes_provider.dart';
-import '../../widgets/animated_gradient_background.dart';
+import '../../widgets/editorial_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/glass_icon_button.dart';
 import '../../widgets/scale_tap.dart';
@@ -58,7 +58,7 @@ class _SavedQuotesScreenState extends ConsumerState<SavedQuotesScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          const AnimatedGradientBackground(),
+          const EditorialBackground(),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
@@ -402,7 +402,7 @@ class _SavedQuotePagerScreenState
     return Scaffold(
       body: Stack(
         children: [
-          const AnimatedGradientBackground(),
+          const EditorialBackground(),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
@@ -477,8 +477,9 @@ class _SavedQuotePagerScreenState
                                     ),
                                     const SizedBox(width: 10),
                                     OutlinedButton.icon(
-                                      onPressed: () => Share.share(
-                                        '"${quote.quote}"\n\n- ${quote.author}',
+                                      onPressed: () => showStoryShareSheet(
+                                        context: context,
+                                        quote: quote,
                                         subject: 'Saved Quote',
                                       ),
                                       icon: const Icon(Icons.share_outlined),

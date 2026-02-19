@@ -3,11 +3,12 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:share_plus/share_plus.dart';
 
+import '../../features/v3_share/story_share_sheet.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/streak_provider.dart';
+import '../../widgets/author_info_sheet.dart';
 import '../../widgets/editorial_background.dart';
 
 class TodayTabScreen extends ConsumerWidget {
@@ -27,6 +28,7 @@ class TodayTabScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
               child: dailyAsync.when(
                 data: (quote) {
+                  final scheme = Theme.of(context).colorScheme;
                   final isSaved = ref
                       .watch(savedQuoteIdsProvider)
                       .contains(quote.id);
@@ -57,7 +59,7 @@ class TodayTabScreen extends ConsumerWidget {
                                 Icon(
                                   Icons.local_fire_department_rounded,
                                   size: 14,
-                                  color: const Color(0xFFFFC078),
+                                  color: scheme.tertiary,
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
@@ -101,6 +103,27 @@ class TodayTabScreen extends ConsumerWidget {
                                 quote.author,
                                 style: Theme.of(context).textTheme.bodyLarge,
                               ),
+                              const SizedBox(height: 8),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                tooltip: 'Author details',
+                                onPressed: () => showModalBottomSheet<void>(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  useSafeArea: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (context) => AuthorInfoSheet(
+                                    author: quote.author,
+                                    loader: () => ref
+                                        .read(authorWikiServiceProvider)
+                                        .fetchAuthor(quote.author),
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.person_search_outlined,
+                                  size: 20,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -130,8 +153,9 @@ class TodayTabScreen extends ConsumerWidget {
                               style: OutlinedButton.styleFrom(
                                 minimumSize: const Size.fromHeight(52),
                               ),
-                              onPressed: () => Share.share(
-                                '"${quote.quote}"\n\n- ${quote.author}',
+                              onPressed: () => showStoryShareSheet(
+                                context: context,
+                                quote: quote,
                                 subject: 'Quote of the Day',
                               ),
                               icon: const Icon(Icons.share_outlined),

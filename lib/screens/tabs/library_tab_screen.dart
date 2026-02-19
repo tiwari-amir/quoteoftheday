@@ -8,20 +8,32 @@ import '../../features/v3_collections/collections_ui/add_to_collection_sheet.dar
 import '../../features/v3_collections/collections_ui/collection_chips_bar.dart';
 import '../../features/v3_search/search_providers.dart';
 import '../../models/quote_model.dart';
+import '../../providers/liked_quotes_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../widgets/editorial_background.dart';
 
-class LibraryTabScreen extends ConsumerWidget {
+enum _LibraryMode { saved, liked }
+
+class LibraryTabScreen extends ConsumerStatefulWidget {
   const LibraryTabScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LibraryTabScreen> createState() => _LibraryTabScreenState();
+}
+
+class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
+  _LibraryMode _mode = _LibraryMode.saved;
+
+  @override
+  Widget build(BuildContext context) {
     final savedIds = ref.watch(savedQuoteIdsProvider);
+    final likedIds = ref.watch(likedQuoteIdsProvider);
     final collections = ref.watch(collectionsProvider);
     final collectionsNotifier = ref.read(collectionsProvider.notifier);
     final selectedCollectionId = collections.selectedCollectionId;
-    final scopedIds = selectedCollectionId == allSavedCollectionId
+
+    final scopedSavedIds = selectedCollectionId == allSavedCollectionId
         ? savedIds
         : savedIds.intersection(
             collectionsNotifier
@@ -29,9 +41,12 @@ class LibraryTabScreen extends ConsumerWidget {
                 .toSet(),
           );
 
+    final activeIds = _mode == _LibraryMode.saved ? scopedSavedIds : likedIds;
+
     final quotesAsync = ref.watch(allQuotesProvider);
     final queryState = ref.watch(searchQueryProvider);
     final queryNotifier = ref.read(searchQueryProvider.notifier);
+
     return Scaffold(
       body: Stack(
         children: [
@@ -43,9 +58,11 @@ class LibraryTabScreen extends ConsumerWidget {
                 data: (quotes) {
                   final filtered = _filterQuotes(
                     quotes,
-                    scopedIds,
+                    activeIds,
                     queryState.query,
                   );
+                  final isSavedMode = _mode == _LibraryMode.saved;
+
                   return ListView(
                     children: [
                       Row(
@@ -59,20 +76,50 @@ class LibraryTabScreen extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      const CollectionChipsBar(),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: Text('Saved (${scopedSavedIds.length})'),
+                            selected: isSavedMode,
+                            onSelected: (_) {
+                              setState(() => _mode = _LibraryMode.saved);
+                              queryNotifier.setQueryDebounced('');
+                            },
+                          ),
+                          ChoiceChip(
+                            label: Text('Liked (${likedIds.length})'),
+                            selected: !isSavedMode,
+                            onSelected: (_) {
+                              setState(() => _mode = _LibraryMode.liked);
+                              queryNotifier.setQueryDebounced('');
+                            },
+                          ),
+                        ],
+                      ),
+                      if (isSavedMode) ...[
+                        const SizedBox(height: 12),
+                        const CollectionChipsBar(),
+                      ],
                       const SizedBox(height: 10),
                       TextField(
                         onChanged: queryNotifier.setQueryDebounced,
-                        decoration: const InputDecoration(
-                          hintText: 'Search in saved',
-                          prefixIcon: Icon(Icons.search),
+                        decoration: InputDecoration(
+                          hintText: isSavedMode
+                              ? 'Search in saved'
+                              : 'Search in liked',
+                          prefixIcon: const Icon(Icons.search),
                         ),
                       ),
                       const SizedBox(height: 10),
                       if (filtered.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 24),
-                          child: Text('No saved quotes found.'),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 24),
+                          child: Text(
+                            isSavedMode
+                                ? 'No saved quotes found.'
+                                : 'No liked quotes found.',
+                          ),
                         )
                       else
                         for (final quote in filtered.take(100))
@@ -85,7 +132,7 @@ class LibraryTabScreen extends ConsumerWidget {
                               ),
                               subtitle: Text(quote.author),
                               onTap: () => context.push(
-                                '/viewer/saved/saved?quoteId=${quote.id}',
+                                '/viewer/${isSavedMode ? 'saved' : 'liked'}/${isSavedMode ? 'saved' : 'liked'}?quoteId=${quote.id}',
                               ),
                               trailing: PopupMenuButton<String>(
                                 onSelected: (v) {
@@ -96,22 +143,34 @@ class LibraryTabScreen extends ConsumerWidget {
                                       quote.id,
                                     );
                                   }
-                                  if (v == 'remove') {
+                                  if (v == 'remove_saved') {
                                     ref
                                         .read(savedQuoteIdsProvider.notifier)
                                         .remove(quote.id);
                                   }
+                                  if (v == 'remove_liked') {
+                                    ref
+                                        .read(likedQuoteIdsProvider.notifier)
+                                        .toggle(quote.id);
+                                  }
                                 },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                    value: 'collections',
-                                    child: Text('Add to collection'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'remove',
-                                    child: Text('Remove'),
-                                  ),
-                                ],
+                                itemBuilder: (_) => isSavedMode
+                                    ? const [
+                                        PopupMenuItem(
+                                          value: 'collections',
+                                          child: Text('Add to collection'),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'remove_saved',
+                                          child: Text('Remove saved'),
+                                        ),
+                                      ]
+                                    : const [
+                                        PopupMenuItem(
+                                          value: 'remove_liked',
+                                          child: Text('Remove liked'),
+                                        ),
+                                      ],
                               ),
                             ),
                           ),

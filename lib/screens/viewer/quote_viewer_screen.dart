@@ -1,24 +1,26 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import 'package:share_plus/share_plus.dart';
 
 import '../../core/constants.dart';
+import '../../features/v3_share/story_share_sheet.dart';
 import '../../models/quote_model.dart';
 import '../../models/quote_viewer_filter.dart';
+import '../../providers/liked_quotes_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/storage_provider.dart';
 import '../../services/quote_service.dart';
-import '../../widgets/animated_gradient_background.dart';
+import '../../widgets/author_info_sheet.dart';
+import '../../widgets/editorial_background.dart';
 import '../../widgets/glass_icon_button.dart';
+import '../../theme/app_theme.dart';
 
 class QuoteViewerScreen extends ConsumerStatefulWidget {
   const QuoteViewerScreen({
@@ -39,8 +41,6 @@ class QuoteViewerScreen extends ConsumerStatefulWidget {
 class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   late final QuoteViewerFilter _filter;
   late final PageController _pageController;
-
-  final Set<String> _likedIds = <String>{};
   final Random _shuffleRandom = Random();
 
   Timer? _hintTimer;
@@ -63,9 +63,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       tag: widget.tag.toLowerCase(),
     );
     _pageController = PageController();
-    _shuffleEnabled = ref
-        .read(sharedPreferencesProvider)
-        .getBool(prefViewerShuffleEnabled) ??
+    _shuffleEnabled =
+        ref.read(sharedPreferencesProvider).getBool(prefViewerShuffleEnabled) ??
         false;
 
     _hintTimer = Timer(const Duration(seconds: 2), () {
@@ -209,8 +208,9 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   }
 
   void _shareQuote(QuoteModel quote) {
-    Share.share(
-      '"${quote.quote}"\n\n- ${quote.author}',
+    showStoryShareSheet(
+      context: context,
+      quote: quote,
       subject: 'Quote of the Day',
     );
   }
@@ -231,175 +231,15 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     );
   }
 
-  Future<_AuthorInfo?> _fetchAuthorInfo(String author) async {
-    final candidates = _authorSearchCandidates(author);
-    if (candidates.isEmpty) {
-      return null;
-    }
-
-    _WikipediaCandidate? bestCandidate;
-    String? bestCandidateAuthor;
-    var bestScore = -9999;
-
-    for (final candidateAuthor in candidates.take(5)) {
-      final searchUri = Uri.https('en.wikipedia.org', '/w/api.php', {
-        'action': 'query',
-        'list': 'search',
-        'srsearch': '"$candidateAuthor"',
-        'srlimit': '8',
-        'format': 'json',
-        'origin': '*',
-      });
-
-      final searchResponse = await http.get(searchUri);
-      if (searchResponse.statusCode != 200) continue;
-
-      final searchJson = jsonDecode(searchResponse.body);
-      final searchRows =
-          (((searchJson as Map<String, dynamic>)['query'] ?? {})
-                  as Map<String, dynamic>)['search']
-              as List<dynamic>? ??
-          const [];
-
-      final normalizedAuthor = _normalizeIdentity(candidateAuthor);
-      final rows = searchRows
-          .whereType<Map<String, dynamic>>()
-          .map(
-            (row) => _WikipediaCandidate(
-              pageId: row['pageid'] as int? ?? -1,
-              title: (row['title'] ?? '').toString(),
-              snippet: (row['snippet'] ?? '').toString(),
-            ),
-          )
-          .where((row) => row.pageId > 0 && row.title.isNotEmpty)
-          .toList(growable: false);
-
-      if (rows.isEmpty) continue;
-
-      rows.sort((a, b) {
-        final aScore = _scoreAuthorCandidate(
-          candidate: a,
-          normalizedAuthor: normalizedAuthor,
-        );
-        final bScore = _scoreAuthorCandidate(
-          candidate: b,
-          normalizedAuthor: normalizedAuthor,
-        );
-        return bScore.compareTo(aScore);
-      });
-
-      final localBest = rows.first;
-      final score =
-          _scoreAuthorCandidate(
-            candidate: localBest,
-            normalizedAuthor: normalizedAuthor,
-          ) +
-          _candidateAuthorQuality(candidateAuthor);
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestCandidate = localBest;
-        bestCandidateAuthor = candidateAuthor;
-      }
-    }
-
-    if (bestCandidate == null ||
-        bestCandidateAuthor == null ||
-        bestScore < 22) {
-      return null;
-    }
-
-    final detailsUri = Uri.https('en.wikipedia.org', '/w/api.php', {
-      'action': 'query',
-      'prop': 'extracts|pageimages|info',
-      'inprop': 'url',
-      'exintro': '1',
-      'explaintext': '1',
-      'pithumbsize': '700',
-      'pageids': '${bestCandidate.pageId}',
-      'format': 'json',
-      'origin': '*',
-    });
-
-    final detailsResponse = await http.get(detailsUri);
-    if (detailsResponse.statusCode != 200) return null;
-
-    final detailsJson =
-        jsonDecode(detailsResponse.body) as Map<String, dynamic>;
-    final pages =
-        ((detailsJson['query'] ?? {}) as Map<String, dynamic>)['pages'];
-    if (pages is! Map<String, dynamic>) return null;
-
-    final page = pages['${bestCandidate.pageId}'];
-    if (page is! Map<String, dynamic>) return null;
-
-    final title = (page['title'] ?? bestCandidate.title).toString();
-    final summary = (page['extract'] ?? '').toString().trim();
-    final fullUrl = (page['fullurl'] ?? '').toString();
-    final thumbnail =
-        ((page['thumbnail'] as Map<String, dynamic>?)?['source'] ?? '')
-            .toString();
-
-    if (summary.isEmpty && thumbnail.isEmpty && fullUrl.isEmpty) return null;
-
-    return _AuthorInfo(
-      author: bestCandidateAuthor,
-      wikiTitle: title,
-      summary: summary,
-      imageUrl: thumbnail.isEmpty ? null : thumbnail,
-      url: fullUrl.isEmpty ? null : fullUrl,
-    );
-  }
-
-  int _scoreAuthorCandidate({
-    required _WikipediaCandidate candidate,
-    required String normalizedAuthor,
-  }) {
-    var score = 0;
-    final title = _normalizeIdentity(candidate.title);
-    final snippet = candidate.snippet.toLowerCase();
-
-    if (title == normalizedAuthor) {
-      score += 120;
-    }
-    if (title.contains(normalizedAuthor) || normalizedAuthor.contains(title)) {
-      score += 45;
-    }
-
-    final authorTokens = normalizedAuthor
-        .split(' ')
-        .where((t) => t.isNotEmpty)
-        .toList();
-    final titleTokens = title.split(' ').where((t) => t.isNotEmpty).toSet();
-    for (final token in authorTokens) {
-      if (titleTokens.contains(token)) {
-        score += 8;
-      }
-    }
-
-    if (candidate.title.toLowerCase().contains('disambiguation') ||
-        snippet.contains('may refer to')) {
-      score -= 80;
-    }
-
-    if (snippet.contains('writer') ||
-        snippet.contains('poet') ||
-        snippet.contains('author') ||
-        snippet.contains('philosopher') ||
-        snippet.contains('speaker') ||
-        snippet.contains('novelist') ||
-        snippet.contains('essayist')) {
-      score += 8;
-    }
-
-    return score;
-  }
-
   List<String> _authorSearchCandidates(String rawAuthor) {
     final clean = rawAuthor.trim();
     if (clean.isEmpty || clean.toLowerCase() == 'unknown') return const [];
 
     final candidates = <String>{};
+    if (clean.toLowerCase() == 'osho') {
+      candidates.add('Rajneesh');
+      candidates.add('Osho');
+    }
     candidates.add(_sanitizeAuthorText(clean));
 
     for (final sep in [',', ' & ', ' and ', ' - ', '|', ';', ':']) {
@@ -501,9 +341,10 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return _AuthorInfoSheet(
+        return AuthorInfoSheet(
           author: displayAuthor,
-          loader: () => _fetchAuthorInfo(quote.author),
+          loader: () =>
+              ref.read(authorWikiServiceProvider).fetchAuthor(quote.author),
         );
       },
     );
@@ -528,14 +369,25 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   @override
   Widget build(BuildContext context) {
     final savedIds = ref.watch(savedQuoteIdsProvider);
-    final quotesAsync = _filter.type.toLowerCase() == 'saved'
+    final likedIds = ref.watch(likedQuoteIdsProvider);
+    final normalizedType = _filter.type.toLowerCase();
+    final quotesAsync = normalizedType == 'saved'
         ? ref.watch(allQuotesProvider).whenData((all) {
             return all
                 .where((q) => savedIds.contains(q.id))
                 .toList(growable: false);
           })
+        : normalizedType == 'liked'
+        ? ref.watch(allQuotesProvider).whenData((all) {
+            return all
+                .where((q) => likedIds.contains(q.id))
+                .toList(growable: false);
+          })
         : ref.watch(quotesByFilterProvider(_filter));
     final service = ref.read(quoteServiceProvider);
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = Theme.of(context).extension<AppThemeTokens>();
+    final viewerAccent = tokens?.viewerAccent ?? scheme.primary;
 
     return Scaffold(
       body: quotesAsync.when(
@@ -548,7 +400,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                 widget.tag.trim().toLowerCase() == 'all';
             return Stack(
               children: [
-                const AnimatedGradientBackground(),
+                const EditorialBackground(),
                 Center(
                   child: Text(
                     isAll
@@ -564,7 +416,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
           final currentQuote =
               _displayQuotes[_currentIndex.clamp(0, _displayQuotes.length - 1)];
           final isSaved = savedIds.contains(currentQuote.id);
-          final isLiked = _likedIds.contains(currentQuote.id);
+          final isLiked = likedIds.contains(currentQuote.id);
 
           return Stack(
             children: [
@@ -577,7 +429,10 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                 child: PageView.builder(
                   controller: _pageController,
                   scrollDirection: Axis.vertical,
-                  physics: const SnappyPageScrollPhysics(),
+                  allowImplicitScrolling: true,
+                  physics: const BouncingScrollPhysics(
+                    parent: PageScrollPhysics(),
+                  ),
                   itemCount: _displayQuotes.length,
                   onPageChanged: _onPageChanged,
                   itemBuilder: (context, index) {
@@ -588,7 +443,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                         : cleanedNames.first;
                     return Stack(
                       children: [
-                        AnimatedGradientBackground(
+                        EditorialBackground(
                           seed: quote.id.hashCode,
                           motionScale: 0.45,
                         ),
@@ -599,9 +454,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                                 center: const Alignment(-0.2, -0.55),
                                 radius: 1.05,
                                 colors: [
-                                  const Color(
-                                    0xFF79C7B6,
-                                  ).withValues(alpha: 0.14),
+                                  viewerAccent.withValues(alpha: 0.16),
                                   Colors.transparent,
                                 ],
                               ),
@@ -615,15 +468,9 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                                 colors: [
-                                  const Color(
-                                    0xFF03070D,
-                                  ).withValues(alpha: 0.22),
-                                  const Color(
-                                    0xFF03070D,
-                                  ).withValues(alpha: 0.34),
-                                  const Color(
-                                    0xFF03070D,
-                                  ).withValues(alpha: 0.78),
+                                  scheme.scrim.withValues(alpha: 0.2),
+                                  scheme.scrim.withValues(alpha: 0.32),
+                                  scheme.scrim.withValues(alpha: 0.76),
                                 ],
                                 stops: const [0.08, 0.5, 1.0],
                               ),
@@ -678,7 +525,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                                     ? Icons.shuffle_on_rounded
                                     : Icons.shuffle_rounded,
                                 color: _shuffleEnabled
-                                    ? const Color(0xFF2FC79F)
+                                    ? scheme.primary
                                     : Colors.white.withValues(alpha: 0.8),
                               ),
                             ),
@@ -736,21 +583,17 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                           icon: isLiked
                               ? Icons.favorite
                               : Icons.favorite_border,
-                          tint: isLiked ? const Color(0xFFFF6B8A) : null,
-                          onTap: () {
-                            setState(() {
-                              if (!_likedIds.add(currentQuote.id)) {
-                                _likedIds.remove(currentQuote.id);
-                              }
-                            });
-                          },
+                          tint: isLiked ? scheme.tertiary : null,
+                          onTap: () => ref
+                              .read(likedQuoteIdsProvider.notifier)
+                              .toggle(currentQuote.id),
                         ),
                         const SizedBox(height: 8),
                         _ViewerActionButton(
                           icon: isSaved
                               ? Icons.bookmark
                               : Icons.bookmark_outline_rounded,
-                          tint: isSaved ? const Color(0xFF3FD6FF) : null,
+                          tint: isSaved ? scheme.primary : null,
                           onTap: () => ref
                               .read(savedQuoteIdsProvider.notifier)
                               .toggle(currentQuote.id),
@@ -770,13 +613,13 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
         },
         loading: () => const Stack(
           children: [
-            AnimatedGradientBackground(motionScale: 0.45),
+            EditorialBackground(motionScale: 0.45),
             Center(child: CircularProgressIndicator()),
           ],
         ),
         error: (error, stack) => Stack(
           children: [
-            const AnimatedGradientBackground(motionScale: 0.45),
+            const EditorialBackground(motionScale: 0.45),
             Center(child: Text('Failed to load viewer: $error')),
           ],
         ),
@@ -811,77 +654,84 @@ class _QuotePanel extends StatelessWidget {
 
     return ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720, minWidth: 220),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(26),
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x44E7FFF7), Color(0x2ECAEFE2)],
-              ),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.28),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(context).size.height * 0.46,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  color: const Color(0xFF0B1D21).withValues(alpha: 0.5),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.24),
+                      blurRadius: 30,
+                      offset: const Offset(0, 12),
                     ),
-                    child: showScrollableBody
-                        ? Scrollbar(
-                            radius: const Radius.circular(10),
-                            thumbVisibility: true,
-                            child: SingleChildScrollView(
-                              child: Text(
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(context).size.height * 0.46,
+                        ),
+                        child: showScrollableBody
+                            ? ScrollConfiguration(
+                                behavior: ScrollConfiguration.of(
+                                  context,
+                                ).copyWith(scrollbars: false),
+                                child: SingleChildScrollView(
+                                  physics: const BouncingScrollPhysics(),
+                                  child: Text(
+                                    quote.quote,
+                                    style: quoteStyle,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              )
+                            : Text(
                                 quote.quote,
                                 style: quoteStyle,
                                 textAlign: TextAlign.center,
                               ),
-                            ),
-                          )
-                        : Text(
-                            quote.quote,
-                            style: quoteStyle,
-                            textAlign: TextAlign.center,
-                          ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    authorLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.nunitoSans(
-                      fontSize: 15,
-                      letterSpacing: 0.25,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white.withValues(alpha: 0.92),
-                    ),
-                  ),
-                  if (normalizedTags.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      normalizedTags,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.nunitoSans(
-                        fontSize: 10.5,
-                        color: Colors.white.withValues(alpha: 0.62),
-                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                  ],
-                ],
+                      const SizedBox(height: 18),
+                      Text(
+                        authorLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.nunitoSans(
+                          fontSize: 15,
+                          letterSpacing: 0.25,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white.withValues(alpha: 0.92),
+                        ),
+                      ),
+                      if (normalizedTags.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          normalizedTags,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.nunitoSans(
+                            fontSize: 10.5,
+                            color: Colors.white.withValues(alpha: 0.62),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -957,203 +807,4 @@ class _ViewerActionButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _AuthorInfoSheet extends StatelessWidget {
-  const _AuthorInfoSheet({required this.author, required this.loader});
-
-  final String author;
-  final Future<_AuthorInfo?> Function() loader;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          color: const Color(0xFF14171D),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.82,
-            ),
-            child: Column(
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(0, 8, 0, 6),
-                    child: Container(
-                      width: 42,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.36),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: FutureBuilder<_AuthorInfo?>(
-                    future: loader(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 46),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-
-                      final info = snapshot.data;
-                      if (info == null) {
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                author,
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                'No reliable Wikipedia match found for this author.',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      return SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Author snapshot',
-                              style: Theme.of(context).textTheme.labelLarge
-                                  ?.copyWith(
-                                    color: Colors.white.withValues(alpha: 0.72),
-                                  ),
-                            ),
-                            const SizedBox(height: 8),
-                            if (info.imageUrl != null)
-                              _AuthorImageCard(imageUrl: info.imageUrl!),
-                            if (info.imageUrl != null)
-                              const SizedBox(height: 12),
-                            Text(
-                              info.wikiTitle,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              info.summary.isEmpty
-                                  ? 'Wikipedia entry found, but summary is unavailable.'
-                                  : info.summary,
-                              style: Theme.of(
-                                context,
-                              ).textTheme.bodyMedium?.copyWith(height: 1.5),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AuthorInfo {
-  const _AuthorInfo({
-    required this.author,
-    required this.wikiTitle,
-    required this.summary,
-    this.imageUrl,
-    this.url,
-  });
-
-  final String author;
-  final String wikiTitle;
-  final String summary;
-  final String? imageUrl;
-  final String? url;
-}
-
-class _AuthorImageCard extends StatelessWidget {
-  const _AuthorImageCard({required this.imageUrl});
-
-  final String imageUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxHeight: 320, minHeight: 160),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: Colors.white.withValues(alpha: 0.05),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Container(color: const Color(0xFF0D1620)),
-          Image.network(
-            imageUrl,
-            fit: BoxFit.contain,
-            alignment: Alignment.topCenter,
-            errorBuilder: (context, error, stackTrace) {
-              return Center(
-                child: Icon(
-                  Icons.broken_image_outlined,
-                  color: Colors.white.withValues(alpha: 0.55),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WikipediaCandidate {
-  const _WikipediaCandidate({
-    required this.pageId,
-    required this.title,
-    required this.snippet,
-  });
-
-  final int pageId;
-  final String title;
-  final String snippet;
-}
-
-class SnappyPageScrollPhysics extends PageScrollPhysics {
-  const SnappyPageScrollPhysics({super.parent});
-
-  @override
-  SnappyPageScrollPhysics applyTo(ScrollPhysics? ancestor) {
-    return SnappyPageScrollPhysics(parent: buildParent(ancestor));
-  }
-
-  @override
-  double get minFlingDistance => 8.0;
-
-  @override
-  double get minFlingVelocity => 80.0;
 }

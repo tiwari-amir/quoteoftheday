@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'scale_tap.dart';
 
 class GlassIconButton extends StatelessWidget {
@@ -20,6 +21,11 @@ class GlassIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = Theme.of(context).extension<AppThemeTokens>();
+    final fill = tokens?.glassFill ?? Colors.white.withValues(alpha: 0.1);
+    final border = tokens?.glassBorder ?? Colors.white.withValues(alpha: 0.15);
+    final icon = iconColor ?? Theme.of(context).colorScheme.onSurface;
+
     return ScaleTap(
       onTap: onTap,
       child: ClipOval(
@@ -30,10 +36,10 @@ class GlassIconButton extends StatelessWidget {
             height: size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.1),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1),
+              color: fill,
+              border: Border.all(color: border, width: 1),
             ),
-            child: Icon(icon, size: 20, color: iconColor ?? Colors.white),
+            child: Icon(this.icon, size: 20, color: icon),
           ),
         ),
       ),
