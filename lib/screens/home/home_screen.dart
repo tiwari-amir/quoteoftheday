@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/quote_providers.dart';
-import '../../widgets/animated_gradient_background.dart';
+import '../../widgets/editorial_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/glass_icon_button.dart';
 import '../../widgets/neon_chip.dart';
@@ -23,7 +23,7 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       body: Stack(
         children: [
-          const AnimatedGradientBackground(),
+          const EditorialBackground(),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 18, 24, 20),

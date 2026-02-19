@@ -25,6 +25,10 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
   String _query = '';
   String? _lengthFilter;
   String? _tagFilter;
+  SearchService? _searchService;
+  String _quotesSignature = '';
+  List<QuoteModel> _forYouCache = const <QuoteModel>[];
+  List<String> _topTagsCache = const <String>[];
 
   @override
   void dispose() {
@@ -46,6 +50,7 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
     final quotesAsync = ref.watch(allQuotesProvider);
     final categoriesAsync = ref.watch(categoryCountsProvider);
     final moodsAsync = ref.watch(moodCountsProvider);
+    final topLikedAsync = ref.watch(topLikedQuotesProvider);
     final service = ref.read(quoteServiceProvider);
 
     return Scaffold(
@@ -57,15 +62,20 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
               child: quotesAsync.when(
                 data: (quotes) {
-                  final searchService = SearchService(quotes);
-                  final searchResults = _applyFilters(
-                    searchService.searchQuotes(_query, limit: 100),
+                  _ensureExploreCaches(quotes);
+                  final searchService = _searchService!;
+                  final searchResults = _query.isEmpty
+                      ? const <QuoteModel>[]
+                      : searchService.searchQuotes(
+                          _query,
+                          lengthFilter: _lengthFilter,
+                          tagFilter: _tagFilter,
+                          limit: 100,
+                        );
+                  final topTags = categoriesAsync.maybeWhen(
+                    data: (cats) => cats.keys.take(8).toList(growable: false),
+                    orElse: () => _topTagsCache.take(8).toList(growable: false),
                   );
-                  final random = Random(7);
-                  final forYou = [...quotes]..shuffle(random);
-                  final topTags = _topTags(
-                    quotes,
-                  ).take(8).toList(growable: false);
 
                   return ListView(
                     children: [
@@ -127,6 +137,7 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                         height: 42,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
                           itemCount: topTags.length + 1,
                           separatorBuilder: (context, index) =>
                               const SizedBox(width: 8),
@@ -153,9 +164,15 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                       if (_query.isNotEmpty)
                         _SearchResultsSection(results: searchResults)
                       else ...[
-                        _PreviewSection(
-                          title: 'For You',
-                          items: forYou.take(12).toList(growable: false),
+                        _PreviewSection(title: 'For You', items: _forYouCache),
+                        const SizedBox(height: 14),
+                        topLikedAsync.when(
+                          data: (likedQuotes) => _PreviewSection(
+                            title: 'Most liked',
+                            items: likedQuotes.take(12).toList(growable: false),
+                          ),
+                          loading: () => const SizedBox.shrink(),
+                          error: (error, stack) => const SizedBox.shrink(),
                         ),
                         const SizedBox(height: 14),
                         categoriesAsync.when(
@@ -198,7 +215,7 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                     ],
                   );
                 },
-                loading: () => const Center(child: CircularProgressIndicator()),
+                loading: () => const Center(child: _ExploreLoader()),
                 error: (error, stack) =>
                     Center(child: Text('Failed to load: $error')),
               ),
@@ -209,28 +226,39 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
     );
   }
 
-  List<QuoteModel> _applyFilters(List<QuoteModel> input) {
-    return input
-        .where((quote) {
-          if (_lengthFilter != null) {
-            final words = quote.quote
-                .split(RegExp(r'\s+'))
-                .where((w) => w.trim().isNotEmpty)
-                .length;
-            final ok = switch (_lengthFilter) {
-              'short' => words <= 12,
-              'medium' => words > 12 && words <= 24,
-              'long' => words > 24,
-              _ => true,
-            };
-            if (!ok) return false;
-          }
-          if (_tagFilter != null && !quote.revisedTags.contains(_tagFilter)) {
-            return false;
-          }
-          return true;
-        })
-        .toList(growable: false);
+  void _ensureExploreCaches(List<QuoteModel> quotes) {
+    final signature = _quotesSignatureFor(quotes);
+    if (_quotesSignature == signature && _searchService != null) return;
+    _quotesSignature = signature;
+    _searchService = SearchService(quotes);
+    _forYouCache = _sampleForYou(quotes, count: 12);
+    _topTagsCache = _topTags(quotes).take(8).toList(growable: false);
+  }
+
+  String _quotesSignatureFor(List<QuoteModel> quotes) {
+    if (quotes.isEmpty) return '0';
+    return '${quotes.length}:${quotes.first.id}:${quotes.last.id}';
+  }
+
+  List<QuoteModel> _sampleForYou(
+    List<QuoteModel> quotes, {
+    required int count,
+  }) {
+    if (quotes.length <= count) {
+      return List<QuoteModel>.from(quotes, growable: false);
+    }
+
+    final random = Random(7);
+    final used = <int>{};
+    final picked = <QuoteModel>[];
+
+    while (picked.length < count && used.length < quotes.length) {
+      final index = random.nextInt(quotes.length);
+      if (!used.add(index)) continue;
+      picked.add(quotes[index]);
+    }
+
+    return picked;
   }
 
   List<String> _topTags(List<QuoteModel> quotes) {
@@ -320,6 +348,7 @@ class _PreviewSection extends StatelessWidget {
           height: 150,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
             itemCount: items.length,
             separatorBuilder: (context, index) => const SizedBox(width: 10),
             itemBuilder: (context, index) {
@@ -359,6 +388,51 @@ class _PreviewSection extends StatelessWidget {
             },
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _ExploreLoader extends StatefulWidget {
+  const _ExploreLoader();
+
+  @override
+  State<_ExploreLoader> createState() => _ExploreLoaderState();
+}
+
+class _ExploreLoaderState extends State<_ExploreLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+      color: Colors.white.withValues(alpha: 0.82),
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.2,
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        RotationTransition(
+          turns: CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+          child: Icon(
+            Icons.auto_awesome_rounded,
+            size: 32,
+            color: Colors.white.withValues(alpha: 0.9),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text('Curating quotes...', style: textStyle),
       ],
     );
   }
@@ -453,11 +527,7 @@ class _MoodGridSection extends StatelessWidget {
 }
 
 class _FlowPillChip extends StatelessWidget {
-  const _FlowPillChip({
-    required this.label,
-    required this.onTap,
-    this.icon,
-  });
+  const _FlowPillChip({required this.label, required this.onTap, this.icon});
 
   final String label;
   final VoidCallback onTap;
@@ -465,6 +535,7 @@ class _FlowPillChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -473,15 +544,15 @@ class _FlowPillChip extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            color: const Color(0xFF173229).withValues(alpha: 0.82),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            color: scheme.surface.withValues(alpha: 0.72),
+            border: Border.all(color: scheme.secondary.withValues(alpha: 0.34)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 16, color: Colors.white),
+                Icon(icon, size: 16, color: scheme.primary),
                 const SizedBox(width: 6),
               ],
               Text(

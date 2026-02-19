@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'features/v3_background/background_theme_provider.dart';
 import 'features/v3_notifications/notification_providers.dart';
 import 'providers/auth_bootstrap_provider.dart';
 import 'providers/router_provider.dart';
@@ -14,8 +15,10 @@ class QuoteOfTheDayApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(goRouterProvider);
+    final backgroundTheme = ref.watch(appBackgroundThemeProvider);
     ref.watch(authBootstrapProvider);
     ref.watch(streakProvider);
+    ref.watch(notificationSettingsProvider);
     ref.listen(notificationTapProvider, (previous, next) {
       final route = next.valueOrNull;
       if (route == null || route.isEmpty) return;
@@ -25,7 +28,7 @@ class QuoteOfTheDayApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'Quote of the Day',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.darkThemeFor(backgroundTheme),
       routerConfig: router,
       builder: (context, child) {
         return Stack(

@@ -16,6 +16,8 @@ class AnimatedGradientBackground extends StatefulWidget {
   static final StreamController<Offset> _globalRippleBus =
       StreamController<Offset>.broadcast();
 
+  static Stream<Offset> get globalRippleStream => _globalRippleBus.stream;
+
   static void emitGlobalRipple(Offset globalPosition) {
     if (!_globalRippleBus.isClosed) {
       _globalRippleBus.add(globalPosition);

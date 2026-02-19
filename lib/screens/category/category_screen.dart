@@ -5,8 +5,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/quote_model.dart';
 import '../../providers/quote_providers.dart';
-import '../../widgets/animated_gradient_background.dart';
+import '../../widgets/editorial_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/glass_icon_button.dart';
 import '../../widgets/scale_tap.dart';
@@ -60,12 +61,13 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(categoryCountsProvider);
+    final topLikedAsync = ref.watch(topLikedQuotesProvider);
     final service = ref.read(quoteServiceProvider);
 
     return Scaffold(
       body: Stack(
         children: [
-          const AnimatedGradientBackground(),
+          const EditorialBackground(),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
@@ -74,19 +76,29 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                 children: [
                   Row(
                     children: [
-                      GlassIconButton(icon: Icons.close_rounded, onTap: context.pop),
+                      GlassIconButton(
+                        icon: Icons.close_rounded,
+                        onTap: context.pop,
+                      ),
                       const SizedBox(width: 12),
-                      Text('Browse by Category', style: Theme.of(context).textTheme.titleLarge),
+                      Text(
+                        'Browse by Category',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   GlassCard(
                     borderRadius: 18,
                     blur: 18,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 4,
+                    ),
                     child: TextField(
                       controller: _searchController,
-                      onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+                      onChanged: (value) =>
+                          setState(() => _query = value.trim().toLowerCase()),
                       decoration: const InputDecoration(
                         icon: Icon(Icons.search_rounded),
                         border: InputBorder.none,
@@ -98,21 +110,29 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                   Expanded(
                     child: categoriesAsync.when(
                       data: (categories) {
-                        final all = categories.entries
-                            .map((entry) => _TagCount(
-                                  tag: entry.key,
-                                  label: service.toTitleCase(entry.key),
-                                  count: entry.value,
-                                ))
-                            .toList()
-                          ..sort((a, b) => a.label.compareTo(b.label));
+                        final all =
+                            categories.entries
+                                .map(
+                                  (entry) => _TagCount(
+                                    tag: entry.key,
+                                    label: service.toTitleCase(entry.key),
+                                    count: entry.value,
+                                  ),
+                                )
+                                .toList()
+                              ..sort((a, b) => a.label.compareTo(b.label));
 
                         final filtered = all
-                            .where((item) => item.label.toLowerCase().contains(_query))
+                            .where(
+                              (item) =>
+                                  item.label.toLowerCase().contains(_query),
+                            )
                             .toList(growable: false);
 
                         if (filtered.isEmpty) {
-                          return const Center(child: Text('No categories found'));
+                          return const Center(
+                            child: Text('No categories found'),
+                          );
                         }
 
                         return LayoutBuilder(
@@ -120,27 +140,47 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                             return Row(
                               children: [
                                 Expanded(
-                                  child: GridView.builder(
+                                  child: CustomScrollView(
                                     controller: _scrollController,
-                                    itemCount: filtered.length,
-                                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
-                                      crossAxisSpacing: 14,
-                                      mainAxisSpacing: 14,
-                                      childAspectRatio: 1.08,
-                                    ),
-                                    itemBuilder: (context, index) {
-                                      final item = filtered[index];
-                                      return ScaleTap(
-                                            onTap: () => context.push(
-                                              '/viewer/category/${Uri.encodeComponent(item.tag)}',
+                                    slivers: [
+                                      SliverGrid(
+                                        delegate: SliverChildBuilderDelegate((
+                                          context,
+                                          index,
+                                        ) {
+                                          final item = filtered[index];
+                                          return ScaleTap(
+                                                onTap: () => context.push(
+                                                  '/viewer/category/${Uri.encodeComponent(item.tag)}',
+                                                ),
+                                                child: _CategoryCard(
+                                                  item: item,
+                                                ),
+                                              )
+                                              .animate(delay: (index * 24).ms)
+                                              .fadeIn(duration: 260.ms)
+                                              .slideY(begin: 0.08, end: 0);
+                                        }, childCount: filtered.length),
+                                        gridDelegate:
+                                            const SliverGridDelegateWithFixedCrossAxisCount(
+                                              crossAxisCount: 2,
+                                              crossAxisSpacing: 14,
+                                              mainAxisSpacing: 14,
+                                              childAspectRatio: 1.08,
                                             ),
-                                            child: _CategoryCard(item: item),
-                                          )
-                                          .animate(delay: (index * 24).ms)
-                                          .fadeIn(duration: 260.ms)
-                                          .slideY(begin: 0.08, end: 0);
-                                    },
+                                      ),
+                                      SliverToBoxAdapter(
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 22,
+                                            bottom: 4,
+                                          ),
+                                          child: _MostLikedSection(
+                                            quotesAsync: topLikedAsync,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(width: 10),
@@ -156,8 +196,10 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                           },
                         );
                       },
-                      loading: () => const Center(child: CircularProgressIndicator()),
-                      error: (error, stack) => Center(child: Text('Failed to load: $error')),
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (error, stack) =>
+                          Center(child: Text('Failed to load: $error')),
                     ),
                   ),
                 ],
@@ -184,6 +226,11 @@ class _CategoryCardState extends State<_CategoryCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final borderIdle = Colors.white.withValues(alpha: 0.16);
+    final borderHover = scheme.primary.withValues(alpha: 0.7);
+    final glow = scheme.primary.withValues(alpha: 0.28);
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -192,17 +239,11 @@ class _CategoryCardState extends State<_CategoryCard> {
         curve: Curves.easeOut,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          color: Colors.white.withValues(alpha: 0.09),
-          border: Border.all(
-            color: _hovering
-                ? const Color(0xFF41CFFF).withValues(alpha: 0.65)
-                : Colors.white.withValues(alpha: 0.16),
-          ),
+          color: scheme.surface.withValues(alpha: 0.5),
+          border: Border.all(color: _hovering ? borderHover : borderIdle),
           boxShadow: [
             BoxShadow(
-              color: _hovering
-                  ? const Color(0xFF41CFFF).withValues(alpha: 0.25)
-                  : Colors.black.withValues(alpha: 0.25),
+              color: _hovering ? glow : Colors.black.withValues(alpha: 0.25),
               blurRadius: _hovering ? 22 : 14,
               offset: const Offset(0, 10),
             ),
@@ -280,7 +321,9 @@ class _LetterQuickBar extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 1),
                 child: Text(
                   letter,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 10),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontSize: 10),
                 ),
               ),
             ),
@@ -291,9 +334,78 @@ class _LetterQuickBar extends StatelessWidget {
 }
 
 class _TagCount {
-  const _TagCount({required this.tag, required this.label, required this.count});
+  const _TagCount({
+    required this.tag,
+    required this.label,
+    required this.count,
+  });
 
   final String tag;
   final String label;
   final int count;
+}
+
+class _MostLikedSection extends StatelessWidget {
+  const _MostLikedSection({required this.quotesAsync});
+
+  final AsyncValue<List<QuoteModel>> quotesAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    return quotesAsync.when(
+      data: (quotes) {
+        if (quotes.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Most liked', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 172,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: quotes.length.clamp(0, 10).toInt(),
+                separatorBuilder: (context, index) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final quote = quotes[index];
+                  return SizedBox(
+                    width: 238,
+                    child: GlassCard(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                      borderRadius: 16,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => context.push(
+                          '/viewer?type=explore&tag=&quoteId=${quote.id}',
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              quote.quote,
+                              maxLines: 4,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const Spacer(),
+                            Text(
+                              quote.author,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (error, stack) => const SizedBox.shrink(),
+    );
+  }
 }

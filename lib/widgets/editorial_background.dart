@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 
-import 'animated_gradient_background.dart';
+import 'app_background.dart';
 
 class EditorialBackground extends StatelessWidget {
-  const EditorialBackground({super.key});
+  const EditorialBackground({
+    super.key,
+    this.seed = 77,
+    this.motionScale = 1.0,
+  });
+
+  final int seed;
+  final double motionScale;
 
   @override
   Widget build(BuildContext context) {
-    return const AnimatedGradientBackground(seed: 77);
+    return AppBackground(seed: seed, motionScale: motionScale);
   }
 }

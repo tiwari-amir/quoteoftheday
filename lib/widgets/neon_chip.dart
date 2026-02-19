@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'scale_tap.dart';
 
 class NeonChip extends StatelessWidget {
@@ -16,28 +17,27 @@ class NeonChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = Theme.of(context).extension<AppThemeTokens>();
+    final base = tokens?.chipBase ?? Colors.white.withValues(alpha: 0.08);
+    final selectedFill =
+        tokens?.chipSelected ?? scheme.primary.withValues(alpha: 0.2);
+    final borderBase =
+        tokens?.glassBorder ?? Colors.white.withValues(alpha: 0.15);
+    final borderSelected =
+        tokens?.chipBorder ?? scheme.primary.withValues(alpha: 0.6);
+    final glow = tokens?.chipGlow ?? scheme.primary.withValues(alpha: 0.32);
+
     final chip = AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: selected
-            ? const Color(0xFF42C8FF).withValues(alpha: 0.2)
-            : Colors.white.withValues(alpha: 0.08),
-        border: Border.all(
-          color: selected
-              ? const Color(0xFF42C8FF).withValues(alpha: 0.6)
-              : Colors.white.withValues(alpha: 0.15),
-        ),
+        color: selected ? selectedFill : base,
+        border: Border.all(color: selected ? borderSelected : borderBase),
         boxShadow: selected
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF42C8FF).withValues(alpha: 0.32),
-                  blurRadius: 18,
-                  spreadRadius: 0.5,
-                ),
-              ]
+            ? [BoxShadow(color: glow, blurRadius: 18, spreadRadius: 0.5)]
             : null,
       ),
       child: Text(

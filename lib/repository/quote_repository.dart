@@ -172,6 +172,76 @@ class QuoteRepository {
     }
   }
 
+  Future<Set<String>> getLikedQuoteIds(String userId) async {
+    try {
+      final rows = await _client
+          .from('user_liked_quotes')
+          .select('quote_id')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+
+      return (rows as List<dynamic>)
+          .whereType<Map<String, dynamic>>()
+          .map((row) => (row['quote_id'] ?? '').toString())
+          .where((id) => id.isNotEmpty)
+          .toSet();
+    } catch (error) {
+      debugPrint('Supabase getLikedQuoteIds failed: $error');
+      return <String>{};
+    }
+  }
+
+  Future<bool> likeQuote({
+    required String userId,
+    required String quoteId,
+  }) async {
+    try {
+      await _client.from('user_liked_quotes').upsert({
+        'user_id': userId,
+        'quote_id': quoteId,
+      }, onConflict: 'user_id,quote_id');
+      return true;
+    } catch (error) {
+      debugPrint('Supabase likeQuote failed: $error');
+      return false;
+    }
+  }
+
+  Future<bool> unlikeQuote({
+    required String userId,
+    required String quoteId,
+  }) async {
+    try {
+      await _client
+          .from('user_liked_quotes')
+          .delete()
+          .eq('user_id', userId)
+          .eq('quote_id', quoteId);
+      return true;
+    } catch (error) {
+      debugPrint('Supabase unlikeQuote failed: $error');
+      return false;
+    }
+  }
+
+  Future<List<String>> getMostLikedQuoteIds({int limit = 12}) async {
+    try {
+      final rows = await _client.rpc(
+        'get_top_liked_quotes',
+        params: {'limit_count': limit},
+      );
+
+      return (rows as List<dynamic>)
+          .whereType<Map<String, dynamic>>()
+          .map((row) => (row['quote_id'] ?? '').toString())
+          .where((id) => id.isNotEmpty)
+          .toList(growable: false);
+    } catch (error) {
+      debugPrint('Supabase getMostLikedQuoteIds failed: $error');
+      return const <String>[];
+    }
+  }
+
   Future<void> logQuoteEvent({
     required String quoteId,
     required String eventType,
