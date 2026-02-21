@@ -17,7 +17,7 @@ const String facebookStoryAppId = String.fromEnvironment(
 );
 const String storyAttributionUrl = String.fromEnvironment(
   'STORY_ATTRIBUTION_URL',
-  defaultValue: 'https://quoteoftheday.app',
+  defaultValue: 'https://quoteflow.app',
 );
 
 const List<String> moodAllowlist = [

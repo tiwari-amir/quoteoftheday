@@ -156,7 +156,7 @@ class TodayTabScreen extends ConsumerWidget {
                               onPressed: () => showStoryShareSheet(
                                 context: context,
                                 quote: quote,
-                                subject: 'Quote of the Day',
+                                subject: 'QuoteFlow: Daily Scroll Quotes',
                               ),
                               icon: const Icon(Icons.share_outlined),
                               label: const Text('Share'),

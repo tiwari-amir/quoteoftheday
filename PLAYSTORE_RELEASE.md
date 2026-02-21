@@ -29,5 +29,6 @@ Output:
 ## 4) Current Android identifiers
 
 - Application ID: `com.hbp.quoteoftheday`
-- App label: `Quote of The Day`
+- App label: `QuoteFlow: Daily Scroll Quotes`
 - Version: `1.3.0+4`
+

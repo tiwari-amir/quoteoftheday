@@ -73,7 +73,8 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                           limit: 100,
                         );
                   final topTags = categoriesAsync.maybeWhen(
-                    data: (cats) => cats.keys.take(8).toList(growable: false),
+                    data: (cats) =>
+                        _topCategoryPreviewTags(cats.keys, limit: 8),
                     orElse: () => _topTagsCache.take(8).toList(growable: false),
                   );
 
@@ -177,11 +178,12 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                         const SizedBox(height: 14),
                         categoriesAsync.when(
                           data: (cats) {
-                            final tags = <String>['all', ...cats.keys.take(18)];
+                            final tags = _categoryPreviewTags(cats.keys);
                             return _TagSection(
                               title: 'Categories',
                               tags: tags,
                               display: service,
+                              onSeeMore: () => context.push('/categories'),
                               onTap: (tag) {
                                 if (tag == 'all') {
                                   context.push('/viewer/category/all');
@@ -271,6 +273,30 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
     final entries = counts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     return entries.map((e) => e.key).toList(growable: false);
+  }
+
+  List<String> _topCategoryPreviewTags(
+    Iterable<String> rawTags, {
+    required int limit,
+  }) {
+    final ordered = rawTags
+        .map((tag) => tag.trim().toLowerCase())
+        .where((tag) => tag.isNotEmpty && tag != 'all')
+        .toList(growable: true);
+    final preview = ordered.take(limit).toList(growable: true);
+    for (final requiredTag in const ['movies', 'series']) {
+      if (preview.contains(requiredTag)) continue;
+      if (preview.length >= limit) {
+        preview.removeLast();
+      }
+      preview.add(requiredTag);
+    }
+    return preview;
+  }
+
+  List<String> _categoryPreviewTags(Iterable<String> rawTags) {
+    final top = _topCategoryPreviewTags(rawTags, limit: 20);
+    return <String>['all', ...top];
   }
 
   List<String> _pickExploreMoods(Map<String, int> moodCounts) {
@@ -444,19 +470,28 @@ class _TagSection extends StatelessWidget {
     required this.tags,
     required this.display,
     required this.onTap,
+    required this.onSeeMore,
   });
 
   final String title;
   final List<String> tags;
   final QuoteService display;
   final ValueChanged<String> onTap;
+  final VoidCallback onSeeMore;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        Row(
+          children: [
+            Expanded(
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+            ),
+            TextButton(onPressed: onSeeMore, child: const Text('See more')),
+          ],
+        ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,

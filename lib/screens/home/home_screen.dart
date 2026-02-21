@@ -35,7 +35,7 @@ class HomeScreen extends ConsumerWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            'Quote of the Day',
+                            'QuoteFlow: Daily Scroll Quotes',
                             style: Theme.of(context).textTheme.headlineMedium
                                 ?.copyWith(letterSpacing: 0.2),
                           ),

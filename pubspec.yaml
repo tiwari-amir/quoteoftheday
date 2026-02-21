@@ -1,7 +1,7 @@
 name: quoteoftheday
-description: Premium Quote of the Day app.
+description: "QuoteFlow: Daily Scroll Quotes."
 publish_to: 'none'
-version: 1.4.1+9
+version: 1.4.2+11
 
 environment:
   sdk: ^3.10.8
@@ -40,8 +40,21 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: assets/branding/app_icon.png
+    background_color: "#FFE7CC"
+    theme_color: "#D06FB1"
+  windows:
+    generate: true
+    image_path: assets/branding/app_icon.png
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: assets/branding/app_icon.png
   image_path: assets/branding/app_icon.png
-  adaptive_icon_background: "#0A231E"
+  adaptive_icon_background: "#FFE7CC"
   adaptive_icon_foreground: assets/branding/app_icon_foreground.png
 
 flutter_native_splash:

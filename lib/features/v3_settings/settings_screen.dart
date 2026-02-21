@@ -75,6 +75,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
     final settings = ref.watch(notificationSettingsProvider);
+    final reminderCategoriesAsync = ref.watch(reminderCategoriesProvider);
     final settingsActions = ref.read(settingsActionsProvider);
 
     return Scaffold(
@@ -158,6 +159,52 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
           ),
+          ListTile(
+            title: const Text('Reminder categories'),
+            subtitle: Text(_notificationCategoriesSummary(settings.categories)),
+          ),
+          reminderCategoriesAsync.when(
+            data: (categories) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final category in categories)
+                      FilterChip(
+                        label: Text(_notificationCategoryLabel(category)),
+                        selected: settings.categories.contains(category),
+                        onSelected: (selected) {
+                          final updated = settings.categories.toSet();
+                          if (selected) {
+                            updated.add(category);
+                          } else {
+                            updated.remove(category);
+                          }
+                          final ordered = _orderedNotificationCategories(
+                            updated,
+                            categories,
+                          );
+                          ref
+                              .read(notificationSettingsProvider.notifier)
+                              .update(settings.copyWith(categories: ordered));
+                        },
+                      ),
+                  ],
+                ),
+              );
+            },
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+            error: (error, stack) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('Failed to load categories: $error'),
+            ),
+          ),
+          const SizedBox(height: 12),
           const Divider(height: 28),
           ListTile(
             title: const Text('Reset personalization preferences'),
@@ -193,6 +240,45 @@ class SettingsScreen extends ConsumerWidget {
       AppBackgroundTheme.rainyCity => Icons.umbrella_rounded,
       AppBackgroundTheme.deepForest => Icons.forest_rounded,
       AppBackgroundTheme.sunsetCity => Icons.wb_sunny_rounded,
+      AppBackgroundTheme.quoteflowGlow => Icons.auto_awesome_rounded,
+    };
+  }
+
+  String _notificationCategoriesSummary(List<String> categories) {
+    final ordered = _orderedNotificationCategories(
+      categories.toSet(),
+      categories,
+    );
+    if (ordered.isEmpty) return 'All categories';
+    return ordered.map(_notificationCategoryLabel).join(', ');
+  }
+
+  List<String> _orderedNotificationCategories(
+    Set<String> selectedCategories,
+    List<String> availableCategories,
+  ) {
+    final allowed = availableCategories
+        .map((e) => e.trim().toLowerCase())
+        .toSet();
+    return availableCategories
+        .map((e) => e.trim().toLowerCase())
+        .where(
+          (item) =>
+              item.isNotEmpty &&
+              item != 'all' &&
+              allowed.contains(item) &&
+              selectedCategories.contains(item),
+        )
+        .toList(growable: false);
+  }
+
+  String _notificationCategoryLabel(String category) {
+    return switch (category) {
+      'motivational' => 'Motivational',
+      'love' => 'Love',
+      'movies' => 'Movies',
+      'series' => 'Series',
+      _ => category,
     };
   }
 }
@@ -277,6 +363,7 @@ class _BackgroundThemeSheet extends ConsumerWidget {
       AppBackgroundTheme.rainyCity => Icons.umbrella_rounded,
       AppBackgroundTheme.deepForest => Icons.forest_rounded,
       AppBackgroundTheme.sunsetCity => Icons.wb_sunny_rounded,
+      AppBackgroundTheme.quoteflowGlow => Icons.auto_awesome_rounded,
     };
   }
 }

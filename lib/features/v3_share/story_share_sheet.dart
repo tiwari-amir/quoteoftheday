@@ -19,7 +19,7 @@ final storyShareServiceProvider = Provider<_StoryShareService>((ref) {
 Future<void> showStoryShareSheet({
   required BuildContext context,
   required QuoteModel quote,
-  String subject = 'Quote of the Day',
+  String subject = 'QuoteFlow: Daily Scroll Quotes',
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -30,7 +30,15 @@ Future<void> showStoryShareSheet({
   );
 }
 
-enum StoryShareTarget { instagramStory, facebookStory, moreApps }
+enum StoryShareTarget {
+  instagramStory,
+  facebookStory,
+  whatsapp,
+  telegram,
+  twitter,
+  sms,
+  moreApps,
+}
 
 class _StoryShareSheet extends ConsumerStatefulWidget {
   const _StoryShareSheet({required this.quote, required this.subject});
@@ -48,7 +56,10 @@ class _StoryShareSheetState extends ConsumerState<_StoryShareSheet> {
 
   int _selectedStyle = 0;
   int _selectedBackground = 0;
-  StoryShareTarget _selectedTarget = StoryShareTarget.instagramStory;
+  StoryShareTarget _selectedTarget = StoryShareTarget.moreApps;
+  List<StoryShareTarget> _availableTargets = const <StoryShareTarget>[
+    StoryShareTarget.moreApps,
+  ];
   bool _isSharing = false;
 
   @override
@@ -59,6 +70,22 @@ class _StoryShareSheetState extends ConsumerState<_StoryShareSheet> {
         .toSet();
     _styles = _StoryThemeCatalog.recommendedFor(tags);
     _backgrounds = _StoryBackgroundCatalog.recommendedFor(tags);
+    _loadAvailableTargets();
+  }
+
+  Future<void> _loadAvailableTargets() async {
+    final targets = await ref
+        .read(storyShareServiceProvider)
+        .availableTargets();
+    if (!mounted) return;
+    setState(() {
+      _availableTargets = targets;
+      if (_availableTargets.contains(_selectedTarget) &&
+          _selectedTarget != StoryShareTarget.moreApps) {
+        return;
+      }
+      _selectedTarget = _availableTargets.first;
+    });
   }
 
   Future<void> _shareToTarget() async {
@@ -263,36 +290,14 @@ class _StoryShareSheetState extends ConsumerState<_StoryShareSheet> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        _PlatformChip(
-                          label: 'Instagram Story',
-                          icon: Icons.auto_awesome_rounded,
-                          selected:
-                              _selectedTarget ==
-                              StoryShareTarget.instagramStory,
-                          onTap: () => setState(
-                            () => _selectedTarget =
-                                StoryShareTarget.instagramStory,
+                        for (final target in _availableTargets)
+                          _PlatformChip(
+                            label: _targetLabel(target),
+                            icon: _targetIcon(target),
+                            selected: _selectedTarget == target,
+                            onTap: () =>
+                                setState(() => _selectedTarget = target),
                           ),
-                        ),
-                        _PlatformChip(
-                          label: 'Facebook Story',
-                          icon: Icons.facebook_rounded,
-                          selected:
-                              _selectedTarget == StoryShareTarget.facebookStory,
-                          onTap: () => setState(
-                            () => _selectedTarget =
-                                StoryShareTarget.facebookStory,
-                          ),
-                        ),
-                        _PlatformChip(
-                          label: 'More Apps',
-                          icon: Icons.apps_rounded,
-                          selected:
-                              _selectedTarget == StoryShareTarget.moreApps,
-                          onTap: () => setState(
-                            () => _selectedTarget = StoryShareTarget.moreApps,
-                          ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -339,7 +344,35 @@ class _StoryShareSheetState extends ConsumerState<_StoryShareSheet> {
     return switch (target) {
       StoryShareTarget.instagramStory => 'Share To Instagram Story',
       StoryShareTarget.facebookStory => 'Share To Facebook Story',
+      StoryShareTarget.whatsapp => 'Share To WhatsApp',
+      StoryShareTarget.telegram => 'Share To Telegram',
+      StoryShareTarget.twitter => 'Share To X / Twitter',
+      StoryShareTarget.sms => 'Share As SMS',
       StoryShareTarget.moreApps => 'Open Share Sheet',
+    };
+  }
+
+  String _targetLabel(StoryShareTarget target) {
+    return switch (target) {
+      StoryShareTarget.instagramStory => 'Instagram Story',
+      StoryShareTarget.facebookStory => 'Facebook Story',
+      StoryShareTarget.whatsapp => 'WhatsApp',
+      StoryShareTarget.telegram => 'Telegram',
+      StoryShareTarget.twitter => 'X / Twitter',
+      StoryShareTarget.sms => 'SMS',
+      StoryShareTarget.moreApps => 'More Apps',
+    };
+  }
+
+  IconData _targetIcon(StoryShareTarget target) {
+    return switch (target) {
+      StoryShareTarget.instagramStory => Icons.auto_awesome_rounded,
+      StoryShareTarget.facebookStory => Icons.facebook_rounded,
+      StoryShareTarget.whatsapp => Icons.chat_rounded,
+      StoryShareTarget.telegram => Icons.send_rounded,
+      StoryShareTarget.twitter => Icons.alternate_email_rounded,
+      StoryShareTarget.sms => Icons.sms_rounded,
+      StoryShareTarget.moreApps => Icons.apps_rounded,
     };
   }
 }
@@ -702,6 +735,46 @@ class _BackgroundChipCard extends StatelessWidget {
 class _StoryShareService {
   final _renderer = _StoryRenderer();
 
+  Future<List<StoryShareTarget>> availableTargets() async {
+    if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) {
+      return const <StoryShareTarget>[StoryShareTarget.moreApps];
+    }
+
+    final targets = <StoryShareTarget>[];
+    try {
+      final apps = await SocialShare.checkInstalledAppsForShare();
+      final installed = <String, bool>{};
+      if (apps != null) {
+        for (final entry in apps.entries) {
+          installed[entry.key.toString().toLowerCase()] = entry.value == true;
+        }
+      }
+      if (installed['instagram'] == true) {
+        targets.add(StoryShareTarget.instagramStory);
+      }
+      if (installed['facebook'] == true) {
+        targets.add(StoryShareTarget.facebookStory);
+      }
+      if (installed['whatsapp'] == true) {
+        targets.add(StoryShareTarget.whatsapp);
+      }
+      if (installed['telegram'] == true) {
+        targets.add(StoryShareTarget.telegram);
+      }
+      if (installed['twitter'] == true) {
+        targets.add(StoryShareTarget.twitter);
+      }
+      if (installed['sms'] == true) {
+        targets.add(StoryShareTarget.sms);
+      }
+    } catch (error) {
+      debugPrint('Installed share apps check failed: $error');
+    }
+
+    targets.add(StoryShareTarget.moreApps);
+    return targets.toSet().toList(growable: false);
+  }
+
   Future<_StoryShareResult> shareToTarget({
     required QuoteModel quote,
     required _StoryThemeStyle style,
@@ -731,10 +804,11 @@ class _StoryShareService {
         );
       }
 
-      final directResult = await _shareDirectStory(
+      final directResult = await _shareToInstalledTarget(
         imagePath: imagePath,
         style: style,
         target: target,
+        caption: caption,
       );
       if (directResult != null) {
         return directResult;
@@ -836,10 +910,11 @@ class _StoryShareService {
     );
   }
 
-  Future<_StoryShareResult?> _shareDirectStory({
+  Future<_StoryShareResult?> _shareToInstalledTarget({
     required String imagePath,
     required _StoryThemeStyle style,
     required StoryShareTarget target,
+    required String caption,
   }) async {
     switch (target) {
       case StoryShareTarget.instagramStory:
@@ -878,6 +953,50 @@ class _StoryShareService {
           );
         }
         return null;
+      case StoryShareTarget.whatsapp:
+        final response = await _safeShareCall(
+          () => SocialShare.shareWhatsapp(caption),
+        );
+        if (_isStorySuccess(response)) {
+          return const _StoryShareResult(
+            success: true,
+            message: 'Opening WhatsApp...',
+          );
+        }
+        return null;
+      case StoryShareTarget.telegram:
+        final response = await _safeShareCall(
+          () => SocialShare.shareTelegram(caption),
+        );
+        if (_isStorySuccess(response)) {
+          return const _StoryShareResult(
+            success: true,
+            message: 'Opening Telegram...',
+          );
+        }
+        return null;
+      case StoryShareTarget.twitter:
+        final response = await _safeShareCall(
+          () => SocialShare.shareTwitter(caption),
+        );
+        if (_isStorySuccess(response)) {
+          return const _StoryShareResult(
+            success: true,
+            message: 'Opening X / Twitter...',
+          );
+        }
+        return null;
+      case StoryShareTarget.sms:
+        final response = await _safeShareCall(
+          () => SocialShare.shareSms(caption),
+        );
+        if (_isStorySuccess(response)) {
+          return const _StoryShareResult(
+            success: true,
+            message: 'Opening SMS...',
+          );
+        }
+        return null;
       case StoryShareTarget.moreApps:
         return null;
     }
@@ -902,7 +1021,7 @@ class _StoryShareService {
   String _storyAppId(String configured) {
     final clean = configured.trim();
     if (clean.isNotEmpty) return clean;
-    return 'quoteoftheday.app';
+    return 'quoteflow.app';
   }
 
   String _caption(QuoteModel quote) {
@@ -910,7 +1029,7 @@ class _StoryShareService {
         .take(2)
         .map((tag) => '#${_slugToTag(tag)}')
         .join(' ');
-    return '"${quote.quote}"\n\n- ${quote.author}\n\n$tags #quoteoftheday';
+    return '"${quote.quote}"\n\n- ${quote.author}\n\n$tags #quoteflow';
   }
 
   String _slugToTag(String value) {

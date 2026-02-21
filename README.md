@@ -1,8 +1,8 @@
-# Quote of The Day
+# QuoteFlow: Daily Scroll Quotes
 
 Daily inspiration in a clean, focused app experience.
 
-Quote of The Day helps you discover meaningful quotes, save favorites, and build a daily reading habit with reminders.
+QuoteFlow: Daily Scroll Quotes helps you discover meaningful quotes, save favorites, and build a daily reading habit with reminders.
 
 ## Privacy Policy
 
