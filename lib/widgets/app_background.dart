@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/v3_background/background_theme_provider.dart';
 import 'animated_gradient_background.dart';
+import 'quoteflow_glow_background.dart';
 
 class AppBackground extends ConsumerWidget {
   const AppBackground({super.key, this.seed = 0, this.motionScale = 1.0});
@@ -34,6 +35,10 @@ class AppBackground extends ConsumerWidget {
         motionScale: motionScale,
       ),
       AppBackgroundTheme.sunsetCity => _SunsetCityBackground(
+        seed: seed,
+        motionScale: motionScale,
+      ),
+      AppBackgroundTheme.quoteflowGlow => QuoteFlowGlowBackground(
         seed: seed,
         motionScale: motionScale,
       ),

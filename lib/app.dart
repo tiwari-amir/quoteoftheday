@@ -26,7 +26,7 @@ class QuoteOfTheDayApp extends ConsumerWidget {
     });
 
     return MaterialApp.router(
-      title: 'Quote of the Day',
+      title: 'QuoteFlow: Daily Scroll Quotes',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkThemeFor(backgroundTheme),
       routerConfig: router,

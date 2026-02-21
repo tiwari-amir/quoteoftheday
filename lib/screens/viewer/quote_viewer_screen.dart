@@ -211,7 +211,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     showStoryShareSheet(
       context: context,
       quote: quote,
-      subject: 'Quote of the Day',
+      subject: 'QuoteFlow: Daily Scroll Quotes',
     );
   }
 

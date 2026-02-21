@@ -265,6 +265,16 @@ class AppTheme {
         inputFill: Color(0xC7332131),
         viewerAccent: Color(0xFFFFC58E),
       ),
+      AppBackgroundTheme.quoteflowGlow => const _ThemePalette(
+        primary: Color(0xFFFFBA7A),
+        secondary: Color(0xFFF586B5),
+        tertiary: Color(0xFFFFE49A),
+        scaffold: Color(0xFF1B1322),
+        surface: Color(0xFF3D2845),
+        navBar: Color(0xFF2B1D34),
+        inputFill: Color(0xC73D2845),
+        viewerAccent: Color(0xFFFFD289),
+      ),
     };
   }
 

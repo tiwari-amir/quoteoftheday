@@ -95,6 +95,7 @@ class V3NotificationsService {
     required tz.TZDateTime schedule,
     required String title,
     required String body,
+    String? subtitle,
     String? payload,
     Uint8List? authorImageBytes,
   }) async {
@@ -105,11 +106,12 @@ class V3NotificationsService {
 
     final androidDetails = AndroidNotificationDetails(
       'quote_reminder_channel',
-      'Quote Reminder',
+      'QuoteFlow Reminder',
       channelDescription: 'Daily quote reminders',
       importance: Importance.high,
       priority: Priority.high,
-      styleInformation: BigTextStyleInformation(body),
+      styleInformation: BigTextStyleInformation(body, summaryText: subtitle),
+      subText: subtitle,
       largeIcon: authorImageBytes == null
           ? null
           : ByteArrayAndroidBitmap(authorImageBytes),
@@ -117,7 +119,7 @@ class V3NotificationsService {
 
     final details = NotificationDetails(
       android: androidDetails,
-      iOS: DarwinNotificationDetails(),
+      iOS: DarwinNotificationDetails(subtitle: subtitle),
     );
 
     try {

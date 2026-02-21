@@ -1,11 +1,11 @@
 {
-    "name": "quoteoftheday",
-    "short_name": "quoteoftheday",
+    "name": "QuoteFlow: Daily Scroll Quotes",
+    "short_name": "QuoteFlow",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFE7CC",
+    "theme_color": "#D06FB1",
+    "description": "QuoteFlow: Daily Scroll Quotes",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

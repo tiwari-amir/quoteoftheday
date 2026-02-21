@@ -6,6 +6,7 @@ import '../models/quote_viewer_filter.dart';
 import '../providers/storage_provider.dart';
 import '../repository/quote_repository.dart';
 import '../services/author_wiki_service.dart';
+import '../services/free_media_quotes_service.dart';
 import '../services/internet_best_quote_service.dart';
 import '../services/quote_service.dart';
 import 'supabase_provider.dart';
@@ -28,6 +29,10 @@ final internetBestQuoteServiceProvider = Provider<InternetBestQuoteService>((
   return InternetBestQuoteService();
 });
 
+final freeMediaQuotesServiceProvider = Provider<FreeMediaQuotesService>((ref) {
+  return FreeMediaQuotesService();
+});
+
 final currentUserIdProvider = Provider<String?>((ref) {
   final client = ref.read(supabaseClientProvider);
   return client.auth.currentUser?.id;
@@ -35,6 +40,28 @@ final currentUserIdProvider = Provider<String?>((ref) {
 
 final allQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   return ref.read(quoteRepositoryProvider).getAllQuotes();
+});
+
+final mediaQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
+  try {
+    return await ref
+        .read(freeMediaQuotesServiceProvider)
+        .fetchQuotesForCategories(categories: const {'movies', 'series'})
+        .timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => const <QuoteModel>[],
+        );
+  } catch (_) {
+    return const <QuoteModel>[];
+  }
+});
+
+final allQuotesWithMediaProvider = FutureProvider<List<QuoteModel>>((
+  ref,
+) async {
+  final localQuotes = await ref.watch(allQuotesProvider.future);
+  final mediaQuotes = await ref.watch(mediaQuotesProvider.future);
+  return _mergeUniqueQuotes(localQuotes, mediaQuotes);
 });
 
 final dailyQuoteProvider = FutureProvider<QuoteModel>((ref) async {
@@ -45,7 +72,23 @@ final dailyQuoteProvider = FutureProvider<QuoteModel>((ref) async {
 });
 
 final categoryCountsProvider = FutureProvider<Map<String, int>>((ref) async {
-  return ref.read(quoteRepositoryProvider).getTagsWithCounts();
+  final localQuotes = await ref.watch(allQuotesProvider.future);
+  final localCounts = _sortedTagCounts(localQuotes);
+
+  List<QuoteModel> mediaQuotes = const <QuoteModel>[];
+  try {
+    mediaQuotes = await ref
+        .read(mediaQuotesProvider.future)
+        .timeout(
+          const Duration(milliseconds: 900),
+          onTimeout: () => const <QuoteModel>[],
+        );
+  } catch (_) {
+    mediaQuotes = const <QuoteModel>[];
+  }
+  final mediaCounts = _sortedTagCounts(mediaQuotes);
+
+  return _mergeTagCounts(localCounts, mediaCounts);
 });
 
 final moodTagsProvider = FutureProvider<List<String>>((ref) async {
@@ -73,16 +116,16 @@ final quotesByFilterProvider =
       filter,
     ) async {
       final tag = filter.tag.trim().toLowerCase();
+      final allQuotes = await ref.watch(allQuotesWithMediaProvider.future);
       if (tag.isEmpty || tag == 'all') {
-        return ref.read(quoteRepositoryProvider).getAllQuotes();
+        return allQuotes;
       }
       if (filter.isMood) {
-        final allQuotes = await ref
-            .read(quoteRepositoryProvider)
-            .getAllQuotes();
         return _quotesForMood(allQuotes, tag);
       }
-      return ref.read(quoteRepositoryProvider).getQuotesByTag(filter.tag);
+      return allQuotes
+          .where((quote) => _matchesTag(quote.revisedTags, tag))
+          .toList(growable: false);
     });
 
 final topLikedQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
@@ -161,6 +204,77 @@ List<QuoteModel> _webInspiredPopularFallback(List<QuoteModel> quotes) {
   }
 
   return ranked;
+}
+
+Map<String, int> _sortedTagCounts(List<QuoteModel> quotes) {
+  final counts = <String, int>{};
+  for (final quote in quotes) {
+    for (final tag in quote.revisedTags) {
+      final normalized = tag.trim().toLowerCase();
+      if (normalized.isEmpty || normalized == 'all') continue;
+      counts.update(normalized, (v) => v + 1, ifAbsent: () => 1);
+    }
+  }
+
+  final sorted = counts.entries.toList()
+    ..sort((a, b) {
+      final byCount = b.value.compareTo(a.value);
+      if (byCount != 0) return byCount;
+      return a.key.compareTo(b.key);
+    });
+  return {for (final entry in sorted) entry.key: entry.value};
+}
+
+Map<String, int> _mergeTagCounts(
+  Map<String, int> localCounts,
+  Map<String, int> mediaCounts,
+) {
+  final merged = <String, int>{...localCounts};
+  for (final entry in mediaCounts.entries) {
+    merged.update(
+      entry.key,
+      (v) => v + entry.value,
+      ifAbsent: () => entry.value,
+    );
+  }
+
+  for (final required in const ['movies', 'series']) {
+    merged.putIfAbsent(required, () => 1);
+  }
+
+  final sorted = merged.entries.toList()
+    ..sort((a, b) {
+      final byCount = b.value.compareTo(a.value);
+      if (byCount != 0) return byCount;
+      return a.key.compareTo(b.key);
+    });
+  return {for (final entry in sorted) entry.key: entry.value};
+}
+
+bool _matchesTag(List<String> quoteTags, String selectedTag) {
+  final target = selectedTag.trim().toLowerCase();
+  if (target.isEmpty || target == 'all') return true;
+  for (final raw in quoteTags) {
+    final tag = raw.trim().toLowerCase();
+    if (tag == target || tag.contains(target) || target.contains(tag)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+List<QuoteModel> _mergeUniqueQuotes(
+  List<QuoteModel> first,
+  List<QuoteModel> second,
+) {
+  final seen = <String>{};
+  final output = <QuoteModel>[];
+  for (final quote in [...first, ...second]) {
+    final key = '${quote.quote}|${quote.author}'.toLowerCase();
+    if (!seen.add(key)) continue;
+    output.add(quote);
+  }
+  return output;
 }
 
 const Map<String, List<String>> _moodKeywords = {

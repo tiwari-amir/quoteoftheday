@@ -1,8 +1,8 @@
-# Privacy Policy for Quote of The Day
+# Privacy Policy for QuoteFlow: Daily Scroll Quotes
 
 Effective date: February 13, 2026
 
-This Privacy Policy explains how Quote of The Day ("we", "our", "us") handles information when you use the Quote of The Day mobile app (the "App").
+This Privacy Policy explains how QuoteFlow: Daily Scroll Quotes ("we", "our", "us") handles information when you use the QuoteFlow: Daily Scroll Quotes mobile app (the "App").
 
 ## Information We Collect
 
@@ -49,7 +49,7 @@ We use reasonable technical and organizational safeguards designed to protect in
 
 ## Children's Privacy
 
-Quote of The Day may be used by children under 13.
+QuoteFlow: Daily Scroll Quotes may be used by children under 13.
 
 We design the App to limit collection of personal information and do not require children to provide direct contact details like name or email to use core features.
 
@@ -74,4 +74,5 @@ We may update this Privacy Policy from time to time. We will post updates at the
 For privacy questions or deletion requests, contact:
 
 - Email: `fxsocy59@gmail.com`
-- Developer/App Name: Quote of The Day
+- Developer/App Name: QuoteFlow: Daily Scroll Quotes
+

@@ -24,3 +24,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Movie and series quotes source
+
+Movie and series reminder quotes are fetched from Wikiquote using the MediaWiki
+API.
+
+Wikiquote content is available under the Creative Commons Attribution-ShareAlike
+4.0 International (CC BY-SA 4.0) license.
+
+License details: https://creativecommons.org/licenses/by-sa/4.0/
+Source: https://en.wikiquote.org/

@@ -11,6 +11,7 @@ enum AppBackgroundTheme {
   rainyCity,
   deepForest,
   sunsetCity,
+  quoteflowGlow,
 }
 
 extension AppBackgroundThemeX on AppBackgroundTheme {
@@ -20,6 +21,7 @@ extension AppBackgroundThemeX on AppBackgroundTheme {
     AppBackgroundTheme.rainyCity => 'rainy_city',
     AppBackgroundTheme.deepForest => 'deep_forest',
     AppBackgroundTheme.sunsetCity => 'sunset_city',
+    AppBackgroundTheme.quoteflowGlow => 'quoteflow_glow',
   };
 
   String get label => switch (this) {
@@ -28,6 +30,7 @@ extension AppBackgroundThemeX on AppBackgroundTheme {
     AppBackgroundTheme.rainyCity => 'Rainy City',
     AppBackgroundTheme.deepForest => 'Deep Forest',
     AppBackgroundTheme.sunsetCity => 'Sunset City',
+    AppBackgroundTheme.quoteflowGlow => 'QuoteFlow Glow',
   };
 
   String get subtitle => switch (this) {
@@ -39,6 +42,8 @@ extension AppBackgroundThemeX on AppBackgroundTheme {
       'Tap to trigger puddle ripples and light flash.',
     AppBackgroundTheme.deepForest => 'Tap to gather fireflies around the glow.',
     AppBackgroundTheme.sunsetCity => 'Tap to bloom cinematic lens flares.',
+    AppBackgroundTheme.quoteflowGlow =>
+      'Tap to release warm light blooms in a sunrise palette.',
   };
 }
 
