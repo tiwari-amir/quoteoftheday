@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants.dart';
 import 'storage_provider.dart';
 
+const _kStreakTodayProgressDate = 'streak.today_progress_date';
+const _kStreakTodayProgressCount = 'streak.today_progress_count';
+const _kStreakDailyReadRequirement = 3;
+
 class StreakNotifier extends StateNotifier<int> {
   StreakNotifier(this._ref) : super(0) {
     _refresh();
@@ -39,6 +43,43 @@ class StreakNotifier extends StateNotifier<int> {
     await prefs.setInt(prefStreakCount, next);
     await prefs.setString(prefStreakLastDate, today.toIso8601String());
     state = next;
+  }
+
+  // Helper used by notifications: true if user read at least N quotes today.
+  bool hasMetTodayRequirement() {
+    final prefs = _ref.read(sharedPreferencesProvider);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final rawDate = prefs.getString(_kStreakTodayProgressDate);
+    final savedDate = rawDate == null ? null : DateTime.tryParse(rawDate);
+    final savedDay = savedDate == null
+        ? null
+        : DateTime(savedDate.year, savedDate.month, savedDate.day);
+    final count = prefs.getInt(_kStreakTodayProgressCount) ?? 0;
+
+    if (savedDay == null || savedDay != today) {
+      return false;
+    }
+    return count >= _kStreakDailyReadRequirement;
+  }
+
+  // Optional helper for future hooks when a quote is consumed.
+  Future<void> recordQuoteRead() async {
+    final prefs = _ref.read(sharedPreferencesProvider);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final rawDate = prefs.getString(_kStreakTodayProgressDate);
+    final savedDate = rawDate == null ? null : DateTime.tryParse(rawDate);
+    final savedDay = savedDate == null
+        ? null
+        : DateTime(savedDate.year, savedDate.month, savedDate.day);
+    final currentCount = savedDay == today
+        ? (prefs.getInt(_kStreakTodayProgressCount) ?? 0)
+        : 0;
+    final next = currentCount + 1;
+
+    await prefs.setString(_kStreakTodayProgressDate, today.toIso8601String());
+    await prefs.setInt(_kStreakTodayProgressCount, next);
   }
 }
 

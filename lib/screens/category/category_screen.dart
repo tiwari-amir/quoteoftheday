@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../models/quote_model.dart';
 import '../../providers/quote_providers.dart';
+import '../../services/quote_service.dart';
 import '../../widgets/editorial_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/glass_icon_button.dart';
@@ -115,7 +116,7 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                                 .map(
                                   (entry) => _TagCount(
                                     tag: entry.key,
-                                    label: service.toTitleCase(entry.key),
+                                    label: _categoryLabel(entry.key, service),
                                     count: entry.value,
                                   ),
                                 )
@@ -149,9 +150,12 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                                           index,
                                         ) {
                                           final item = filtered[index];
+                                          final routeTag = item.tag == 'series'
+                                              ? 'movies/series'
+                                              : item.tag;
                                           return ScaleTap(
                                                 onTap: () => context.push(
-                                                  '/viewer/category/${Uri.encodeComponent(item.tag)}',
+                                                  '/viewer/category/${Uri.encodeComponent(routeTag)}',
                                                 ),
                                                 child: _CategoryCard(
                                                   item: item,
@@ -209,6 +213,12 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
         ],
       ),
     );
+  }
+
+  String _categoryLabel(String rawTag, QuoteService service) {
+    final tag = rawTag.trim().toLowerCase();
+    if (tag == 'series') return 'Movies/Series';
+    return service.toTitleCase(tag);
   }
 }
 

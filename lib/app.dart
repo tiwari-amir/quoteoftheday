@@ -18,7 +18,7 @@ class QuoteOfTheDayApp extends ConsumerWidget {
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
     ref.watch(authBootstrapProvider);
     ref.watch(streakProvider);
-    ref.watch(notificationSettingsProvider);
+    ref.watch(notificationBootstrapProvider);
     ref.listen(notificationTapProvider, (previous, next) {
       final route = next.valueOrNull;
       if (route == null || route.isEmpty) return;

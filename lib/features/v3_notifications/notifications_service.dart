@@ -83,11 +83,13 @@ class V3NotificationsService {
   }
 
   Future<void> cancelDailyReminder() async {
+    await cancelAllScheduledNotifications();
+  }
+
+  Future<void> cancelAllScheduledNotifications() async {
     if (!isSupported) return;
     await initialize();
-    for (var id = 7001; id <= 7060; id++) {
-      await _plugin.cancel(id);
-    }
+    await _plugin.cancelAll();
   }
 
   Future<void> scheduleReminder({
@@ -95,9 +97,8 @@ class V3NotificationsService {
     required tz.TZDateTime schedule,
     required String title,
     required String body,
-    String? subtitle,
     String? payload,
-    Uint8List? authorImageBytes,
+    bool repeatDaily = false,
   }) async {
     if (!isSupported) return;
     await initialize();
@@ -110,16 +111,12 @@ class V3NotificationsService {
       channelDescription: 'Daily quote reminders',
       importance: Importance.high,
       priority: Priority.high,
-      styleInformation: BigTextStyleInformation(body, summaryText: subtitle),
-      subText: subtitle,
-      largeIcon: authorImageBytes == null
-          ? null
-          : ByteArrayAndroidBitmap(authorImageBytes),
+      styleInformation: BigTextStyleInformation(body),
     );
 
     final details = NotificationDetails(
       android: androidDetails,
-      iOS: DarwinNotificationDetails(subtitle: subtitle),
+      iOS: const DarwinNotificationDetails(),
     );
 
     try {
@@ -131,6 +128,7 @@ class V3NotificationsService {
         details: details,
         payload: payload,
         mode: androidScheduleMode,
+        repeatDaily: repeatDaily,
       );
     } catch (error) {
       if (!Platform.isAndroid ||
@@ -149,6 +147,7 @@ class V3NotificationsService {
         details: details,
         payload: payload,
         mode: AndroidScheduleMode.inexactAllowWhileIdle,
+        repeatDaily: repeatDaily,
       );
     }
   }
@@ -161,6 +160,7 @@ class V3NotificationsService {
     required NotificationDetails details,
     required String? payload,
     required AndroidScheduleMode mode,
+    required bool repeatDaily,
   }) {
     return _plugin.zonedSchedule(
       id,
@@ -172,6 +172,7 @@ class V3NotificationsService {
       androidScheduleMode: mode,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: repeatDaily ? DateTimeComponents.time : null,
     );
   }
 

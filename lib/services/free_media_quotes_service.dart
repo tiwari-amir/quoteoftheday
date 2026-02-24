@@ -32,15 +32,96 @@ class FreeMediaQuotesService {
     ],
   };
 
+  // Offline curated fallback so movies/series always has visible quotes.
+  static const Map<String, List<QuoteModel>> _fallbackQuotesByCategory = {
+    'movies': [
+      QuoteModel(
+        id: 'fallback-movie-1',
+        quote: 'May the Force be with you.',
+        author: 'Star Wars',
+        revisedTags: <String>['movies'],
+      ),
+      QuoteModel(
+        id: 'fallback-movie-2',
+        quote: "I'm going to make him an offer he can't refuse.",
+        author: 'The Godfather',
+        revisedTags: <String>['movies'],
+      ),
+      QuoteModel(
+        id: 'fallback-movie-3',
+        quote: 'Why so serious?',
+        author: 'The Dark Knight',
+        revisedTags: <String>['movies'],
+      ),
+      QuoteModel(
+        id: 'fallback-movie-4',
+        quote:
+            'Life is like a box of chocolates. You never know what you are gonna get.',
+        author: 'Forrest Gump',
+        revisedTags: <String>['movies'],
+      ),
+      QuoteModel(
+        id: 'fallback-movie-5',
+        quote: "I'll be back.",
+        author: 'The Terminator',
+        revisedTags: <String>['movies'],
+      ),
+      QuoteModel(
+        id: 'fallback-movie-6',
+        quote: 'Do, or do not. There is no try.',
+        author: 'Yoda - The Empire Strikes Back',
+        revisedTags: <String>['movies'],
+      ),
+    ],
+    'series': [
+      QuoteModel(
+        id: 'fallback-series-1',
+        quote: 'Winter is coming.',
+        author: 'Game of Thrones',
+        revisedTags: <String>['series'],
+      ),
+      QuoteModel(
+        id: 'fallback-series-2',
+        quote: 'I am the one who knocks.',
+        author: 'Breaking Bad',
+        revisedTags: <String>['series'],
+      ),
+      QuoteModel(
+        id: 'fallback-series-3',
+        quote: 'How you doin?',
+        author: 'Joey Tribbiani - Friends',
+        revisedTags: <String>['series'],
+      ),
+      QuoteModel(
+        id: 'fallback-series-4',
+        quote: 'Bears. Beets. Battlestar Galactica.',
+        author: 'The Office',
+        revisedTags: <String>['series'],
+      ),
+      QuoteModel(
+        id: 'fallback-series-5',
+        quote: 'The game is on.',
+        author: 'Sherlock',
+        revisedTags: <String>['series'],
+      ),
+      QuoteModel(
+        id: 'fallback-series-6',
+        quote: 'When you play the game of thrones, you win or you die.',
+        author: 'Cersei Lannister - Game of Thrones',
+        revisedTags: <String>['series'],
+      ),
+    ],
+  };
+
   Future<List<QuoteModel>> fetchQuotesForCategories({
     required Set<String> categories,
     int maxPerCategory = 14,
     Duration timeout = const Duration(seconds: 3),
   }) async {
     final normalized = categories.map((c) => c.trim().toLowerCase()).toSet();
-    final mediaCategories = normalized.where(
-      _wikiquotePagesByCategory.containsKey,
-    );
+    final mediaCategories = normalized
+        .where(_wikiquotePagesByCategory.containsKey)
+        .toSet();
     if (mediaCategories.isEmpty) return const <QuoteModel>[];
 
     final key = _setKey(mediaCategories);
@@ -54,15 +135,20 @@ class FreeMediaQuotesService {
       return inFlight;
     }
 
+    final fallback = _fallbackForCategories(
+      categories: mediaCategories,
+      maxPerCategory: maxPerCategory,
+    );
     final future = _fetchQuotesForCategoriesInternal(
-      categories: mediaCategories.toSet(),
+      categories: mediaCategories,
       maxPerCategory: maxPerCategory,
       timeout: timeout,
-    );
+    ).timeout(timeout, onTimeout: () => fallback);
     _inFlightByCategorySet[key] = future;
 
     try {
-      final quotes = await future;
+      final fetched = await future;
+      final quotes = _dedupeQuotes([...fetched, ...fallback]);
       _cacheByCategorySet[key] = quotes;
       return quotes;
     } finally {
@@ -75,7 +161,9 @@ class FreeMediaQuotesService {
     required int maxPerCategory,
     required Duration timeout,
   }) async {
-    final mediaCategories = categories.where(_wikiquotePagesByCategory.containsKey);
+    final mediaCategories = categories.where(
+      _wikiquotePagesByCategory.containsKey,
+    );
 
     final output = <QuoteModel>[];
     for (final category in mediaCategories) {
@@ -101,13 +189,27 @@ class FreeMediaQuotesService {
     return _dedupeQuotes(output);
   }
 
+  List<QuoteModel> _fallbackForCategories({
+    required Set<String> categories,
+    required int maxPerCategory,
+  }) {
+    final output = <QuoteModel>[];
+    for (final category in categories) {
+      final quotes =
+          _fallbackQuotesByCategory[category] ?? const <QuoteModel>[];
+      output.addAll(quotes.take(maxPerCategory));
+    }
+    return _dedupeQuotes(output);
+  }
+
   String _setKey(Iterable<String> values) {
-    final sorted = values
-        .map((v) => v.trim().toLowerCase())
-        .where((v) => v.isNotEmpty)
-        .toSet()
-        .toList(growable: false)
-      ..sort();
+    final sorted =
+        values
+            .map((v) => v.trim().toLowerCase())
+            .where((v) => v.isNotEmpty)
+            .toSet()
+            .toList(growable: false)
+          ..sort();
     return sorted.join('|');
   }
 

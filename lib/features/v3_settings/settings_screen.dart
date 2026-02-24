@@ -75,7 +75,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
     final settings = ref.watch(notificationSettingsProvider);
-    final reminderCategoriesAsync = ref.watch(reminderCategoriesProvider);
+    final tagOptionsAsync = ref.watch(notificationTagOptionsProvider);
     final settingsActions = ref.read(settingsActionsProvider);
 
     return Scaffold(
@@ -105,20 +105,27 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const Divider(height: 20),
-          SwitchListTile(
-            title: const Text('Daily quote reminder'),
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            title: Text(
+              'Daily Notifications',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             subtitle: const Text('Mobile only, disabled on web'),
-            value: settings.enabled,
+          ),
+          SwitchListTile(
+            title: const Text('Daily quote'),
+            value: settings.dailyEnabled,
             onChanged: kIsWeb
                 ? null
                 : (value) => ref
                       .read(notificationSettingsProvider.notifier)
-                      .update(settings.copyWith(enabled: value)),
+                      .update(settings.copyWith(dailyEnabled: value)),
           ),
           ListTile(
-            title: const Text('Reminder time'),
+            title: const Text('Time'),
             subtitle: Text(
-              '${settings.hour.toString().padLeft(2, '0')}:${settings.minute.toString().padLeft(2, '0')}',
+              _timeLabel(settings.dailyHour, settings.dailyMinute),
             ),
             onTap: kIsWeb
                 ? null
@@ -126,8 +133,8 @@ class SettingsScreen extends ConsumerWidget {
                     final selected = await showTimePicker(
                       context: context,
                       initialTime: TimeOfDay(
-                        hour: settings.hour,
-                        minute: settings.minute,
+                        hour: settings.dailyHour,
+                        minute: settings.dailyMinute,
                       ),
                     );
                     if (selected == null) return;
@@ -135,74 +142,150 @@ class SettingsScreen extends ConsumerWidget {
                         .read(notificationSettingsProvider.notifier)
                         .update(
                           settings.copyWith(
-                            hour: selected.hour,
-                            minute: selected.minute,
+                            dailyHour: selected.hour,
+                            dailyMinute: selected.minute,
                           ),
                         );
                   },
           ),
-          ListTile(
-            title: const Text('Reminder source'),
-            subtitle: Text(settings.source),
-            trailing: DropdownButton<String>(
-              value: settings.source,
-              items: const [
-                DropdownMenuItem(value: 'daily', child: Text('Daily')),
-                DropdownMenuItem(value: 'saved', child: Text('Saved')),
-                DropdownMenuItem(value: 'random', child: Text('Random')),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                ref
-                    .read(notificationSettingsProvider.notifier)
-                    .update(settings.copyWith(source: value));
-              },
-            ),
+          const Divider(height: 18),
+          SwitchListTile(
+            title: const Text('Extra quote notification'),
+            value: settings.extraEnabled,
+            onChanged: kIsWeb
+                ? null
+                : (value) => ref
+                      .read(notificationSettingsProvider.notifier)
+                      .update(settings.copyWith(extraEnabled: value)),
           ),
-          ListTile(
-            title: const Text('Reminder categories'),
-            subtitle: Text(_notificationCategoriesSummary(settings.categories)),
-          ),
-          reminderCategoriesAsync.when(
-            data: (categories) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final category in categories)
-                      FilterChip(
-                        label: Text(_notificationCategoryLabel(category)),
-                        selected: settings.categories.contains(category),
-                        onSelected: (selected) {
-                          final updated = settings.categories.toSet();
-                          if (selected) {
-                            updated.add(category);
-                          } else {
-                            updated.remove(category);
-                          }
-                          final ordered = _orderedNotificationCategories(
-                            updated,
-                            categories,
+          if (settings.extraEnabled) ...[
+            ListTile(
+              title: const Text('Time'),
+              subtitle: Text(
+                _timeLabel(settings.extraHour, settings.extraMinute),
+              ),
+              onTap: kIsWeb
+                  ? null
+                  : () async {
+                      final selected = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay(
+                          hour: settings.extraHour,
+                          minute: settings.extraMinute,
+                        ),
+                      );
+                      if (selected == null) return;
+                      await ref
+                          .read(notificationSettingsProvider.notifier)
+                          .update(
+                            settings.copyWith(
+                              extraHour: selected.hour,
+                              extraMinute: selected.minute,
+                            ),
                           );
-                          ref
-                              .read(notificationSettingsProvider.notifier)
-                              .update(settings.copyWith(categories: ordered));
-                        },
-                      ),
-                  ],
-                ),
-              );
-            },
-            loading: () => const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: LinearProgressIndicator(minHeight: 2),
+                    },
             ),
-            error: (error, stack) => Padding(
+            const ListTile(title: Text('Source'), dense: true),
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text('Failed to load categories: $error'),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Saved quotes'),
+                    selected: settings.extraSource == 'saved',
+                    onSelected: kIsWeb
+                        ? null
+                        : (_) => ref
+                              .read(notificationSettingsProvider.notifier)
+                              .update(settings.copyWith(extraSource: 'saved')),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Selected tags'),
+                    selected: settings.extraSource == 'tags',
+                    onSelected: kIsWeb
+                        ? null
+                        : (_) => ref
+                              .read(notificationSettingsProvider.notifier)
+                              .update(settings.copyWith(extraSource: 'tags')),
+                  ),
+                ],
+              ),
             ),
+            if (settings.extraSource == 'tags') ...[
+              ListTile(
+                title: const Text('Selected tags'),
+                subtitle: Text(
+                  _notificationTagsSummary(settings.extraSelectedTags),
+                ),
+              ),
+              tagOptionsAsync.when(
+                data: (categories) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final category in categories)
+                          FilterChip(
+                            label: Text(_notificationCategoryLabel(category)),
+                            selected: settings.extraSelectedTags.contains(
+                              category,
+                            ),
+                            onSelected: kIsWeb
+                                ? null
+                                : (selected) {
+                                    final updated = settings.extraSelectedTags
+                                        .toSet();
+                                    if (selected) {
+                                      updated.add(category);
+                                    } else {
+                                      updated.remove(category);
+                                    }
+                                    final ordered = _orderedNotificationTags(
+                                      updated,
+                                      categories,
+                                    );
+                                    ref
+                                        .read(
+                                          notificationSettingsProvider.notifier,
+                                        )
+                                        .update(
+                                          settings.copyWith(
+                                            extraSelectedTags: ordered,
+                                          ),
+                                        );
+                                  },
+                          ),
+                      ],
+                    ),
+                  );
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+                error: (error, stack) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text('Failed to load tags: $error'),
+                ),
+              ),
+            ],
+          ],
+          const Divider(height: 18),
+          SwitchListTile(
+            title: const Text('Streak reminder'),
+            subtitle: const Text(
+              'Evening reminder if today\'s goal is not met',
+            ),
+            value: settings.streakEnabled,
+            onChanged: kIsWeb
+                ? null
+                : (value) => ref
+                      .read(notificationSettingsProvider.notifier)
+                      .update(settings.copyWith(streakEnabled: value)),
           ),
           const SizedBox(height: 12),
           const Divider(height: 28),
@@ -244,16 +327,17 @@ class SettingsScreen extends ConsumerWidget {
     };
   }
 
-  String _notificationCategoriesSummary(List<String> categories) {
-    final ordered = _orderedNotificationCategories(
-      categories.toSet(),
-      categories,
-    );
-    if (ordered.isEmpty) return 'All categories';
+  String _timeLabel(int hour, int minute) {
+    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+  }
+
+  String _notificationTagsSummary(List<String> categories) {
+    final ordered = _orderedNotificationTags(categories.toSet(), categories);
+    if (ordered.isEmpty) return 'No tags selected';
     return ordered.map(_notificationCategoryLabel).join(', ');
   }
 
-  List<String> _orderedNotificationCategories(
+  List<String> _orderedNotificationTags(
     Set<String> selectedCategories,
     List<String> availableCategories,
   ) {
@@ -277,7 +361,7 @@ class SettingsScreen extends ConsumerWidget {
       'motivational' => 'Motivational',
       'love' => 'Love',
       'movies' => 'Movies',
-      'series' => 'Series',
+      'series' => 'Movies/Series',
       _ => category,
     };
   }

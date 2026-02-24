@@ -46,10 +46,9 @@ final mediaQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   try {
     return await ref
         .read(freeMediaQuotesServiceProvider)
-        .fetchQuotesForCategories(categories: const {'movies', 'series'})
-        .timeout(
-          const Duration(seconds: 2),
-          onTimeout: () => const <QuoteModel>[],
+        .fetchQuotesForCategories(
+          categories: const {'movies', 'series'},
+          timeout: const Duration(seconds: 2),
         );
   } catch (_) {
     return const <QuoteModel>[];
@@ -122,6 +121,14 @@ final quotesByFilterProvider =
       }
       if (filter.isMood) {
         return _quotesForMood(allQuotes, tag);
+      }
+      if (tag == 'series' || tag == 'movies/series') {
+        return allQuotes
+            .where(
+              (quote) =>
+                  _matchesAnyTag(quote.revisedTags, {'movies', 'series'}),
+            )
+            .toList(growable: false);
       }
       return allQuotes
           .where((quote) => _matchesTag(quote.revisedTags, tag))
@@ -259,6 +266,13 @@ bool _matchesTag(List<String> quoteTags, String selectedTag) {
     if (tag == target || tag.contains(target) || target.contains(tag)) {
       return true;
     }
+  }
+  return false;
+}
+
+bool _matchesAnyTag(List<String> quoteTags, Set<String> selectedTags) {
+  for (final selected in selectedTags) {
+    if (_matchesTag(quoteTags, selected)) return true;
   }
   return false;
 }

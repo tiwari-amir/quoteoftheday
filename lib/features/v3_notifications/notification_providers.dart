@@ -1,22 +1,37 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../models/quote_model.dart';
+import '../../models/quote_viewer_filter.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/storage_provider.dart';
-import '../../services/quote_service.dart';
+import '../../providers/streak_provider.dart';
 import 'notification_settings_model.dart';
 import 'notifications_service.dart';
 
-const _kEnabled = 'v3.notifications_enabled';
-const _kHour = 'v3.notification_hour';
-const _kMinute = 'v3.notification_minute';
-const _kSource = 'v3.notification_source';
-const _kCategories = 'v3.notification_categories';
-const _kScheduleWindowDays = 30;
-const _kReminderCategoryLimit = 20;
+const _kDailyEnabled = 'notifications.daily_enabled';
+const _kDailyHour = 'notifications.daily_hour';
+const _kDailyMinute = 'notifications.daily_minute';
+
+const _kExtraEnabled = 'notifications.extra_enabled';
+const _kExtraHour = 'notifications.extra_hour';
+const _kExtraMinute = 'notifications.extra_minute';
+const _kExtraSource = 'notifications.extra_source';
+const _kExtraSelectedTags = 'notifications.extra_selected_tags';
+
+const _kStreakEnabled = 'notifications.streak_enabled';
+const _kLastStreakNotificationDate =
+    'notifications.last_streak_notification_date';
+
+const _kNotificationDailyId = 1;
+const _kNotificationExtraId = 2;
+const _kNotificationStreakId = 3;
+const _kTagOptionLimit = 20;
 
 final notificationsServiceProvider = Provider<V3NotificationsService>((ref) {
   final service = V3NotificationsService();
@@ -30,22 +45,28 @@ final notificationTapProvider = StreamProvider<String>((ref) async* {
   yield* service.tapStream;
 });
 
-final reminderCategoriesProvider = FutureProvider<List<String>>((ref) async {
+// Startup integration point: app boot triggers cancel+reschedule from persisted settings.
+final notificationBootstrapProvider = FutureProvider<void>((ref) async {
+  await ref.read(notificationSettingsProvider.notifier).rescheduleFromStartup();
+});
+
+final notificationTagOptionsProvider = FutureProvider<List<String>>((
+  ref,
+) async {
   final categories = await ref.watch(categoryCountsProvider.future);
   final ordered = categories.keys
       .map((c) => c.trim().toLowerCase())
       .where((c) => c.isNotEmpty && c != 'all')
       .toList(growable: true);
-  final top = ordered.take(_kReminderCategoryLimit).toList(growable: true);
+  final top = ordered.take(_kTagOptionLimit).toList(growable: true);
 
   for (final requiredTag in const ['movies', 'series']) {
     if (top.contains(requiredTag)) continue;
-    if (top.length >= _kReminderCategoryLimit) {
+    if (top.length >= _kTagOptionLimit) {
       top.removeLast();
     }
     top.add(requiredTag);
   }
-
   return top;
 });
 
@@ -53,302 +74,337 @@ class NotificationSettingsNotifier
     extends StateNotifier<NotificationSettingsModel> {
   NotificationSettingsNotifier(this._ref)
     : super(NotificationSettingsModel.defaults) {
-    _load();
+    _ensureLoaded();
   }
 
   final Ref _ref;
+  Future<void>? _loadFuture;
+  bool _isRescheduling = false;
 
-  Future<void> _load() async {
+  Future<void> _ensureLoaded() {
+    _loadFuture ??= _loadInternal();
+    return _loadFuture!;
+  }
+
+  Future<void> _loadInternal() async {
     final prefs = _ref.read(sharedPreferencesProvider);
-    state = NotificationSettingsModel(
-      enabled: prefs.getBool(_kEnabled) ?? false,
-      hour: prefs.getInt(_kHour) ?? 9,
-      minute: prefs.getInt(_kMinute) ?? 0,
-      source: prefs.getString(_kSource) ?? 'daily',
-      categories: _normalizeCategories(
-        prefs.getStringList(_kCategories) ??
-            NotificationSettingsModel.defaults.categories,
-      ).toList(growable: false),
+    final parsedTags = _decodeTagList(
+      prefs.getString(_kExtraSelectedTags),
+      fallback: NotificationSettingsModel.defaults.extraSelectedTags,
     );
 
+    state = NotificationSettingsModel(
+      dailyEnabled:
+          prefs.getBool(_kDailyEnabled) ??
+          NotificationSettingsModel.defaults.dailyEnabled,
+      dailyHour:
+          prefs.getInt(_kDailyHour) ??
+          NotificationSettingsModel.defaults.dailyHour,
+      dailyMinute:
+          prefs.getInt(_kDailyMinute) ??
+          NotificationSettingsModel.defaults.dailyMinute,
+      extraEnabled:
+          prefs.getBool(_kExtraEnabled) ??
+          NotificationSettingsModel.defaults.extraEnabled,
+      extraHour:
+          prefs.getInt(_kExtraHour) ??
+          NotificationSettingsModel.defaults.extraHour,
+      extraMinute:
+          prefs.getInt(_kExtraMinute) ??
+          NotificationSettingsModel.defaults.extraMinute,
+      extraSource: _normalizeExtraSource(
+        prefs.getString(_kExtraSource) ??
+            NotificationSettingsModel.defaults.extraSource,
+      ),
+      extraSelectedTags: parsedTags,
+      streakEnabled:
+          prefs.getBool(_kStreakEnabled) ??
+          NotificationSettingsModel.defaults.streakEnabled,
+    );
+  }
+
+  Future<void> rescheduleFromStartup() async {
+    await _ensureLoaded();
     await _applySchedule();
   }
 
   Future<void> update(NotificationSettingsModel next) async {
-    state = next;
-    final prefs = _ref.read(sharedPreferencesProvider);
-    await prefs.setBool(_kEnabled, next.enabled);
-    await prefs.setInt(_kHour, next.hour);
-    await prefs.setInt(_kMinute, next.minute);
-    await prefs.setString(_kSource, next.source);
-    await prefs.setStringList(
-      _kCategories,
-      _normalizeCategories(next.categories).toList(growable: false),
-    );
-
+    await _ensureLoaded();
+    final sanitized = _sanitize(next);
+    state = sanitized;
+    await _persist(sanitized);
     await _applySchedule();
   }
 
+  Future<void> _persist(NotificationSettingsModel settings) async {
+    final prefs = _ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_kDailyEnabled, settings.dailyEnabled);
+    await prefs.setInt(_kDailyHour, settings.dailyHour);
+    await prefs.setInt(_kDailyMinute, settings.dailyMinute);
+
+    await prefs.setBool(_kExtraEnabled, settings.extraEnabled);
+    await prefs.setInt(_kExtraHour, settings.extraHour);
+    await prefs.setInt(_kExtraMinute, settings.extraMinute);
+    await prefs.setString(_kExtraSource, settings.extraSource);
+    await prefs.setString(
+      _kExtraSelectedTags,
+      jsonEncode(settings.extraSelectedTags),
+    );
+
+    await prefs.setBool(_kStreakEnabled, settings.streakEnabled);
+  }
+
   Future<void> _applySchedule() async {
+    if (_isRescheduling) return;
+    _isRescheduling = true;
+
     final service = _ref.read(notificationsServiceProvider);
     try {
-      if (!state.enabled) {
-        await service.cancelDailyReminder();
-        return;
-      }
       await service.initialize();
+
+      // Hard reset on each pass to avoid stale schedules from previous models.
+      await service.cancelAllScheduledNotifications();
+
       if (!service.notificationsGranted) {
-        debugPrint(
-          'Notifications permission not granted; skipping scheduling.',
-        );
+        debugPrint('Notifications not granted; skipping scheduling.');
         return;
       }
 
-      final repo = _ref.read(quoteRepositoryProvider);
-      final quoteService = _ref.read(quoteServiceProvider);
-      final allQuotes = await repo.getAllQuotes();
-      if (allQuotes.isEmpty) return;
-      final selectedCategories = _normalizeCategories(state.categories);
-      final localCategoryQuotes = _filterQuotesByCategories(
-        quotes: allQuotes,
-        selectedCategories: selectedCategories,
-      );
-
-      final wantsFreeMediaQuotes =
-          selectedCategories.isEmpty ||
-          selectedCategories.contains('movies') ||
-          selectedCategories.contains('series');
-      final freeMediaCategories = selectedCategories.isEmpty
-          ? const {'movies', 'series'}
-          : selectedCategories
-                .where((item) => item == 'movies' || item == 'series')
-                .toSet();
-      final freeMediaQuotes = wantsFreeMediaQuotes
-          ? await _ref
-                .read(freeMediaQuotesServiceProvider)
-                .fetchQuotesForCategories(categories: freeMediaCategories)
-          : const <QuoteModel>[];
-      final categoryQuotes = _mergeQuotes(localCategoryQuotes, freeMediaQuotes);
-      final effectiveAllQuotes = categoryQuotes.isNotEmpty
-          ? categoryQuotes
-          : allQuotes;
-
-      final savedIds = _ref.read(savedQuoteIdsProvider);
-      final savedQuotes = allQuotes
-          .where((q) => savedIds.contains(q.id))
-          .toList(growable: false);
-      final savedCategoryQuotes = _filterQuotesByCategories(
-        quotes: savedQuotes,
-        selectedCategories: selectedCategories,
-      );
-      final effectiveSavedQuotes = savedCategoryQuotes.isNotEmpty
-          ? savedCategoryQuotes
-          : savedQuotes;
-
-      await service.cancelDailyReminder();
-
-      final now = tz.TZDateTime.now(tz.local);
-      var firstTrigger = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day,
-        state.hour,
-        state.minute,
-      );
-      if (!firstTrigger.isAfter(now)) {
-        firstTrigger = firstTrigger.add(const Duration(days: 1));
+      if (state.dailyEnabled) {
+        await _scheduleDailyQuote();
       }
 
-      final firstLocalDate = DateTime(
-        firstTrigger.year,
-        firstTrigger.month,
-        firstTrigger.day,
-      );
-      final firstDailyRemote =
-          state.source == 'daily' && selectedCategories.isEmpty
-          ? await repo.getDailyQuote(firstLocalDate)
-          : null;
+      if (state.extraEnabled) {
+        await _scheduleOptionalExtra();
+      }
 
-      for (var offset = 0; offset < _kScheduleWindowDays; offset++) {
-        final schedule = firstTrigger.add(Duration(days: offset));
-        final localDate = DateTime(schedule.year, schedule.month, schedule.day);
-
-        final quote = await _pickQuoteForReminder(
-          localDate: localDate,
-          allQuotes: effectiveAllQuotes,
-          savedQuotes: effectiveSavedQuotes,
-          quoteService: quoteService,
-          firstDailyRemote: offset == 0 ? firstDailyRemote : null,
-        );
-        final body = _compactBody(quote.quote, quote.author);
-
-        await service.scheduleReminder(
-          id: 7001 + offset,
-          schedule: schedule,
-          title: _titleForCategories(selectedCategories),
-          body: body,
-          subtitle: _smallSubtitleForCategories(selectedCategories),
-          payload: '/today',
-        );
+      if (state.streakEnabled) {
+        await _scheduleStreakReminder();
       }
     } catch (error, stack) {
       debugPrint('Notification scheduling failed: $error');
       debugPrint('$stack');
+    } finally {
+      _isRescheduling = false;
     }
   }
 
-  Future<QuoteModel> _pickQuoteForReminder({
-    required DateTime localDate,
-    required List<QuoteModel> allQuotes,
-    required List<QuoteModel> savedQuotes,
-    required QuoteService quoteService,
-    required QuoteModel? firstDailyRemote,
-  }) async {
-    if (state.source == 'saved' && savedQuotes.isNotEmpty) {
-      return quoteService.pickQuoteForDate(savedQuotes, localDate);
-    }
+  Future<void> _scheduleDailyQuote() async {
+    final service = _ref.read(notificationsServiceProvider);
+    final quote = await _ref.read(dailyQuoteProvider.future);
+    final schedule = _nextDailyTrigger(
+      hour: state.dailyHour,
+      minute: state.dailyMinute,
+    );
 
-    if (state.source == 'random') {
-      final index = localDate.millisecondsSinceEpoch.abs() % allQuotes.length;
-      return allQuotes[index];
-    }
-
-    if (firstDailyRemote != null) {
-      return firstDailyRemote;
-    }
-    return quoteService.pickQuoteForDate(allQuotes, localDate);
+    await service.scheduleReminder(
+      id: _kNotificationDailyId,
+      schedule: schedule,
+      title: 'Your Daily Quote',
+      body: _trimQuoteBody(quote.quote),
+      payload: '/today',
+      repeatDaily: true,
+    );
   }
 
-  String _compactBody(String quote, String author) {
-    final cleanQuote = quote.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final clipped = cleanQuote.length > 94
-        ? '${cleanQuote.substring(0, 91).trimRight()}...'
-        : cleanQuote;
-    return '"$clipped"\n- $author';
+  Future<void> _scheduleOptionalExtra() async {
+    final service = _ref.read(notificationsServiceProvider);
+    final planned = await _buildExtraNotification();
+    if (planned == null) {
+      return;
+    }
+
+    final schedule = _nextDailyTrigger(
+      hour: state.extraHour,
+      minute: state.extraMinute,
+    );
+    await service.scheduleReminder(
+      id: _kNotificationExtraId,
+      schedule: schedule,
+      title: planned.title,
+      body: _trimQuoteBody(planned.quote.quote),
+      payload: planned.payload,
+      repeatDaily: true,
+    );
   }
 
-  Set<String> _normalizeCategories(List<String> categories) {
-    return categories
+  Future<_PlannedExtraNotification?> _buildExtraNotification() async {
+    if (state.extraSource == 'saved') {
+      final savedIds = _ref.read(savedQuoteIdsProvider);
+      if (savedIds.isEmpty) return null;
+
+      final allQuotes = await _ref.read(allQuotesProvider.future);
+      final savedQuotes = allQuotes
+          .where((q) => savedIds.contains(q.id))
+          .toList(growable: false);
+      if (savedQuotes.isEmpty) return null;
+
+      final quote = _pickRandom(savedQuotes);
+      return _PlannedExtraNotification(
+        title: 'From Your Collection',
+        quote: quote,
+        payload: '/viewer/saved/all?quoteId=${quote.id}',
+      );
+    }
+
+    final tags = _normalizeTags(state.extraSelectedTags).toList(growable: true);
+    if (tags.isEmpty) return null;
+
+    tags.shuffle(Random());
+    final quoteService = _ref.read(quoteServiceProvider);
+    for (final tag in tags) {
+      final quotes = await _ref.read(
+        quotesByFilterProvider(
+          QuoteViewerFilter(type: 'category', tag: tag),
+        ).future,
+      );
+      if (quotes.isEmpty) continue;
+
+      final quote = _pickRandom(quotes);
+      final routeTag = tag == 'series' ? 'movies/series' : tag;
+      final title = tag == 'series'
+          ? 'From Movies/Series'
+          : 'From ${quoteService.toTitleCase(tag)}';
+      return _PlannedExtraNotification(
+        title: title,
+        quote: quote,
+        payload:
+            '/viewer/category/${Uri.encodeComponent(routeTag)}?quoteId=${quote.id}',
+      );
+    }
+
+    return null;
+  }
+
+  Future<void> _scheduleStreakReminder() async {
+    final currentStreak = _ref.read(streakProvider);
+    if (currentStreak <= 0) return;
+
+    final streakNotifier = _ref.read(streakProvider.notifier);
+    if (streakNotifier.hasMetTodayRequirement()) return;
+
+    final now = tz.TZDateTime.now(tz.local);
+    if (now.hour < 18) return;
+
+    final prefs = _ref.read(sharedPreferencesProvider);
+    final todayKey = _ymd(now);
+    final alreadyShown =
+        prefs.getString(_kLastStreakNotificationDate) == todayKey;
+    if (alreadyShown) return;
+
+    final service = _ref.read(notificationsServiceProvider);
+    final schedule = now.add(const Duration(seconds: 5));
+    await service.scheduleReminder(
+      id: _kNotificationStreakId,
+      schedule: schedule,
+      title: 'Don\'t break your streak 🔥',
+      body: 'Read 3 quotes today to keep it going.',
+      payload: '/today',
+      repeatDaily: false,
+    );
+
+    await prefs.setString(_kLastStreakNotificationDate, todayKey);
+  }
+
+  NotificationSettingsModel _sanitize(NotificationSettingsModel input) {
+    final dailyHour = input.dailyHour.clamp(0, 23);
+    final dailyMinute = input.dailyMinute.clamp(0, 59);
+    final extraHour = input.extraHour.clamp(0, 23);
+    final extraMinute = input.extraMinute.clamp(0, 59);
+
+    return NotificationSettingsModel(
+      dailyEnabled: input.dailyEnabled,
+      dailyHour: dailyHour,
+      dailyMinute: dailyMinute,
+      extraEnabled: input.extraEnabled,
+      extraHour: extraHour,
+      extraMinute: extraMinute,
+      extraSource: _normalizeExtraSource(input.extraSource),
+      extraSelectedTags: _normalizeTags(
+        input.extraSelectedTags,
+      ).toList(growable: false),
+      streakEnabled: input.streakEnabled,
+    );
+  }
+
+  String _normalizeExtraSource(String source) {
+    return source.trim().toLowerCase() == 'tags' ? 'tags' : 'saved';
+  }
+
+  Set<String> _normalizeTags(List<String> values) {
+    return values
         .map((item) => item.trim().toLowerCase())
         .where((item) => item.isNotEmpty && item != 'all')
         .toSet();
   }
 
-  List<QuoteModel> _filterQuotesByCategories({
-    required List<QuoteModel> quotes,
-    required Set<String> selectedCategories,
-  }) {
-    if (selectedCategories.isEmpty) return quotes;
+  List<String> _decodeTagList(String? raw, {required List<String> fallback}) {
+    if (raw == null || raw.trim().isEmpty) {
+      return _normalizeTags(fallback).toList(growable: false);
+    }
 
-    return quotes
-        .where((quote) {
-          return selectedCategories.any(
-            (category) => _quoteMatchesCategory(quote, category),
-          );
-        })
-        .toList(growable: false);
-  }
-
-  bool _quoteMatchesCategory(QuoteModel quote, String category) {
-    final normalizedCategory = category.trim().toLowerCase();
-    final tags = quote.revisedTags
-        .map((tag) => tag.toLowerCase())
-        .toList(growable: false);
-    final text = '${quote.quote} ${quote.author}'.toLowerCase();
-    final keywords = switch (normalizedCategory) {
-      'motivational' => <String>[
-        'motivational',
-        'motivation',
-        'motivated',
-        'inspiration',
-        'inspirational',
-        'inspire',
-        'goal',
-        'success',
-        'discipline',
-      ],
-      'love' => <String>[
-        'love',
-        'romantic',
-        'romance',
-        'heart',
-        'relationship',
-      ],
-      'movies' => <String>['movie', 'movies', 'film', 'cinema'],
-      'series' => <String>['series', 'tv', 'television', 'show', 'episode'],
-      _ => <String>[normalizedCategory],
-    };
-
-    for (final keyword in keywords) {
-      if (tags.any(
-        (tag) =>
-            tag == keyword || tag.contains(keyword) || keyword.contains(tag),
-      )) {
-        return true;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        return _normalizeTags(fallback).toList(growable: false);
       }
-      if (text.contains(keyword)) {
-        return true;
-      }
+      return _normalizeTags(
+        decoded.map((item) => item.toString()).toList(growable: false),
+      ).toList(growable: false);
+    } catch (_) {
+      return _normalizeTags(fallback).toList(growable: false);
     }
-    return false;
   }
 
-  List<QuoteModel> _mergeQuotes(
-    List<QuoteModel> first,
-    List<QuoteModel> second,
-  ) {
-    final seen = <String>{};
-    final merged = <QuoteModel>[];
+  QuoteModel _pickRandom(List<QuoteModel> quotes) {
+    final index = Random().nextInt(quotes.length);
+    return quotes[index];
+  }
 
-    for (final quote in [...first, ...second]) {
-      final key = '${quote.quote}|${quote.author}'.toLowerCase();
-      if (!seen.add(key)) continue;
-      merged.add(quote);
+  tz.TZDateTime _nextDailyTrigger({required int hour, required int minute}) {
+    final now = tz.TZDateTime.now(tz.local);
+    var schedule = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    );
+    if (!schedule.isAfter(now)) {
+      schedule = schedule.add(const Duration(days: 1));
     }
-
-    return merged;
+    return schedule;
   }
 
-  String _titleForCategories(Set<String> categories) {
-    if (categories.isEmpty) return 'Today\'s Quote';
-    if (categories.length == 1) {
-      final category = categories.first;
-      final label = switch (category) {
-        'motivational' => 'Motivational',
-        'love' => 'Love',
-        'movies' => 'Movie',
-        'series' => 'Series',
-        _ => category,
-      };
-      return 'Today\'s $label Quote';
-    }
-    return 'Today\'s Quote Mix';
+  String _trimQuoteBody(String quote) {
+    final clean = quote.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (clean.length <= 120) return clean;
+    return '${clean.substring(0, 117).trimRight()}...';
   }
 
-  String _smallSubtitleForCategories(Set<String> categories) {
-    if (categories.isEmpty) return 'Daily Scroll';
-    if (categories.length == 1) {
-      return 'Daily Scroll | ${_titleLabel(categories.first)}';
-    }
-    return 'Daily Scroll | ${categories.length} categories';
+  String _ymd(DateTime value) {
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
+}
 
-  String _titleLabel(String category) {
-    return switch (category) {
-      'motivational' => 'Motivational',
-      'movies' => 'Movies',
-      'series' => 'Series',
-      'love' => 'Love',
-      _ => category,
-    };
-  }
+class _PlannedExtraNotification {
+  const _PlannedExtraNotification({
+    required this.title,
+    required this.quote,
+    required this.payload,
+  });
+
+  final String title;
+  final QuoteModel quote;
+  final String payload;
 }
 
 final notificationSettingsProvider =
     StateNotifierProvider<
       NotificationSettingsNotifier,
       NotificationSettingsModel
-    >((ref) {
-      return NotificationSettingsNotifier(ref);
-    });
+    >((ref) => NotificationSettingsNotifier(ref));

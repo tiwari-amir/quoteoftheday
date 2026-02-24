@@ -153,7 +153,7 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                             }
                             final tag = topTags[index - 1];
                             return ChoiceChip(
-                              label: Text(service.toTitleCase(tag)),
+                              label: Text(_displayTag(tag, service)),
                               selected: _tagFilter == tag,
                               onSelected: (_) =>
                                   setState(() => _tagFilter = tag),
@@ -189,8 +189,11 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                                   context.push('/viewer/category/all');
                                   return;
                                 }
+                                final routeTag = tag == 'series'
+                                    ? 'movies/series'
+                                    : tag;
                                 context.push(
-                                  '/viewer/category/${Uri.encodeComponent(tag)}',
+                                  '/viewer/category/${Uri.encodeComponent(routeTag)}',
                                 );
                               },
                             );
@@ -317,6 +320,13 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
     }
 
     return picked.take(6).toList(growable: false);
+  }
+
+  String _displayTag(String tag, QuoteService service) {
+    if (tag.trim().toLowerCase() == 'series') {
+      return 'Movies/Series';
+    }
+    return service.toTitleCase(tag);
   }
 }
 
@@ -499,7 +509,11 @@ class _TagSection extends StatelessWidget {
           children: [
             for (final tag in tags)
               _FlowPillChip(
-                label: tag == 'all' ? 'All' : display.toTitleCase(tag),
+                label: tag == 'all'
+                    ? 'All'
+                    : tag == 'series'
+                    ? 'Movies/Series'
+                    : display.toTitleCase(tag),
                 onTap: () => onTap(tag),
               ),
           ],

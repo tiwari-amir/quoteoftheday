@@ -1,39 +1,59 @@
 class NotificationSettingsModel {
   const NotificationSettingsModel({
-    required this.enabled,
-    required this.hour,
-    required this.minute,
-    required this.source,
-    required this.categories,
+    required this.dailyEnabled,
+    required this.dailyHour,
+    required this.dailyMinute,
+    required this.extraEnabled,
+    required this.extraHour,
+    required this.extraMinute,
+    required this.extraSource,
+    required this.extraSelectedTags,
+    required this.streakEnabled,
   });
 
-  final bool enabled;
-  final int hour;
-  final int minute;
-  final String source;
-  final List<String> categories;
+  final bool dailyEnabled;
+  final int dailyHour;
+  final int dailyMinute;
+  final bool extraEnabled;
+  final int extraHour;
+  final int extraMinute;
+  final String extraSource;
+  final List<String> extraSelectedTags;
+  final bool streakEnabled;
 
   static const defaults = NotificationSettingsModel(
-    enabled: false,
-    hour: 9,
-    minute: 0,
-    source: 'daily',
-    categories: <String>[],
+    dailyEnabled: true,
+    dailyHour: 8,
+    dailyMinute: 0,
+    extraEnabled: false,
+    extraHour: 20,
+    extraMinute: 0,
+    extraSource: 'saved',
+    extraSelectedTags: <String>[],
+    streakEnabled: true,
   );
 
   NotificationSettingsModel copyWith({
-    bool? enabled,
-    int? hour,
-    int? minute,
-    String? source,
-    List<String>? categories,
+    bool? dailyEnabled,
+    int? dailyHour,
+    int? dailyMinute,
+    bool? extraEnabled,
+    int? extraHour,
+    int? extraMinute,
+    String? extraSource,
+    List<String>? extraSelectedTags,
+    bool? streakEnabled,
   }) {
     return NotificationSettingsModel(
-      enabled: enabled ?? this.enabled,
-      hour: hour ?? this.hour,
-      minute: minute ?? this.minute,
-      source: source ?? this.source,
-      categories: categories ?? this.categories,
+      dailyEnabled: dailyEnabled ?? this.dailyEnabled,
+      dailyHour: dailyHour ?? this.dailyHour,
+      dailyMinute: dailyMinute ?? this.dailyMinute,
+      extraEnabled: extraEnabled ?? this.extraEnabled,
+      extraHour: extraHour ?? this.extraHour,
+      extraMinute: extraMinute ?? this.extraMinute,
+      extraSource: extraSource ?? this.extraSource,
+      extraSelectedTags: extraSelectedTags ?? this.extraSelectedTags,
+      streakEnabled: streakEnabled ?? this.streakEnabled,
     );
   }
 }

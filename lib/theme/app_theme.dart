@@ -110,13 +110,13 @@ class AppTheme {
         );
 
     final tokens = AppThemeTokens(
-      glassFill: scheme.surface.withValues(alpha: 0.55),
-      glassBorder: Colors.white.withValues(alpha: 0.18),
-      glassShadow: Colors.black.withValues(alpha: 0.3),
-      chipBase: scheme.surface.withValues(alpha: 0.7),
-      chipSelected: scheme.primary.withValues(alpha: 0.24),
-      chipBorder: scheme.secondary.withValues(alpha: 0.44),
-      chipGlow: scheme.primary.withValues(alpha: 0.33),
+      glassFill: scheme.surface.withValues(alpha: 0.44),
+      glassBorder: Colors.white.withValues(alpha: 0.14),
+      glassShadow: Colors.black.withValues(alpha: 0.24),
+      chipBase: scheme.surface.withValues(alpha: 0.62),
+      chipSelected: scheme.primary.withValues(alpha: 0.18),
+      chipBorder: scheme.secondary.withValues(alpha: 0.34),
+      chipGlow: scheme.primary.withValues(alpha: 0.22),
       viewerAccent: palette.viewerAccent,
     );
 
@@ -156,7 +156,7 @@ class AppTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        color: scheme.surface.withValues(alpha: 0.76),
+        color: scheme.surface.withValues(alpha: 0.68),
         elevation: 2,
         shadowColor: tokens.glassShadow,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -199,7 +199,7 @@ class AppTheme {
         ),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: palette.navBar.withValues(alpha: 0.94),
+        backgroundColor: palette.navBar.withValues(alpha: 0.9),
         selectedItemColor: scheme.primary,
         unselectedItemColor: Colors.white.withValues(alpha: 0.72),
         type: BottomNavigationBarType.fixed,

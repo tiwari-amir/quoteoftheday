@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -129,40 +131,57 @@ class TodayTabScreen extends ConsumerWidget {
                         ),
                       ).animate().fadeIn(duration: 300.ms),
                       const Spacer(),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size.fromHeight(52),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: BackdropFilter(
+                          // CTA-only blur: keeps quote content sharp and primary.
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.14),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.1),
                               ),
-                              onPressed: () => ref
-                                  .read(savedQuoteIdsProvider.notifier)
-                                  .toggle(quote.id),
-                              icon: Icon(
-                                isSaved
-                                    ? Icons.bookmark
-                                    : Icons.bookmark_outline_rounded,
-                              ),
-                              label: Text(isSaved ? 'Saved' : 'Save'),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                      minimumSize: const Size.fromHeight(52),
+                                    ),
+                                    onPressed: () => ref
+                                        .read(savedQuoteIdsProvider.notifier)
+                                        .toggle(quote.id),
+                                    icon: Icon(
+                                      isSaved
+                                          ? Icons.bookmark
+                                          : Icons.bookmark_outline_rounded,
+                                    ),
+                                    label: Text(isSaved ? 'Saved' : 'Save'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      minimumSize: const Size.fromHeight(52),
+                                    ),
+                                    onPressed: () => showStoryShareSheet(
+                                      context: context,
+                                      quote: quote,
+                                      subject: 'QuoteFlow: Daily Scroll Quotes',
+                                    ),
+                                    icon: const Icon(Icons.share_outlined),
+                                    label: const Text('Share'),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(52),
-                              ),
-                              onPressed: () => showStoryShareSheet(
-                                context: context,
-                                quote: quote,
-                                subject: 'QuoteFlow: Daily Scroll Quotes',
-                              ),
-                              icon: const Icon(Icons.share_outlined),
-                              label: const Text('Share'),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   );
