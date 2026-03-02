@@ -47,6 +47,7 @@ app.*.map.json
 # Sensitive/local artifacts
 upload-keystore.jks
 *.jks
+upload_certificate*.pem
 android/key.properties
 android/build/
 releases/

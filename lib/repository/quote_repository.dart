@@ -12,10 +12,23 @@ class QuoteRepository {
 
   final SupabaseClient _client;
   List<QuoteModel>? _quotesCache;
+  Future<List<QuoteModel>>? _quotesInFlight;
 
   Future<List<QuoteModel>> getAllQuotes() async {
     if (_quotesCache != null) return _quotesCache!;
+    if (_quotesInFlight != null) return _quotesInFlight!;
 
+    _quotesInFlight = _fetchAllQuotesInternal();
+    try {
+      final resolved = await _quotesInFlight!;
+      _quotesCache = resolved;
+      return resolved;
+    } finally {
+      _quotesInFlight = null;
+    }
+  }
+
+  Future<List<QuoteModel>> _fetchAllQuotesInternal() async {
     try {
       const pageSize = 1000;
       final quotes = <QuoteModel>[];
@@ -43,17 +56,13 @@ class QuoteRepository {
       }
 
       if (quotes.isEmpty) {
-        _quotesCache = await _loadLocalQuotesFallback();
-      } else {
-        _quotesCache = quotes;
+        return _loadLocalQuotesFallback();
       }
-
-      return _quotesCache!;
+      return quotes;
     } catch (error, stack) {
       debugPrint('Supabase getAllQuotes failed, using local fallback: $error');
       debugPrint('$stack');
-      _quotesCache = await _loadLocalQuotesFallback();
-      return _quotesCache!;
+      return _loadLocalQuotesFallback();
     }
   }
 

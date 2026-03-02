@@ -137,8 +137,12 @@ final quotesByFilterProvider =
 
 final topLikedQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   final repo = ref.read(quoteRepositoryProvider);
-  final allQuotes = await repo.getAllQuotes();
-  final topIds = await repo.getMostLikedQuoteIds(limit: 12);
+  final futures = await Future.wait([
+    ref.watch(allQuotesProvider.future),
+    repo.getMostLikedQuoteIds(limit: 12),
+  ]);
+  final allQuotes = futures[0] as List<QuoteModel>;
+  final topIds = futures[1] as List<String>;
   final byId = {for (final q in allQuotes) q.id: q};
 
   final likedQuotes = topIds

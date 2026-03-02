@@ -129,30 +129,31 @@ class AppTheme {
     );
 
     return base.copyWith(
-      textTheme: GoogleFonts.nunitoSansTextTheme(base.textTheme).copyWith(
-        headlineLarge: GoogleFonts.lora(
+      textTheme: GoogleFonts.dmSansTextTheme(base.textTheme).copyWith(
+        headlineLarge: GoogleFonts.cormorantGaramond(
           fontSize: 30,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           color: Colors.white,
         ),
-        headlineMedium: GoogleFonts.lora(
+        headlineMedium: GoogleFonts.cormorantGaramond(
           fontSize: 24,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           color: Colors.white,
         ),
-        titleLarge: GoogleFonts.lora(
+        titleLarge: GoogleFonts.cormorantGaramond(
           fontSize: 20,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           color: Colors.white,
         ),
-        bodyLarge: GoogleFonts.nunitoSans(
+        bodyLarge: GoogleFonts.dmSans(
           fontSize: 16,
           color: Colors.white.withValues(alpha: 0.92),
-          height: 1.5,
+          height: 1.45,
         ),
-        bodyMedium: GoogleFonts.nunitoSans(
+        bodyMedium: GoogleFonts.dmSans(
           fontSize: 14,
           color: Colors.white.withValues(alpha: 0.76),
+          letterSpacing: 0.1,
         ),
       ),
       cardTheme: CardThemeData(
@@ -216,14 +217,14 @@ class AppTheme {
   static _ThemePalette _paletteFor(AppBackgroundTheme theme) {
     return switch (theme) {
       AppBackgroundTheme.oceanFloor => const _ThemePalette(
-        primary: Color(0xFF7ED6BE),
-        secondary: Color(0xFF9EE1CF),
-        tertiary: Color(0xFFD3B382),
-        scaffold: Color(0xFF07130F),
-        surface: Color(0xFF11241D),
-        navBar: Color(0xFF0C1B16),
-        inputFill: Color(0xC712241D),
-        viewerAccent: Color(0xFF79C7B6),
+        primary: Color(0xFF79CFC1),
+        secondary: Color(0xFF9FDCD4),
+        tertiary: Color(0xFFC4D5A0),
+        scaffold: Color(0xFF081516),
+        surface: Color(0xFF12262A),
+        navBar: Color(0xFF0B1C20),
+        inputFill: Color(0xC712262A),
+        viewerAccent: Color(0xFF87D5C9),
       ),
       AppBackgroundTheme.spaceGalaxies => const _ThemePalette(
         primary: Color(0xFF8DB1FF),
@@ -266,14 +267,14 @@ class AppTheme {
         viewerAccent: Color(0xFFFFC58E),
       ),
       AppBackgroundTheme.quoteflowGlow => const _ThemePalette(
-        primary: Color(0xFFFFBA7A),
-        secondary: Color(0xFFF586B5),
-        tertiary: Color(0xFFFFE49A),
-        scaffold: Color(0xFF1B1322),
-        surface: Color(0xFF3D2845),
-        navBar: Color(0xFF2B1D34),
-        inputFill: Color(0xC73D2845),
-        viewerAccent: Color(0xFFFFD289),
+        primary: Color(0xFFFFC38D),
+        secondary: Color(0xFFDDA0C2),
+        tertiary: Color(0xFFFFE2AE),
+        scaffold: Color(0xFF120A1D),
+        surface: Color(0xFF2A1B35),
+        navBar: Color(0xFF1D1226),
+        inputFill: Color(0xC72A1B35),
+        viewerAccent: Color(0xFFFFD29D),
       ),
     };
   }

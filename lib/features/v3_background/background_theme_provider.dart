@@ -50,7 +50,7 @@ extension AppBackgroundThemeX on AppBackgroundTheme {
 AppBackgroundTheme _themeFromId(String? id) {
   return AppBackgroundTheme.values.firstWhere(
     (theme) => theme.id == id,
-    orElse: () => AppBackgroundTheme.oceanFloor,
+    orElse: () => AppBackgroundTheme.quoteflowGlow,
   );
 }
 

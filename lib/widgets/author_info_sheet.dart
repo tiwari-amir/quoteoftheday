@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/author_wiki_service.dart';
 import '../theme/app_theme.dart';
 
-class AuthorInfoSheet extends StatelessWidget {
+class AuthorInfoSheet extends StatefulWidget {
   const AuthorInfoSheet({
     super.key,
     required this.author,
@@ -16,36 +16,52 @@ class AuthorInfoSheet extends StatelessWidget {
   final Future<AuthorWikiProfile?> Function() loader;
 
   @override
+  State<AuthorInfoSheet> createState() => _AuthorInfoSheetState();
+}
+
+class _AuthorInfoSheetState extends State<AuthorInfoSheet> {
+  late Future<AuthorWikiProfile?> _profileFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = widget.loader();
+  }
+
+  @override
+  void didUpdateWidget(covariant AuthorInfoSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.author != widget.author) {
+      _profileFuture = widget.loader();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final tokens = Theme.of(context).extension<AppThemeTokens>();
-    final fill = tokens?.glassFill ?? scheme.surface.withValues(alpha: 0.84);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final tokens = theme.extension<AppThemeTokens>();
+
+    final fill = tokens?.glassFill ?? scheme.surface.withValues(alpha: 0.88);
     final border = tokens?.glassBorder ?? Colors.white.withValues(alpha: 0.18);
-    final shadow = tokens?.glassShadow ?? Colors.black.withValues(alpha: 0.34);
+    final shadow = tokens?.glassShadow ?? Colors.black.withValues(alpha: 0.3);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  fill.withValues(alpha: 0.95),
-                  scheme.surface.withValues(alpha: 0.9),
-                ],
-              ),
+              color: fill.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(color: border),
               boxShadow: [
                 BoxShadow(
                   color: shadow,
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
+                  blurRadius: 22,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
@@ -53,14 +69,14 @@ class AuthorInfoSheet extends StatelessWidget {
               top: false,
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.84,
+                  maxHeight: MediaQuery.of(context).size.height * 0.82,
                 ),
                 child: Column(
                   children: [
                     const _DragHandle(),
                     Expanded(
                       child: FutureBuilder<AuthorWikiProfile?>(
-                        future: loader(),
+                        future: _profileFuture,
                         builder: (context, snapshot) {
                           if (snapshot.connectionState !=
                               ConnectionState.done) {
@@ -69,11 +85,13 @@ class AuthorInfoSheet extends StatelessWidget {
 
                           final info = snapshot.data;
                           if (info == null) {
-                            return _AuthorUnavailableState(author: author);
+                            return _AuthorUnavailableState(
+                              author: widget.author,
+                            );
                           }
 
                           return _AuthorProfileContent(
-                            requestedAuthor: author,
+                            requestedAuthor: widget.author,
                             info: info,
                           );
                         },
@@ -98,10 +116,10 @@ class _DragHandle extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 8, 0, 10),
       child: Container(
-        width: 44,
+        width: 42,
         height: 4,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.35),
+          color: Colors.white.withValues(alpha: 0.32),
           borderRadius: BorderRadius.circular(999),
         ),
       ),
@@ -119,15 +137,15 @@ class _AuthorLoadingState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(strokeWidth: 2.6),
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.2),
           ),
           const SizedBox(height: 12),
           Text(
-            'Loading author snapshot...',
+            'Loading author info',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withValues(alpha: 0.78),
+              color: Colors.white.withValues(alpha: 0.8),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -144,43 +162,42 @@ class _AuthorUnavailableState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 6, 18, 24),
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _AuthorAvatar(imageUrl: null, size: 126),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      author,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _MetaPill(
-                      icon: Icons.info_outline,
-                      label: 'No verified match',
-                      color: scheme.secondary,
-                    ),
-                  ],
+              const _AuthorAvatar(imageUrl: null, size: 132),
+              const SizedBox(height: 16),
+              Text(
+                author,
+                textAlign: TextAlign.center,
+                style: textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Author profile',
+                textAlign: TextAlign.center,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.72),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          _InfoSection(
-            title: 'About this author',
+          const SizedBox(height: 22),
+          _SectionBlock(
+            title: 'Profile',
             child: Text(
-              'No reliable Wikipedia profile was found yet. Try another quote by this author or a cleaner author name.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              'No reliable Wikipedia profile was found yet for this author.',
+              style: textTheme.bodyMedium?.copyWith(
                 height: 1.45,
                 color: Colors.white.withValues(alpha: 0.86),
               ),
@@ -203,117 +220,111 @@ class _AuthorProfileContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final textTheme = Theme.of(context).textTheme;
     final facts = _AuthorFacts.fromSummary(info.summary);
-    final subtitle = _normalized(requestedAuthor) == _normalized(info.wikiTitle)
-        ? null
-        : 'Quoted as $requestedAuthor';
+    final sourceUrl = info.url?.trim() ?? '';
+    final subtitle = _normalize(requestedAuthor) == _normalize(info.wikiTitle)
+        ? 'Wikipedia profile'
+        : 'Matched from "$requestedAuthor"';
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _AuthorAvatar(imageUrl: info.imageUrl, size: 135),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      info.wikiTitle,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        height: 1.2,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.72),
-                        ),
-                      ),
-                    ],
-                  ],
+              _AuthorAvatar(imageUrl: info.imageUrl, size: 132),
+              const SizedBox(height: 16),
+              Text(
+                info.wikiTitle,
+                textAlign: TextAlign.center,
+                style: textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  height: 1.1,
                 ),
               ),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.72),
+                ),
+              ),
+              if (facts.lifeSpan != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  facts.lifeSpan!,
+                  textAlign: TextAlign.center,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.64),
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MetaPill(
-                icon: Icons.auto_stories_outlined,
-                label: 'Author Snapshot',
-                color: theme.colorScheme.primary,
-              ),
-              _MetaPill(
-                icon: Icons.public,
-                label: 'Wikipedia',
-                color: theme.colorScheme.secondary,
-              ),
-              if (facts.lifeSpan != null)
-                _MetaPill(
-                  icon: Icons.timeline,
-                  label: facts.lifeSpan!,
-                  color: theme.colorScheme.tertiary,
-                ),
-            ],
-          ),
-          if (facts.tagline != null) ...[
-            const SizedBox(height: 18),
-            _InfoSection(
-              title: 'At a glance',
-              child: Text(
-                facts.tagline!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  height: 1.45,
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
           if (facts.role != null) ...[
-            const SizedBox(height: 12),
-            _InfoSection(
-              title: 'Known for',
-              child: Text(
-                facts.role!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  height: 1.45,
-                  color: Colors.white.withValues(alpha: 0.9),
+            const SizedBox(height: 20),
+            Align(
+              alignment: Alignment.center,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: _SectionBlock(
+                  title: 'Known for',
+                  child: Text(
+                    facts.role!,
+                    textAlign: TextAlign.center,
+                    style: textTheme.bodyMedium?.copyWith(
+                      height: 1.5,
+                      color: Colors.white.withValues(alpha: 0.92),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          _InfoSection(
-            title: 'Bio',
-            child: Text(
-              info.summary.isEmpty
-                  ? 'Wikipedia entry found, but summary is unavailable.'
-                  : info.summary,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                height: 1.58,
-                color: Colors.white.withValues(alpha: 0.88),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.center,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: _SectionBlock(
+                title: 'Biography',
+                child: Text(
+                  info.summary.isEmpty
+                      ? 'Wikipedia entry found, but summary is unavailable.'
+                      : info.summary,
+                  textAlign: TextAlign.start,
+                  style: textTheme.bodyMedium?.copyWith(
+                    height: 1.62,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
               ),
             ),
           ),
+          if (sourceUrl.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Source: $sourceUrl',
+              textAlign: TextAlign.center,
+              style: textTheme.bodySmall?.copyWith(
+                color: Colors.white.withValues(alpha: 0.62),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  String _normalized(String value) {
+  String _normalize(String value) {
     return value
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
@@ -322,82 +333,52 @@ class _AuthorProfileContent extends StatelessWidget {
   }
 }
 
-class _InfoSection extends StatelessWidget {
-  const _InfoSection({required this.title, required this.child});
+class _SectionBlock extends StatelessWidget {
+  const _SectionBlock({required this.title, required this.child});
 
   final String title;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
-            scheme.surface.withValues(alpha: 0.7),
-            scheme.surface.withValues(alpha: 0.52),
+            Colors.white.withValues(alpha: 0.08),
+            Colors.black.withValues(alpha: 0.16),
           ],
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: Colors.white.withValues(alpha: 0.88),
-              letterSpacing: 0.18,
+          Center(
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.92),
+                letterSpacing: 0.4,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Divider(
+              height: 1,
+              color: Colors.white.withValues(alpha: 0.14),
+            ),
+          ),
           child,
-        ],
-      ),
-    );
-  }
-}
-
-class _MetaPill extends StatelessWidget {
-  const _MetaPill({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: color.withValues(alpha: 0.2),
-        border: Border.all(color: color.withValues(alpha: 0.55)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: color.withValues(alpha: 0.95)),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: Colors.white.withValues(alpha: 0.92),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
         ],
       ),
     );
@@ -419,12 +400,12 @@ class _AuthorAvatar extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.26)),
         boxShadow: [
           BoxShadow(
-            color: accent.withValues(alpha: 0.28),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: accent.withValues(alpha: 0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
           ),
         ],
       ),
@@ -462,16 +443,16 @@ class _AvatarFallback extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            scheme.primary.withValues(alpha: 0.75),
-            scheme.secondary.withValues(alpha: 0.75),
+            scheme.primary.withValues(alpha: 0.74),
+            scheme.secondary.withValues(alpha: 0.74),
           ],
         ),
       ),
       child: Center(
         child: Icon(
-          Icons.person_outline,
-          size: size * 0.44,
-          color: Colors.white.withValues(alpha: 0.9),
+          Icons.person_outline_rounded,
+          size: size * 0.36,
+          color: Colors.white.withValues(alpha: 0.92),
         ),
       ),
     );
@@ -479,9 +460,8 @@ class _AvatarFallback extends StatelessWidget {
 }
 
 class _AuthorFacts {
-  const _AuthorFacts({this.tagline, this.role, this.birthYear, this.deathYear});
+  const _AuthorFacts({this.role, this.birthYear, this.deathYear});
 
-  final String? tagline;
   final String? role;
   final String? birthYear;
   final String? deathYear;
@@ -497,20 +477,11 @@ class _AuthorFacts {
     final clean = summary.trim();
     if (clean.isEmpty) return const _AuthorFacts();
 
-    final sentenceMatch = RegExp(
-      r'^(.{0,220}?[.!?])(?:\s|$)',
-      multiLine: true,
-    ).firstMatch(clean);
-    final firstSentence = (sentenceMatch?.group(1) ?? clean).trim();
-    final tagline = _clip(firstSentence, 180);
-
     final roleMatch = RegExp(
-      r'\b(?:is|was)\s+(?:an?|the)\s+([^.,;]{6,85})',
+      r'\b(?:is|was)\s+(?:an?|the)\s+([^.!?]{6,220})',
       caseSensitive: false,
     ).firstMatch(clean);
-    final role = roleMatch == null
-        ? null
-        : _clip(_normalize(roleMatch.group(1)!), 72);
+    final role = roleMatch == null ? null : _normalize(roleMatch.group(1)!);
 
     final rangeMatch = RegExp(
       r'\((1[5-9]\d{2}|20[0-2]\d)\s*[-\u2013]\s*(1[5-9]\d{2}|20[0-2]\d|present)\)',
@@ -532,20 +503,10 @@ class _AuthorFacts {
       caseSensitive: false,
     ).firstMatch(clean)?.group(1);
 
-    return _AuthorFacts(
-      tagline: tagline,
-      role: role,
-      birthYear: birthYear,
-      deathYear: deathYear,
-    );
+    return _AuthorFacts(role: role, birthYear: birthYear, deathYear: deathYear);
   }
 
   static String _normalize(String value) {
     return value.replaceAll(RegExp(r'\s+'), ' ').trim();
-  }
-
-  static String _clip(String value, int max) {
-    if (value.length <= max) return value;
-    return '${value.substring(0, max - 1).trimRight()}...';
   }
 }

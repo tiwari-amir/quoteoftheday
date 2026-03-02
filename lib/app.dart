@@ -8,12 +8,25 @@ import 'providers/router_provider.dart';
 import 'providers/streak_provider.dart';
 import 'theme/app_theme.dart';
 import 'widgets/animated_gradient_background.dart';
+import 'widgets/splash_screen.dart';
 
-class QuoteOfTheDayApp extends ConsumerWidget {
+class QuoteOfTheDayApp extends ConsumerStatefulWidget {
   const QuoteOfTheDayApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<QuoteOfTheDayApp> createState() => _QuoteOfTheDayAppState();
+}
+
+class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
+  bool _showSplash = true;
+
+  void _handleSplashFinished() {
+    if (!mounted || !_showSplash) return;
+    setState(() => _showSplash = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
     ref.watch(authBootstrapProvider);
@@ -43,6 +56,12 @@ class QuoteOfTheDayApp extends ConsumerWidget {
                 child: const SizedBox.expand(),
               ),
             ),
+            if (_showSplash)
+              Positioned.fill(
+                child: AbsorbPointer(
+                  child: SplashScreen(onFinished: _handleSplashFinished),
+                ),
+              ),
           ],
         );
       },

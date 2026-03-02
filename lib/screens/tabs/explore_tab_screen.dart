@@ -29,6 +29,16 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
   String _quotesSignature = '';
   List<QuoteModel> _forYouCache = const <QuoteModel>[];
   List<String> _topTagsCache = const <String>[];
+  bool _showMostLikedSection = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _showMostLikedSection = true);
+    });
+  }
 
   @override
   void dispose() {
@@ -50,7 +60,6 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
     final quotesAsync = ref.watch(allQuotesProvider);
     final categoriesAsync = ref.watch(categoryCountsProvider);
     final moodsAsync = ref.watch(moodCountsProvider);
-    final topLikedAsync = ref.watch(topLikedQuotesProvider);
     final service = ref.read(quoteServiceProvider);
 
     return Scaffold(
@@ -167,14 +176,8 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                       else ...[
                         _PreviewSection(title: 'For You', items: _forYouCache),
                         const SizedBox(height: 14),
-                        topLikedAsync.when(
-                          data: (likedQuotes) => _PreviewSection(
-                            title: 'Most liked',
-                            items: likedQuotes.take(12).toList(growable: false),
-                          ),
-                          loading: () => const SizedBox.shrink(),
-                          error: (error, stack) => const SizedBox.shrink(),
-                        ),
+                        if (_showMostLikedSection)
+                          const _ExploreMostLikedSection(),
                         const SizedBox(height: 14),
                         categoriesAsync.when(
                           data: (cats) {
@@ -425,6 +428,23 @@ class _PreviewSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ExploreMostLikedSection extends ConsumerWidget {
+  const _ExploreMostLikedSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final topLikedAsync = ref.watch(topLikedQuotesProvider);
+    return topLikedAsync.when(
+      data: (likedQuotes) => _PreviewSection(
+        title: 'Most liked',
+        items: likedQuotes.take(12).toList(growable: false),
+      ),
+      loading: () => const SizedBox.shrink(),
+      error: (error, stack) => const SizedBox.shrink(),
     );
   }
 }

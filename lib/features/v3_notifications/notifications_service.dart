@@ -7,6 +7,50 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+bool _timezoneInitialized = false;
+Future<void>? _timezoneInitializationFuture;
+
+Future<void> initializeNotificationTimezone() {
+  if (_timezoneInitialized) return Future.value();
+  _timezoneInitializationFuture ??= _initializeNotificationTimezoneInternal();
+  return _timezoneInitializationFuture!;
+}
+
+Future<void> _initializeNotificationTimezoneInternal() async {
+  if (kIsWeb) {
+    _timezoneInitialized = true;
+    return;
+  }
+
+  tz.initializeTimeZones();
+
+  String? detectedTimeZone;
+  try {
+    detectedTimeZone = await FlutterTimezone.getLocalTimezone();
+  } catch (error) {
+    debugPrint('[Notifications] Failed to detect device timezone: $error');
+  }
+
+  final selectedTimeZone =
+      (detectedTimeZone != null && detectedTimeZone.trim().isNotEmpty)
+      ? detectedTimeZone.trim()
+      : 'UTC';
+
+  try {
+    tz.setLocalLocation(tz.getLocation(selectedTimeZone));
+  } catch (error) {
+    debugPrint(
+      '[Notifications] Unknown timezone "$selectedTimeZone", falling back to UTC: $error',
+    );
+    tz.setLocalLocation(tz.getLocation('UTC'));
+  }
+
+  _timezoneInitialized = true;
+  debugPrint(
+    '[Notifications] Timezone initialized. detected="$detectedTimeZone", active="${tz.local.name}"',
+  );
+}
+
 class V3NotificationsService {
   V3NotificationsService();
 
@@ -29,17 +73,15 @@ class V3NotificationsService {
   Future<void> initialize() async {
     if (_initialized || !isSupported) return;
 
-    tz.initializeTimeZones();
-    try {
-      final timezone = await FlutterTimezone.getLocalTimezone();
-      tz.setLocalLocation(tz.getLocation(timezone));
-    } catch (error) {
-      debugPrint('Timezone detection failed, using default timezone: $error');
-    }
+    await initializeNotificationTimezone();
 
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: DarwinInitializationSettings(),
+      iOS: DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      ),
     );
 
     await _plugin.initialize(
@@ -52,34 +94,86 @@ class V3NotificationsService {
       },
     );
 
-    final android = _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    final androidPermission = await android?.requestNotificationsPermission();
-    if (androidPermission != null) {
-      _notificationsGranted = androidPermission;
-    }
-    await android?.requestExactAlarmsPermission();
-    final canExact = await android?.canScheduleExactNotifications();
-    if (canExact != null) {
-      _canUseExactAlarms = canExact;
+    if (Platform.isAndroid) {
+      final android = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+
+      final androidPermission = await _requestAndroidPermission(android);
+      if (androidPermission != null) {
+        _notificationsGranted = androidPermission;
+      }
+
+      await android?.requestExactAlarmsPermission();
+      final canExact = await android?.canScheduleExactNotifications();
+      if (canExact != null) {
+        _canUseExactAlarms = canExact;
+      }
+
+      debugPrint(
+        '[Notifications] Android permissions: notificationsGranted=$_notificationsGranted, canUseExactAlarms=$_canUseExactAlarms',
+      );
     }
 
-    final ios = _plugin
-        .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >();
-    final iosPermission = await ios?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    if (iosPermission != null) {
-      _notificationsGranted = _notificationsGranted && iosPermission;
+    if (Platform.isIOS) {
+      final iosImplementation = _plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
+      final iosPermission = await iosImplementation?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      if (iosPermission != null) {
+        _notificationsGranted = _notificationsGranted && iosPermission;
+      }
+      debugPrint(
+        '[Notifications] iOS permissions: notificationsGranted=$_notificationsGranted',
+      );
     }
 
     _initialized = true;
+  }
+
+  Future<bool?> _requestAndroidPermission(
+    AndroidFlutterLocalNotificationsPlugin? implementation,
+  ) async {
+    if (implementation == null) return null;
+
+    try {
+      // flutter_local_notifications >= 17 API
+      return await implementation.requestNotificationsPermission();
+    } catch (_) {
+      try {
+        // Backward-compatible fallback API
+        final dynamic dynamicImplementation = implementation;
+        final result = await dynamicImplementation.requestPermission();
+        return result is bool ? result : null;
+      } catch (error) {
+        debugPrint('[Notifications] Android permission request failed: $error');
+        return null;
+      }
+    }
+  }
+
+  tz.TZDateTime nextInstanceOfTime(int hour, int minute) {
+    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
+    tz.TZDateTime scheduled = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    );
+
+    if (!scheduled.isAfter(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+
+    return scheduled;
   }
 
   Future<void> cancelDailyReminder() async {
@@ -90,6 +184,7 @@ class V3NotificationsService {
     if (!isSupported) return;
     await initialize();
     await _plugin.cancelAll();
+    debugPrint('[Notifications] Cancelled all scheduled notifications.');
   }
 
   Future<void> scheduleReminder({
@@ -104,6 +199,7 @@ class V3NotificationsService {
     await initialize();
     if (!_notificationsGranted) return;
     await _plugin.cancel(id);
+    debugPrint('[Notifications] Cleared existing notification with id=$id.');
 
     final androidDetails = AndroidNotificationDetails(
       'quote_reminder_channel',
@@ -119,6 +215,10 @@ class V3NotificationsService {
       iOS: const DarwinNotificationDetails(),
     );
 
+    debugPrint(
+      '[Notifications] Scheduling id=$id, repeatDaily=$repeatDaily, timezone=${tz.local.name}, nextTrigger=$schedule',
+    );
+
     try {
       await _scheduleWithMode(
         id: id,
@@ -130,6 +230,7 @@ class V3NotificationsService {
         mode: androidScheduleMode,
         repeatDaily: repeatDaily,
       );
+      debugPrint('[Notifications] Scheduled id=$id successfully.');
     } catch (error) {
       if (!Platform.isAndroid ||
           androidScheduleMode == AndroidScheduleMode.inexactAllowWhileIdle) {
@@ -148,6 +249,9 @@ class V3NotificationsService {
         payload: payload,
         mode: AndroidScheduleMode.inexactAllowWhileIdle,
         repeatDaily: repeatDaily,
+      );
+      debugPrint(
+        '[Notifications] Scheduled id=$id with fallback inexact mode.',
       );
     }
   }

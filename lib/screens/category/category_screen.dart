@@ -1,11 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../models/quote_model.dart';
 import '../../providers/quote_providers.dart';
 import '../../services/quote_service.dart';
 import '../../widgets/editorial_background.dart';
@@ -25,6 +23,16 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   final ScrollController _scrollController = ScrollController();
 
   String _query = '';
+  bool _showMostLikedSection = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _showMostLikedSection = true);
+    });
+  }
 
   @override
   void dispose() {
@@ -40,7 +48,12 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   }) {
     if (!_scrollController.hasClients) return;
 
-    final index = items.indexWhere((item) => item.label.startsWith(letter));
+    final normalized = letter.trim().toUpperCase();
+    final index = items.indexWhere((item) {
+      final label = item.label.trim();
+      if (label.isEmpty) return false;
+      return label[0].toUpperCase() == normalized;
+    });
     if (index < 0) return;
 
     const crossAxisCount = 2;
@@ -62,7 +75,6 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(categoryCountsProvider);
-    final topLikedAsync = ref.watch(topLikedQuotesProvider);
     final service = ref.read(quoteServiceProvider);
 
     return Scaffold(
@@ -129,6 +141,7 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                                   item.label.toLowerCase().contains(_query),
                             )
                             .toList(growable: false);
+                        final quickLetters = _buildQuickLetters(filtered);
 
                         if (filtered.isEmpty) {
                           return const Center(
@@ -141,54 +154,55 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                             return Row(
                               children: [
                                 Expanded(
-                                  child: CustomScrollView(
+                                  child: Scrollbar(
                                     controller: _scrollController,
-                                    slivers: [
-                                      SliverGrid(
-                                        delegate: SliverChildBuilderDelegate((
-                                          context,
-                                          index,
-                                        ) {
-                                          final item = filtered[index];
-                                          final routeTag = item.tag == 'series'
-                                              ? 'movies/series'
-                                              : item.tag;
-                                          return ScaleTap(
-                                                onTap: () => context.push(
-                                                  '/viewer/category/${Uri.encodeComponent(routeTag)}',
-                                                ),
-                                                child: _CategoryCard(
-                                                  item: item,
-                                                ),
-                                              )
-                                              .animate(delay: (index * 24).ms)
-                                              .fadeIn(duration: 260.ms)
-                                              .slideY(begin: 0.08, end: 0);
-                                        }, childCount: filtered.length),
-                                        gridDelegate:
-                                            const SliverGridDelegateWithFixedCrossAxisCount(
-                                              crossAxisCount: 2,
-                                              crossAxisSpacing: 14,
-                                              mainAxisSpacing: 14,
-                                              childAspectRatio: 1.08,
+                                    thumbVisibility: true,
+                                    child: CustomScrollView(
+                                      controller: _scrollController,
+                                      slivers: [
+                                        SliverGrid(
+                                          delegate: SliverChildBuilderDelegate((
+                                            context,
+                                            index,
+                                          ) {
+                                            final item = filtered[index];
+                                            final routeTag =
+                                                item.tag == 'series'
+                                                ? 'movies/series'
+                                                : item.tag;
+                                            return ScaleTap(
+                                              onTap: () => context.push(
+                                                '/viewer/category/${Uri.encodeComponent(routeTag)}',
+                                              ),
+                                              child: _CategoryCard(item: item),
+                                            );
+                                          }, childCount: filtered.length),
+                                          gridDelegate:
+                                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                                crossAxisCount: 2,
+                                                crossAxisSpacing: 14,
+                                                mainAxisSpacing: 14,
+                                                childAspectRatio: 1.08,
+                                              ),
+                                        ),
+                                        SliverToBoxAdapter(
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 22,
+                                              bottom: 4,
                                             ),
-                                      ),
-                                      SliverToBoxAdapter(
-                                        child: Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 22,
-                                            bottom: 4,
-                                          ),
-                                          child: _MostLikedSection(
-                                            quotesAsync: topLikedAsync,
+                                            child: _showMostLikedSection
+                                                ? const _MostLikedSection()
+                                                : const SizedBox.shrink(),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 10),
                                 _LetterQuickBar(
+                                  letters: quickLetters,
                                   onLetterTap: (letter) => _jumpToLetter(
                                     letter: letter,
                                     items: filtered,
@@ -219,6 +233,20 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
     final tag = rawTag.trim().toLowerCase();
     if (tag == 'series') return 'Movies/Series';
     return service.toTitleCase(tag);
+  }
+
+  List<String> _buildQuickLetters(List<_TagCount> items) {
+    final letters = <String>{};
+    for (final item in items) {
+      final normalized = item.label.trim();
+      if (normalized.isEmpty) continue;
+      final first = normalized[0].toUpperCase();
+      if (RegExp(r'^[A-Z]$').hasMatch(first)) {
+        letters.add(first);
+      }
+    }
+    final sorted = letters.toList(growable: false)..sort();
+    return sorted;
   }
 }
 
@@ -282,62 +310,64 @@ class _CategoryCardState extends State<_CategoryCard> {
 }
 
 class _LetterQuickBar extends StatelessWidget {
-  const _LetterQuickBar({required this.onLetterTap});
+  const _LetterQuickBar({required this.letters, required this.onLetterTap});
 
+  final List<String> letters;
   final ValueChanged<String> onLetterTap;
-
-  static const List<String> _letters = [
-    'A',
-    'B',
-    'C',
-    'D',
-    'E',
-    'F',
-    'G',
-    'H',
-    'I',
-    'J',
-    'K',
-    'L',
-    'M',
-    'N',
-    'O',
-    'P',
-    'Q',
-    'R',
-    'S',
-    'T',
-    'U',
-    'V',
-    'W',
-    'X',
-    'Y',
-    'Z',
-  ];
 
   @override
   Widget build(BuildContext context) {
+    if (letters.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return GlassCard(
       blur: 16,
       borderRadius: 18,
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          for (final letter in _letters)
-            ScaleTap(
-              onTap: () => onLetterTap(letter),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 1),
-                child: Text(
-                  letter,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontSize: 10),
-                ),
-              ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          String? lastDispatched;
+
+          void dispatchLetterAtY(double y) {
+            final safeHeight = constraints.maxHeight <= 0
+                ? 1.0
+                : constraints.maxHeight;
+            final itemHeight = safeHeight / letters.length;
+            var index = (y / itemHeight).floor();
+            if (index < 0) index = 0;
+            if (index >= letters.length) index = letters.length - 1;
+            final selected = letters[index];
+            if (selected == lastDispatched) return;
+            lastDispatched = selected;
+            onLetterTap(selected);
+          }
+
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (details) => dispatchLetterAtY(details.localPosition.dy),
+            onVerticalDragDown: (details) =>
+                dispatchLetterAtY(details.localPosition.dy),
+            onVerticalDragUpdate: (details) =>
+                dispatchLetterAtY(details.localPosition.dy),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                for (final letter in letters)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 1),
+                    child: Text(
+                      letter,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -355,13 +385,12 @@ class _TagCount {
   final int count;
 }
 
-class _MostLikedSection extends StatelessWidget {
-  const _MostLikedSection({required this.quotesAsync});
-
-  final AsyncValue<List<QuoteModel>> quotesAsync;
+class _MostLikedSection extends ConsumerWidget {
+  const _MostLikedSection();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final quotesAsync = ref.watch(topLikedQuotesProvider);
     return quotesAsync.when(
       data: (quotes) {
         if (quotes.isEmpty) return const SizedBox.shrink();

@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants.dart';
+import '../../features/v3_background/background_theme_provider.dart';
 import '../../features/v3_share/story_share_sheet.dart';
 import '../../models/quote_model.dart';
 import '../../models/quote_viewer_filter.dart';
@@ -17,10 +18,11 @@ import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/storage_provider.dart';
 import '../../services/quote_service.dart';
+import '../../theme/app_theme.dart';
+import '../../theme/quote_container_palette.dart';
 import '../../widgets/author_info_sheet.dart';
 import '../../widgets/editorial_background.dart';
 import '../../widgets/glass_icon_button.dart';
-import '../../theme/app_theme.dart';
 
 class QuoteViewerScreen extends ConsumerStatefulWidget {
   const QuoteViewerScreen({
@@ -370,6 +372,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   Widget build(BuildContext context) {
     final savedIds = ref.watch(savedQuoteIdsProvider);
     final likedIds = ref.watch(likedQuoteIdsProvider);
+    final backgroundTheme = ref.watch(appBackgroundThemeProvider);
+    final quotePalette = quoteContainerPaletteFor(backgroundTheme);
     final normalizedType = _filter.type.toLowerCase();
     final quotesAsync = normalizedType == 'saved'
         ? ref.watch(allQuotesProvider).whenData((all) {
@@ -486,6 +490,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                                 quote: quote,
                                 authorLabel: authorLabel,
                                 service: service,
+                                palette: quotePalette,
                               ),
                             ),
                           ),
@@ -633,11 +638,13 @@ class _QuotePanel extends StatelessWidget {
     required this.quote,
     required this.authorLabel,
     required this.service,
+    required this.palette,
   });
 
   final QuoteModel quote;
   final String authorLabel;
   final QuoteService service;
+  final QuoteContainerPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -661,15 +668,28 @@ class _QuotePanel extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(24),
-                  color: const Color(0xFF0B1D21).withValues(alpha: 0.5),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      palette.fillTop.withValues(alpha: 0.92),
+                      palette.fillBottom.withValues(alpha: 0.95),
+                    ],
+                  ),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.16),
+                    color: palette.border.withValues(alpha: 0.9),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.24),
+                      color: palette.glow.withValues(alpha: 0.18),
                       blurRadius: 30,
+                      spreadRadius: 0.5,
+                      offset: const Offset(0, 14),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.24),
+                      blurRadius: 24,
                       offset: const Offset(0, 12),
                     ),
                   ],
@@ -709,11 +729,11 @@ class _QuotePanel extends StatelessWidget {
                         authorLabel,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.nunitoSans(
+                        style: GoogleFonts.dmSans(
                           fontSize: 15,
-                          letterSpacing: 0.25,
+                          letterSpacing: 0.35,
                           fontWeight: FontWeight.w700,
-                          color: Colors.white.withValues(alpha: 0.92),
+                          color: palette.authorText,
                         ),
                       ),
                       if (normalizedTags.isNotEmpty) ...[
@@ -722,10 +742,11 @@ class _QuotePanel extends StatelessWidget {
                           normalizedTags,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.nunitoSans(
+                          style: GoogleFonts.dmSans(
                             fontSize: 10.5,
-                            color: Colors.white.withValues(alpha: 0.62),
+                            color: palette.tagText,
                             fontWeight: FontWeight.w600,
+                            letterSpacing: 0.25,
                           ),
                         ),
                       ],
@@ -742,9 +763,9 @@ class _QuotePanel extends StatelessWidget {
   }
 
   TextStyle _quoteTextStyle(BuildContext context, int words) {
-    final base = GoogleFonts.lora(
+    final base = GoogleFonts.cormorantGaramond(
       textStyle: Theme.of(context).textTheme.headlineMedium,
-      color: Colors.white.withValues(alpha: 0.98),
+      color: palette.quoteText.withValues(alpha: 0.98),
       fontStyle: FontStyle.normal,
     );
     if (words <= 10) {

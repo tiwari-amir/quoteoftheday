@@ -124,7 +124,9 @@ class NotificationSettingsNotifier
   }
 
   Future<void> rescheduleFromStartup() async {
-    await _ensureLoaded();
+    _loadFuture = _loadInternal();
+    await _loadFuture;
+    debugPrint('[Notifications] Startup reschedule requested.');
     await _applySchedule();
   }
 
@@ -164,9 +166,14 @@ class NotificationSettingsNotifier
 
       // Hard reset on each pass to avoid stale schedules from previous models.
       await service.cancelAllScheduledNotifications();
+      debugPrint(
+        '[Notifications] Cleared existing schedules before reschedule.',
+      );
 
       if (!service.notificationsGranted) {
-        debugPrint('Notifications not granted; skipping scheduling.');
+        debugPrint(
+          '[Notifications] Permissions not granted; skipping schedule.',
+        );
         return;
       }
 
@@ -182,8 +189,8 @@ class NotificationSettingsNotifier
         await _scheduleStreakReminder();
       }
     } catch (error, stack) {
-      debugPrint('Notification scheduling failed: $error');
-      debugPrint('$stack');
+      debugPrint('[Notifications] Scheduling failed: $error');
+      debugPrint('[Notifications] $stack');
     } finally {
       _isRescheduling = false;
     }
@@ -192,9 +199,9 @@ class NotificationSettingsNotifier
   Future<void> _scheduleDailyQuote() async {
     final service = _ref.read(notificationsServiceProvider);
     final quote = await _ref.read(dailyQuoteProvider.future);
-    final schedule = _nextDailyTrigger(
-      hour: state.dailyHour,
-      minute: state.dailyMinute,
+    final schedule = _nextInstanceOfTime(state.dailyHour, state.dailyMinute);
+    debugPrint(
+      '[Notifications] Scheduling daily quote: id=$_kNotificationDailyId, trigger=$schedule',
     );
 
     await service.scheduleReminder(
@@ -214,9 +221,9 @@ class NotificationSettingsNotifier
       return;
     }
 
-    final schedule = _nextDailyTrigger(
-      hour: state.extraHour,
-      minute: state.extraMinute,
+    final schedule = _nextInstanceOfTime(state.extraHour, state.extraMinute);
+    debugPrint(
+      '[Notifications] Scheduling extra quote: id=$_kNotificationExtraId, trigger=$schedule',
     );
     await service.scheduleReminder(
       id: _kNotificationExtraId,
@@ -294,6 +301,9 @@ class NotificationSettingsNotifier
 
     final service = _ref.read(notificationsServiceProvider);
     final schedule = now.add(const Duration(seconds: 5));
+    debugPrint(
+      '[Notifications] Scheduling streak reminder: id=$_kNotificationStreakId, trigger=$schedule',
+    );
     await service.scheduleReminder(
       id: _kNotificationStreakId,
       schedule: schedule,
@@ -361,9 +371,9 @@ class NotificationSettingsNotifier
     return quotes[index];
   }
 
-  tz.TZDateTime _nextDailyTrigger({required int hour, required int minute}) {
-    final now = tz.TZDateTime.now(tz.local);
-    var schedule = tz.TZDateTime(
+  tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
+    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
+    tz.TZDateTime scheduled = tz.TZDateTime(
       tz.local,
       now.year,
       now.month,
@@ -371,10 +381,10 @@ class NotificationSettingsNotifier
       hour,
       minute,
     );
-    if (!schedule.isAfter(now)) {
-      schedule = schedule.add(const Duration(days: 1));
+    if (!scheduled.isAfter(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
     }
-    return schedule;
+    return scheduled;
   }
 
   String _trimQuoteBody(String quote) {

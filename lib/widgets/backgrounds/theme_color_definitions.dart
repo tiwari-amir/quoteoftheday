@@ -20,11 +20,11 @@ class ThemeColorSet {
 /// Restrained, cinematic palettes for all motion environments.
 abstract final class ThemeColorDefinitions {
   static const ocean = ThemeColorSet(
-    baseTop: Color(0xFF061A1C),
-    baseBottom: Color(0xFF03090B),
-    hazeA: Color(0x223B8F88),
-    hazeB: Color(0x142E6A63),
-    accent: Color(0x665FAEA6),
+    baseTop: Color(0xFF0A2328),
+    baseBottom: Color(0xFF050C10),
+    hazeA: Color(0x224DAEA5),
+    hazeB: Color(0x18316F73),
+    accent: Color(0x6694D9D0),
   );
 
   static const space = ThemeColorSet(
@@ -60,10 +60,10 @@ abstract final class ThemeColorDefinitions {
   );
 
   static const glow = ThemeColorSet(
-    baseTop: Color(0xFF3A2842),
-    baseBottom: Color(0xFF1A1422),
-    hazeA: Color(0x33F0B496),
-    hazeB: Color(0x22C278A7),
-    accent: Color(0x66FFDDB0),
+    baseTop: Color(0xFF120A1D),
+    baseBottom: Color(0xFF1B1224),
+    hazeA: Color(0x33F5B783),
+    hazeB: Color(0x22D28CB2),
+    accent: Color(0x66FFE1B9),
   );
 }

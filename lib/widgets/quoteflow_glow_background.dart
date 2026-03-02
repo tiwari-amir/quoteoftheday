@@ -19,24 +19,40 @@ class QuoteFlowGlowBackground extends ThemeBackground {
 
 class _QuoteFlowGlowBackgroundState
     extends ThemeBackgroundState<QuoteFlowGlowBackground> {
-  final List<_GlowSparkle> _sparkles = <_GlowSparkle>[];
+  final List<_GlowDust> _dust = <_GlowDust>[];
+  final List<_LightVeil> _veils = <_LightVeil>[];
   final List<_RadialBloom> _blooms = <_RadialBloom>[];
 
   @override
-  Duration get animationDuration => const Duration(seconds: 32);
+  Duration get animationDuration => const Duration(seconds: 34);
 
   @override
   void initializeScene() {
-    _sparkles.clear();
-    for (var i = 0; i < 12; i++) {
-      _sparkles.add(
-        _GlowSparkle(
+    _dust.clear();
+    _veils.clear();
+
+    for (var i = 0; i < 18; i++) {
+      _dust.add(
+        _GlowDust(
           x: random.nextDouble(),
           y: random.nextDouble(),
-          driftX: (random.nextDouble() - 0.5) * 0.003,
-          driftY: (random.nextDouble() - 0.5) * 0.0024,
-          radius: 0.6 + random.nextDouble() * 1.4,
-          alpha: 0.06 + random.nextDouble() * 0.12,
+          driftX: (random.nextDouble() - 0.5) * 0.0028,
+          driftY: (random.nextDouble() - 0.5) * 0.0019,
+          radius: 0.7 + random.nextDouble() * 1.5,
+          alpha: 0.04 + random.nextDouble() * 0.12,
+          phase: random.nextDouble() * math.pi * 2,
+        ),
+      );
+    }
+
+    for (var i = 0; i < 3; i++) {
+      _veils.add(
+        _LightVeil(
+          x: 0.22 + i * 0.3 + random.nextDouble() * 0.04,
+          y: 0.36 + random.nextDouble() * 0.12,
+          width: 0.28 + random.nextDouble() * 0.16,
+          height: 0.2 + random.nextDouble() * 0.12,
+          alpha: 0.07 + random.nextDouble() * 0.06,
           phase: random.nextDouble() * math.pi * 2,
         ),
       );
@@ -45,15 +61,15 @@ class _QuoteFlowGlowBackgroundState
 
   @override
   void onFrame(double elapsedSeconds, double deltaSeconds) {
-    final driftScale = (0.45 + widget.motionScale * 0.14).clamp(0.24, 0.66);
-    for (final sparkle in _sparkles) {
-      sparkle.x += sparkle.driftX * deltaSeconds * driftScale;
-      sparkle.y += sparkle.driftY * deltaSeconds * driftScale;
-      sparkle.y += math.sin(elapsedSeconds * 0.09 + sparkle.phase) * 0.00005;
-      if (sparkle.x < -0.04) sparkle.x = 1.04;
-      if (sparkle.x > 1.04) sparkle.x = -0.04;
-      if (sparkle.y < -0.04) sparkle.y = 1.04;
-      if (sparkle.y > 1.04) sparkle.y = -0.04;
+    final driftScale = (0.4 + widget.motionScale * 0.15).clamp(0.25, 0.64);
+    for (final dust in _dust) {
+      dust.x += dust.driftX * deltaSeconds * driftScale;
+      dust.y += dust.driftY * deltaSeconds * driftScale;
+      dust.y += math.sin(elapsedSeconds * 0.08 + dust.phase) * 0.00005;
+      if (dust.x < -0.04) dust.x = 1.04;
+      if (dust.x > 1.04) dust.x = -0.04;
+      if (dust.y < -0.04) dust.y = 1.04;
+      if (dust.y > 1.04) dust.y = -0.04;
     }
 
     _blooms.removeWhere(
@@ -68,7 +84,7 @@ class _QuoteFlowGlowBackgroundState
       _blooms.removeAt(0);
     }
     _blooms.add(
-      _RadialBloom(center: localPosition, startSeconds: now, life: 2.4),
+      _RadialBloom(center: localPosition, startSeconds: now, life: 2.3),
     );
   }
 
@@ -77,7 +93,8 @@ class _QuoteFlowGlowBackgroundState
     return CustomPaint(
       painter: _QuoteFlowGlowPainter(
         animation: repaint,
-        sparkles: _sparkles,
+        dust: _dust,
+        veils: _veils,
         blooms: _blooms,
       ),
       child: const SizedBox.expand(),
@@ -88,71 +105,104 @@ class _QuoteFlowGlowBackgroundState
 class _QuoteFlowGlowPainter extends CustomPainter {
   _QuoteFlowGlowPainter({
     required this.animation,
-    required this.sparkles,
+    required this.dust,
+    required this.veils,
     required this.blooms,
   }) : super(repaint: animation);
 
   final Animation<double> animation;
-  final List<_GlowSparkle> sparkles;
+  final List<_GlowDust> dust;
+  final List<_LightVeil> veils;
   final List<_RadialBloom> blooms;
 
   @override
   void paint(Canvas canvas, Size size) {
     final palette = ThemeColorDefinitions.glow;
-    final elapsed = animation.value * 32.0;
+    final elapsed = animation.value * 34.0;
 
     final base = Paint()
-      ..shader = LinearGradient(
+      ..shader = const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [palette.baseTop, const Color(0xFF4E3554), palette.baseBottom],
-        stops: const [0.0, 0.52, 1.0],
+        colors: <Color>[
+          Color(0xFF120A1D),
+          Color(0xFF241432),
+          Color(0xFF45233F),
+          Color(0xFF794A4B),
+        ],
+        stops: <double>[0.0, 0.42, 0.74, 1.0],
       ).createShader(Offset.zero & size);
     canvas.drawRect(Offset.zero & size, base);
 
-    final horizon = Paint()
+    final dawnGlow = Paint()
       ..shader = RadialGradient(
-        center: Alignment(0, 0.28 + math.sin(elapsed * 0.05) * 0.02),
-        radius: 0.82,
-        colors: [palette.hazeA, Colors.transparent],
-      ).createShader(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, horizon);
+        center: Alignment(0.0, 0.3 + math.sin(elapsed * 0.05) * 0.015),
+        radius: 0.86,
+        colors: <Color>[
+          palette.hazeA.withValues(alpha: 0.42),
+          palette.hazeB.withValues(alpha: 0.2),
+          Colors.transparent,
+        ],
+        stops: const <double>[0.0, 0.56, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawRect(Offset.zero & size, dawnGlow);
+
+    for (final veil in veils) {
+      final cx =
+          (veil.x + math.sin(elapsed * 0.06 + veil.phase) * 0.02) * size.width;
+      final cy =
+          (veil.y + math.cos(elapsed * 0.05 + veil.phase) * 0.014) *
+          size.height;
+      final rect = Rect.fromCenter(
+        center: Offset(cx, cy),
+        width: veil.width * size.width,
+        height: veil.height * size.height,
+      );
+      canvas.drawOval(
+        rect,
+        Paint()
+          ..color = const Color(0xFFFFD6B8).withValues(alpha: veil.alpha)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
+      );
+    }
 
     _paintWaveBand(
       canvas,
       size,
-      y: 0.62 + math.sin(elapsed * 0.08) * 0.01,
-      amplitude: 18,
+      y: 0.62 + math.sin(elapsed * 0.08) * 0.008,
+      amplitude: 16,
       phase: 0.2,
-      color: const Color(0x66F3C89F),
+      color: const Color(0x5CF5C8A5),
     );
     _paintWaveBand(
       canvas,
       size,
-      y: 0.72 + math.sin(elapsed * 0.07 + 1.3) * 0.012,
-      amplitude: 22,
-      phase: 1.1,
-      color: const Color(0x55DF9AB2),
-    );
-    _paintWaveBand(
-      canvas,
-      size,
-      y: 0.8 + math.sin(elapsed * 0.06 + 2.2) * 0.01,
+      y: 0.72 + math.sin(elapsed * 0.07 + 1.3) * 0.01,
       amplitude: 20,
-      phase: 2.2,
-      color: const Color(0x44836AA9),
+      phase: 1.15,
+      color: const Color(0x4DD89DB6),
+    );
+    _paintWaveBand(
+      canvas,
+      size,
+      y: 0.8 + math.sin(elapsed * 0.06 + 2.3) * 0.01,
+      amplitude: 17,
+      phase: 2.1,
+      color: const Color(0x36765D8E),
     );
 
-    for (final sparkle in sparkles) {
-      final px = sparkle.x * size.width;
-      final py = sparkle.y * size.height;
-      final twinkle = 0.65 + 0.35 * math.sin(elapsed * 0.9 + sparkle.phase);
-      final paint = Paint()
-        ..color = const Color(
-          0xFFFFF1D6,
-        ).withValues(alpha: (sparkle.alpha * twinkle).clamp(0.02, 0.18))
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.6);
-      canvas.drawCircle(Offset(px, py), sparkle.radius, paint);
+    for (final particle in dust) {
+      final px = particle.x * size.width;
+      final py = particle.y * size.height;
+      final twinkle = 0.65 + 0.35 * math.sin(elapsed * 0.85 + particle.phase);
+      final alpha = (particle.alpha * twinkle).clamp(0.02, 0.18);
+      canvas.drawCircle(
+        Offset(px, py),
+        particle.radius,
+        Paint()
+          ..color = const Color(0xFFFFEEDB).withValues(alpha: alpha)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8),
+      );
     }
 
     for (final bloom in blooms) {
@@ -160,24 +210,27 @@ class _QuoteFlowGlowPainter extends CustomPainter {
       final progress = age / bloom.life;
       final alpha = (1 - progress).clamp(0.0, 1.0);
       final radius = 20 + progress * 150;
-      final paint = Paint()
-        ..shader =
-            RadialGradient(
-              colors: [
-                const Color(0xFFFFE0B8).withValues(alpha: alpha * 0.24),
-                Colors.transparent,
-              ],
-            ).createShader(
-              Rect.fromCircle(center: bloom.center, radius: radius + 20),
-            );
-      canvas.drawCircle(bloom.center, radius + 20, paint);
+      canvas.drawCircle(
+        bloom.center,
+        radius + 22,
+        Paint()
+          ..shader =
+              RadialGradient(
+                colors: <Color>[
+                  const Color(0xFFFFE0BE).withValues(alpha: alpha * 0.24),
+                  Colors.transparent,
+                ],
+              ).createShader(
+                Rect.fromCircle(center: bloom.center, radius: radius + 22),
+              ),
+      );
     }
 
     final glaze = Paint()
       ..shader = const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Color(0x10000000), Color(0x4A000000)],
+        colors: <Color>[Color(0x09000000), Color(0x4B000000)],
       ).createShader(Offset.zero & size);
     canvas.drawRect(Offset.zero & size, glaze);
   }
@@ -205,7 +258,6 @@ class _QuoteFlowGlowPainter extends CustomPainter {
     path.lineTo(size.width, size.height);
     path.lineTo(0, size.height);
     path.close();
-
     canvas.drawPath(path, Paint()..color = color);
   }
 
@@ -213,8 +265,8 @@ class _QuoteFlowGlowPainter extends CustomPainter {
   bool shouldRepaint(covariant _QuoteFlowGlowPainter oldDelegate) => false;
 }
 
-class _GlowSparkle {
-  _GlowSparkle({
+class _GlowDust {
+  _GlowDust({
     required this.x,
     required this.y,
     required this.driftX,
@@ -229,6 +281,24 @@ class _GlowSparkle {
   final double driftX;
   final double driftY;
   final double radius;
+  final double alpha;
+  final double phase;
+}
+
+class _LightVeil {
+  const _LightVeil({
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+    required this.alpha,
+    required this.phase,
+  });
+
+  final double x;
+  final double y;
+  final double width;
+  final double height;
   final double alpha;
   final double phase;
 }

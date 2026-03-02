@@ -6,10 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../features/v3_background/background_theme_provider.dart';
 import '../../features/v3_share/story_share_sheet.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/streak_provider.dart';
+import '../../theme/quote_container_palette.dart';
 import '../../widgets/author_info_sheet.dart';
 import '../../widgets/editorial_background.dart';
 
@@ -20,6 +22,8 @@ class TodayTabScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dailyAsync = ref.watch(dailyQuoteProvider);
     final streak = ref.watch(streakProvider);
+    final backgroundTheme = ref.watch(appBackgroundThemeProvider);
+    final quotePalette = quoteContainerPaletteFor(backgroundTheme);
 
     return Scaffold(
       body: Stack(
@@ -91,25 +95,11 @@ class TodayTabScreen extends ConsumerWidget {
                           child: Column(
                             key: ValueKey(quote.id),
                             children: [
-                              Text(
-                                quote.quote,
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.sourceSerif4(
-                                  fontSize: 34,
-                                  height: 1.35,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              Text(
-                                quote.author,
-                                style: Theme.of(context).textTheme.bodyLarge,
-                              ),
-                              const SizedBox(height: 8),
-                              IconButton(
-                                visualDensity: VisualDensity.compact,
-                                tooltip: 'Author details',
-                                onPressed: () => showModalBottomSheet<void>(
+                              _TodayQuoteContainer(
+                                quote: quote.quote,
+                                author: quote.author,
+                                palette: quotePalette,
+                                onAuthorTap: () => showModalBottomSheet<void>(
                                   context: context,
                                   isScrollControlled: true,
                                   useSafeArea: true,
@@ -120,10 +110,6 @@ class TodayTabScreen extends ConsumerWidget {
                                         .read(authorWikiServiceProvider)
                                         .fetchAuthor(quote.author),
                                   ),
-                                ),
-                                icon: const Icon(
-                                  Icons.person_search_outlined,
-                                  size: 20,
                                 ),
                               ),
                             ],
@@ -193,6 +179,201 @@ class TodayTabScreen extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TodayQuoteContainer extends StatelessWidget {
+  const _TodayQuoteContainer({
+    required this.quote,
+    required this.author,
+    required this.palette,
+    required this.onAuthorTap,
+  });
+
+  final String quote;
+  final String author;
+  final QuoteContainerPalette palette;
+  final VoidCallback onAuthorTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 760, minWidth: 220),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 380;
+          final quoteFontSize = compact ? 29.0 : 33.0;
+          final cardPadding = compact
+              ? const EdgeInsets.fromLTRB(18, 20, 18, 16)
+              : const EdgeInsets.fromLTRB(24, 24, 24, 18);
+          final accent = palette.chromeTint.withValues(alpha: 0.78);
+
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 9, sigmaY: 9),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      palette.fillTop,
+                      Color.alphaBlend(
+                        Colors.black.withValues(alpha: 0.06),
+                        palette.fillBottom,
+                      ),
+                    ],
+                  ),
+                  border: Border.all(color: palette.border, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: palette.glow.withValues(alpha: 0.2),
+                      blurRadius: 30,
+                      offset: const Offset(0, 14),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.045),
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.05),
+                            ],
+                            stops: const [0.0, 0.45, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: cardPadding,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: palette.border.withValues(alpha: 0.7),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.auto_awesome_rounded,
+                                  size: 14,
+                                  color: accent,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'QUOTE OF THE DAY',
+                                  style: Theme.of(context).textTheme.labelMedium
+                                      ?.copyWith(
+                                        color: palette.tagText.withValues(
+                                          alpha: 0.95,
+                                        ),
+                                        letterSpacing: 0.9,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Icon(
+                            Icons.format_quote_rounded,
+                            size: 26,
+                            color: accent,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            quote,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.sourceSerif4(
+                              fontSize: quoteFontSize,
+                              height: 1.34,
+                              color: palette.quoteText,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Container(
+                            height: 1,
+                            width: compact ? 110 : 140,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.transparent,
+                                  palette.border.withValues(alpha: 0.75),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 13),
+                          Text(
+                            author,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: palette.authorText,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.3,
+                                ),
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 38),
+                              visualDensity: VisualDensity.compact,
+                              foregroundColor: palette.tagText,
+                              side: BorderSide(
+                                color: palette.border.withValues(alpha: 0.68),
+                              ),
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.03,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                            onPressed: onAuthorTap,
+                            icon: const Icon(
+                              Icons.person_search_outlined,
+                              size: 18,
+                            ),
+                            label: const Text('Author details'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

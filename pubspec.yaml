@@ -1,7 +1,7 @@
 name: quoteoftheday
 description: "QuoteFlow: Daily Scroll Quotes."
 publish_to: 'none'
-version: 1.4.3+12
+version: 1.4.5+14
 
 environment:
   sdk: ^3.10.8
@@ -36,6 +36,7 @@ flutter:
   assets:
     - assets/quotes.json
     - assets/licenses/dataset_mit_license.txt
+    - assets/branding/app_icon.png
 
 flutter_launcher_icons:
   android: true
