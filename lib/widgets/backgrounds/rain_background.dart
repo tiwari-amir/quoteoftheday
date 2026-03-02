@@ -164,7 +164,7 @@ class _RainPainter extends CustomPainter {
       final paint = Paint()
         ..strokeWidth = drop.width
         ..strokeCap = StrokeCap.round
-        ..color = const Color(0xFFD7EAF0).withValues(alpha: drop.alpha);
+        ..color = const Color(0xFFCCDFE7).withValues(alpha: drop.alpha);
       canvas.drawLine(Offset(sx, sy), Offset(ex, ey), paint);
     }
 
@@ -176,12 +176,12 @@ class _RainPainter extends CustomPainter {
       final ring = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0
-        ..color = const Color(0xFFD5EBF1).withValues(alpha: alpha * 0.2);
+        ..color = const Color(0xFFC8DCE3).withValues(alpha: alpha * 0.22);
       final blur = Paint()
         ..shader =
             RadialGradient(
               colors: [
-                const Color(0x8898BCCA).withValues(alpha: alpha * 0.12),
+                const Color(0x8888A8BA).withValues(alpha: alpha * 0.12),
                 Colors.transparent,
               ],
             ).createShader(
@@ -197,7 +197,7 @@ class _RainPainter extends CustomPainter {
     if (lightningPulse > 0.001) {
       final flash = Paint()
         ..color = const Color(
-          0xFFC9DCE9,
+          0xFFB7CADA,
         ).withValues(alpha: lightningPulse * 0.08);
       canvas.drawRect(Offset.zero & size, flash);
     }

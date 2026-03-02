@@ -17,7 +17,7 @@ class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2200),
+    duration: const Duration(milliseconds: 1600),
   );
 
   // Phase 1: quick visual anchor so the screen does not feel blank.
@@ -84,7 +84,7 @@ class _SplashScreenState extends State<SplashScreen>
       _finishIfNeeded();
     });
     // Failsafe for edge cases where ticker callbacks do not complete on-device.
-    _fallbackTimer = Timer(const Duration(milliseconds: 2500), _finishIfNeeded);
+    _fallbackTimer = Timer(const Duration(milliseconds: 1900), _finishIfNeeded);
     _controller.forward();
   }
 

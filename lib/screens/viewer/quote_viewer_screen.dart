@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants.dart';
 import '../../features/v3_background/background_theme_provider.dart';
@@ -18,11 +16,10 @@ import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/storage_provider.dart';
 import '../../services/quote_service.dart';
-import '../../theme/app_theme.dart';
-import '../../theme/quote_container_palette.dart';
+import '../../theme/design_tokens.dart';
 import '../../widgets/author_info_sheet.dart';
 import '../../widgets/editorial_background.dart';
-import '../../widgets/glass_icon_button.dart';
+import '../../widgets/premium/premium_components.dart';
 
 class QuoteViewerScreen extends ConsumerStatefulWidget {
   const QuoteViewerScreen({
@@ -372,8 +369,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   Widget build(BuildContext context) {
     final savedIds = ref.watch(savedQuoteIdsProvider);
     final likedIds = ref.watch(likedQuoteIdsProvider);
-    final backgroundTheme = ref.watch(appBackgroundThemeProvider);
-    final quotePalette = quoteContainerPaletteFor(backgroundTheme);
+    ref.watch(appBackgroundThemeProvider);
     final normalizedType = _filter.type.toLowerCase();
     final quotesAsync = normalizedType == 'saved'
         ? ref.watch(allQuotesProvider).whenData((all) {
@@ -390,8 +386,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
         : ref.watch(quotesByFilterProvider(_filter));
     final service = ref.read(quoteServiceProvider);
     final scheme = Theme.of(context).colorScheme;
-    final tokens = Theme.of(context).extension<AppThemeTokens>();
-    final viewerAccent = tokens?.viewerAccent ?? scheme.primary;
+    final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final viewerAccent = flow?.colors.accent ?? scheme.primary;
 
     return Scaffold(
       body: quotesAsync.when(
@@ -421,6 +417,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
               _displayQuotes[_currentIndex.clamp(0, _displayQuotes.length - 1)];
           final isSaved = savedIds.contains(currentQuote.id);
           final isLiked = likedIds.contains(currentQuote.id);
+          final progressValue = (_currentIndex + 1) / _displayQuotes.length;
 
           return Stack(
             children: [
@@ -490,7 +487,6 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                                 quote: quote,
                                 authorLabel: authorLabel,
                                 service: service,
-                                palette: quotePalette,
                               ),
                             ),
                           ),
@@ -502,15 +498,20 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
               ),
               SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                    FlowSpace.md,
+                    10,
+                    FlowSpace.md,
+                    12,
+                  ),
                   child: Column(
                     children: [
                       AnimatedOpacity(
                         opacity: _showControls ? 1 : 0,
-                        duration: const Duration(milliseconds: 220),
+                        duration: FlowDurations.regular,
                         child: Row(
                           children: [
-                            GlassIconButton(
+                            PremiumIconPillButton(
                               icon: Icons.close_rounded,
                               onTap: () {
                                 if (context.canPop()) {
@@ -521,18 +522,19 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                               },
                             ),
                             const Spacer(),
-                            IconButton(
-                              onPressed: _toggleShuffle,
-                              iconSize: 24,
-                              visualDensity: VisualDensity.compact,
-                              icon: Icon(
-                                _shuffleEnabled
-                                    ? Icons.shuffle_on_rounded
-                                    : Icons.shuffle_rounded,
-                                color: _shuffleEnabled
-                                    ? scheme.primary
-                                    : Colors.white.withValues(alpha: 0.8),
-                              ),
+                            _ViewerProgressPill(
+                              progress: progressValue,
+                              currentIndex: _currentIndex,
+                              total: _displayQuotes.length,
+                            ),
+                            const SizedBox(width: FlowSpace.xs),
+                            PremiumIconPillButton(
+                              icon: _shuffleEnabled
+                                  ? Icons.shuffle_on_rounded
+                                  : Icons.shuffle_rounded,
+                              active: _shuffleEnabled,
+                              compact: true,
+                              onTap: _toggleShuffle,
                             ),
                           ],
                         ),
@@ -544,25 +546,25 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                               style: Theme.of(context).textTheme.bodyMedium,
                             )
                             .animate()
-                            .fadeIn(duration: 250.ms)
+                            .fadeIn(duration: FlowDurations.quick)
                             .fadeOut(delay: 1400.ms),
                       AnimatedOpacity(
                         opacity: _showControls ? 1 : 0,
-                        duration: const Duration(milliseconds: 220),
+                        duration: FlowDurations.regular,
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 8),
+                          padding: const EdgeInsets.only(top: FlowSpace.xs),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              GlassIconButton(
-                                icon: Icons.info_outline,
-                                size: 34,
+                              PremiumIconPillButton(
+                                icon: Icons.info_outline_rounded,
+                                compact: true,
                                 onTap: () => _showWhy(context, currentQuote),
                               ),
-                              const SizedBox(width: 10),
-                              GlassIconButton(
+                              const SizedBox(width: FlowSpace.xs),
+                              PremiumIconPillButton(
                                 icon: Icons.person_search_outlined,
-                                size: 34,
+                                compact: true,
                                 onTap: () =>
                                     _showAuthorInfo(context, currentQuote),
                               ),
@@ -580,7 +582,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                 child: SafeArea(
                   child: AnimatedOpacity(
                     opacity: _showControls ? 1 : 0,
-                    duration: const Duration(milliseconds: 220),
+                    duration: FlowDurations.regular,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -593,7 +595,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                               .read(likedQuoteIdsProvider.notifier)
                               .toggle(currentQuote.id),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: FlowSpace.xs),
                         _ViewerActionButton(
                           icon: isSaved
                               ? Icons.bookmark
@@ -603,7 +605,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                               .read(savedQuoteIdsProvider.notifier)
                               .toggle(currentQuote.id),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: FlowSpace.xs),
                         _ViewerActionButton(
                           icon: Icons.send_rounded,
                           onTap: () => _shareQuote(currentQuote),
@@ -633,18 +635,67 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   }
 }
 
+class _ViewerProgressPill extends StatelessWidget {
+  const _ViewerProgressPill({
+    required this.progress,
+    required this.currentIndex,
+    required this.total,
+  });
+
+  final double progress;
+  final int currentIndex;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    return PremiumSurface(
+      radius: 999,
+      elevation: 1,
+      padding: const EdgeInsets.symmetric(
+        horizontal: FlowSpace.sm,
+        vertical: FlowSpace.xs,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 56,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                minHeight: 4,
+                color: colors?.accent,
+                backgroundColor:
+                    colors?.divider.withValues(alpha: 0.6) ??
+                    Colors.white.withValues(alpha: 0.2),
+              ),
+            ),
+          ),
+          const SizedBox(width: FlowSpace.xs),
+          Text(
+            '${currentIndex + 1}/$total',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: colors?.textSecondary.withValues(alpha: 0.95),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _QuotePanel extends StatelessWidget {
   const _QuotePanel({
     required this.quote,
     required this.authorLabel,
     required this.service,
-    required this.palette,
   });
 
   final QuoteModel quote;
   final String authorLabel;
   final QuoteService service;
-  final QuoteContainerPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -652,148 +703,39 @@ class _QuotePanel extends StatelessWidget {
         .split(RegExp(r'\s+'))
         .where((word) => word.trim().isNotEmpty)
         .length;
-    final quoteStyle = _quoteTextStyle(context, words);
-    final showScrollableBody = words > 38;
+    final showScrollableBody = words > 40;
     final normalizedTags = quote.revisedTags
         .take(3)
         .map(service.toTitleCase)
         .join(' | ');
 
-    return ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720, minWidth: 220),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      palette.fillTop.withValues(alpha: 0.92),
-                      palette.fillBottom.withValues(alpha: 0.95),
-                    ],
-                  ),
-                  border: Border.all(
-                    color: palette.border.withValues(alpha: 0.9),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: palette.glow.withValues(alpha: 0.18),
-                      blurRadius: 30,
-                      spreadRadius: 0.5,
-                      offset: const Offset(0, 14),
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.24),
-                      blurRadius: 24,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.46,
-                        ),
-                        child: showScrollableBody
-                            ? ScrollConfiguration(
-                                behavior: ScrollConfiguration.of(
-                                  context,
-                                ).copyWith(scrollbars: false),
-                                child: SingleChildScrollView(
-                                  physics: const BouncingScrollPhysics(),
-                                  child: Text(
-                                    quote.quote,
-                                    style: quoteStyle,
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              )
-                            : Text(
-                                quote.quote,
-                                style: quoteStyle,
-                                textAlign: TextAlign.center,
-                              ),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        authorLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.dmSans(
-                          fontSize: 15,
-                          letterSpacing: 0.35,
-                          fontWeight: FontWeight.w700,
-                          color: palette.authorText,
-                        ),
-                      ),
-                      if (normalizedTags.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          normalizedTags,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.dmSans(
-                            fontSize: 10.5,
-                            color: palette.tagText,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.25,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
+    Widget quoteBody = QuoteSurface(
+      quote: quote.quote,
+      author: authorLabel,
+      eyebrow: 'QUOTE',
+      footer: normalizedTags.isEmpty
+          ? null
+          : Text(
+              normalizedTags,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium,
             ),
-          ),
-        )
-        .animate(key: ValueKey(quote.id))
-        .fadeIn(duration: 260.ms)
-        .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
-  }
+    );
+    if (showScrollableBody) {
+      quoteBody = SizedBox(
+        height: MediaQuery.of(context).size.height * 0.62,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: quoteBody,
+        ),
+      );
+    }
 
-  TextStyle _quoteTextStyle(BuildContext context, int words) {
-    final base = GoogleFonts.cormorantGaramond(
-      textStyle: Theme.of(context).textTheme.headlineMedium,
-      color: palette.quoteText.withValues(alpha: 0.98),
-      fontStyle: FontStyle.normal,
-    );
-    if (words <= 10) {
-      return base.copyWith(
-        fontSize: 40,
-        height: 1.24,
-        fontWeight: FontWeight.w600,
-      );
-    }
-    if (words <= 24) {
-      return base.copyWith(
-        fontSize: 33,
-        height: 1.3,
-        fontWeight: FontWeight.w600,
-      );
-    }
-    if (words <= 42) {
-      return base.copyWith(
-        fontSize: 28,
-        height: 1.35,
-        fontWeight: FontWeight.w500,
-      );
-    }
-    return base.copyWith(
-      fontSize: 23,
-      height: 1.42,
-      fontWeight: FontWeight.w500,
-    );
+    return quoteBody
+        .animate(key: ValueKey(quote.id))
+        .fadeIn(duration: FlowDurations.regular)
+        .slideY(begin: 0.05, end: 0, curve: FlowDurations.curve);
   }
 }
 
@@ -810,6 +752,7 @@ class _ViewerActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -820,10 +763,18 @@ class _ViewerActionButton extends StatelessWidget {
           height: 42,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.06),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            color: colors?.surface.withValues(alpha: 0.85),
+            border: Border.all(
+              color:
+                  colors?.divider.withValues(alpha: 0.95) ??
+                  Colors.white.withValues(alpha: 0.12),
+            ),
           ),
-          child: Icon(icon, color: tint ?? Colors.white, size: 20),
+          child: Icon(
+            icon,
+            color: tint ?? colors?.textPrimary ?? Colors.white,
+            size: 19,
+          ),
         ),
       ),
     );

@@ -149,7 +149,7 @@ class _OceanPainter extends CustomPainter {
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [palette.baseTop, const Color(0xFF0A181D), palette.baseBottom],
+        colors: [palette.baseTop, const Color(0xFF08151A), palette.baseBottom],
         stops: const [0.0, 0.52, 1.0],
       ).createShader(Offset.zero & size);
     canvas.drawRect(Offset.zero & size, base);
@@ -220,7 +220,7 @@ class _OceanPainter extends CustomPainter {
       ..close();
     canvas.drawPath(
       seabed,
-      Paint()..color = const Color(0xAA071012).withValues(alpha: 0.72),
+      Paint()..color = const Color(0xAA061013).withValues(alpha: 0.7),
     );
 
     for (final particle in particles) {
@@ -230,7 +230,7 @@ class _OceanPainter extends CustomPainter {
       final alpha = (particle.alpha * twinkle).clamp(0.03, 0.18);
       final radius = particle.radius * (0.9 + twinkle * 0.2);
       final paint = Paint()
-        ..color = const Color(0xFFD8FFF5).withValues(alpha: alpha)
+        ..color = const Color(0xFFCFEDE6).withValues(alpha: alpha)
         ..maskFilter = MaskFilter.blur(
           BlurStyle.normal,
           0.8 + particle.radius * 0.8,
@@ -246,12 +246,12 @@ class _OceanPainter extends CustomPainter {
       final ring = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.05
-        ..color = const Color(0xFFD8FBF7).withValues(alpha: alpha * 0.22);
+        ..color = const Color(0xFFCCE6E2).withValues(alpha: alpha * 0.24);
       final bloom = Paint()
         ..shader =
             RadialGradient(
               colors: [
-                const Color(0xCC9FDAD2).withValues(alpha: alpha * 0.11),
+                const Color(0xCC89C9BF).withValues(alpha: alpha * 0.11),
                 Colors.transparent,
               ],
             ).createShader(

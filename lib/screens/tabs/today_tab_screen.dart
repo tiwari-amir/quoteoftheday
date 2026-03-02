@@ -1,19 +1,22 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../features/v3_background/background_theme_provider.dart';
 import '../../features/v3_share/story_share_sheet.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/streak_provider.dart';
-import '../../theme/quote_container_palette.dart';
+import '../../services/author_wiki_service.dart';
+import '../../theme/design_tokens.dart';
 import '../../widgets/author_info_sheet.dart';
 import '../../widgets/editorial_background.dart';
+import '../../widgets/premium/premium_components.dart';
+
+final _todayAuthorProfileProvider =
+    FutureProvider.family<AuthorWikiProfile?, String>((ref, author) async {
+      return ref.read(authorWikiServiceProvider).fetchAuthor(author);
+    });
 
 class TodayTabScreen extends ConsumerWidget {
   const TodayTabScreen({super.key});
@@ -22,153 +25,185 @@ class TodayTabScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dailyAsync = ref.watch(dailyQuoteProvider);
     final streak = ref.watch(streakProvider);
-    final backgroundTheme = ref.watch(appBackgroundThemeProvider);
-    final quotePalette = quoteContainerPaletteFor(backgroundTheme);
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
 
     return Scaffold(
       body: Stack(
         children: [
           const EditorialBackground(),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.1),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.28),
+                    ],
+                    stops: const [0.0, 0.36, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              padding: const EdgeInsets.fromLTRB(
+                FlowSpace.lg,
+                FlowSpace.md,
+                FlowSpace.lg,
+                FlowSpace.lg,
+              ),
               child: dailyAsync.when(
                 data: (quote) {
-                  final scheme = Theme.of(context).colorScheme;
                   final isSaved = ref
                       .watch(savedQuoteIdsProvider)
                       .contains(quote.id);
+
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(
+                        _lockscreenDateLabel(DateTime.now()),
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: colors?.textSecondary.withValues(
+                                alpha: 0.94,
+                              ),
+                              letterSpacing: 0.42,
+                            ),
+                      ).animate().fadeIn(duration: FlowDurations.quick),
+                      const SizedBox(height: FlowSpace.xxs),
                       Row(
                         children: [
                           Text(
                             'Today',
                             style: Theme.of(context).textTheme.headlineMedium,
                           ),
-                          const SizedBox(width: 10),
-                          Container(
+                          const Spacer(),
+                          PremiumSurface(
+                            radius: 999,
+                            elevation: 1,
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.12),
-                              ),
+                              horizontal: FlowSpace.sm,
+                              vertical: FlowSpace.xs,
                             ),
                             child: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
                                   Icons.local_fire_department_rounded,
                                   size: 14,
-                                  color: scheme.tertiary,
+                                  color: colors?.accent,
                                 ),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: FlowSpace.xs),
                                 Text(
                                   '$streak',
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.88,
-                                        ),
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                  style: Theme.of(context).textTheme.labelLarge
+                                      ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
                               ],
                             ),
                           ),
-                          const Spacer(),
-                          IconButton(
-                            onPressed: () => context.push('/settings'),
-                            icon: const Icon(Icons.tune),
+                          const SizedBox(width: FlowSpace.xs),
+                          PremiumIconPillButton(
+                            icon: Icons.tune_rounded,
+                            compact: true,
+                            onTap: () => context.push('/settings'),
                           ),
                         ],
-                      ),
-                      const Spacer(),
-                      Center(
+                      ).animate().fadeIn(duration: FlowDurations.regular),
+                      const SizedBox(height: FlowSpace.md),
+                      Expanded(
                         child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 350),
-                          child: Column(
+                          duration: FlowDurations.emphasized,
+                          switchInCurve: FlowDurations.curve,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            final floatIn =
+                                Tween<Offset>(
+                                  begin: const Offset(0, 0.025),
+                                  end: Offset.zero,
+                                ).animate(
+                                  CurvedAnimation(
+                                    parent: animation,
+                                    curve: FlowDurations.curve,
+                                  ),
+                                );
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: floatIn,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: LayoutBuilder(
                             key: ValueKey(quote.id),
-                            children: [
-                              _TodayQuoteContainer(
-                                quote: quote.quote,
-                                author: quote.author,
-                                palette: quotePalette,
-                                onAuthorTap: () => showModalBottomSheet<void>(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  useSafeArea: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (context) => AuthorInfoSheet(
-                                    author: quote.author,
-                                    loader: () => ref
-                                        .read(authorWikiServiceProvider)
-                                        .fetchAuthor(quote.author),
+                            builder: (context, constraints) {
+                              return SingleChildScrollView(
+                                physics: const BouncingScrollPhysics(),
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minHeight: constraints.maxHeight,
+                                  ),
+                                  child: Center(
+                                    child: _LockscreenQuoteContent(
+                                      quote: quote.quote,
+                                      author: quote.author,
+                                      onAuthorDetails: () {
+                                        showModalBottomSheet<void>(
+                                          context: context,
+                                          isScrollControlled: true,
+                                          useSafeArea: true,
+                                          backgroundColor: Colors.transparent,
+                                          builder: (context) => AuthorInfoSheet(
+                                            author: quote.author,
+                                            loader: () => ref
+                                                .read(authorWikiServiceProvider)
+                                                .fetchAuthor(quote.author),
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ).animate().fadeIn(duration: 300.ms),
-                      const Spacer(),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: BackdropFilter(
-                          // CTA-only blur: keeps quote content sharp and primary.
-                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.14),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.1),
-                              ),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: FilledButton.icon(
-                                    style: FilledButton.styleFrom(
-                                      minimumSize: const Size.fromHeight(52),
-                                    ),
-                                    onPressed: () => ref
-                                        .read(savedQuoteIdsProvider.notifier)
-                                        .toggle(quote.id),
-                                    icon: Icon(
-                                      isSaved
-                                          ? Icons.bookmark
-                                          : Icons.bookmark_outline_rounded,
-                                    ),
-                                    label: Text(isSaved ? 'Saved' : 'Save'),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    style: OutlinedButton.styleFrom(
-                                      minimumSize: const Size.fromHeight(52),
-                                    ),
-                                    onPressed: () => showStoryShareSheet(
-                                      context: context,
-                                      quote: quote,
-                                      subject: 'QuoteFlow: Daily Scroll Quotes',
-                                    ),
-                                    icon: const Icon(Icons.share_outlined),
-                                    label: const Text('Share'),
-                                  ),
-                                ),
-                              ],
-                            ),
+                              );
+                            },
                           ),
                         ),
                       ),
+                      const SizedBox(height: FlowSpace.md),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          PremiumIconPillButton(
+                            icon: isSaved
+                                ? Icons.bookmark_rounded
+                                : Icons.bookmark_outline_rounded,
+                            label: isSaved ? 'Saved' : 'Save',
+                            compact: true,
+                            active: isSaved,
+                            onTap: () => ref
+                                .read(savedQuoteIdsProvider.notifier)
+                                .toggle(quote.id),
+                          ),
+                          const SizedBox(width: FlowSpace.sm),
+                          PremiumIconPillButton(
+                            icon: Icons.share_outlined,
+                            label: 'Share',
+                            compact: true,
+                            onTap: () => showStoryShareSheet(
+                              context: context,
+                              quote: quote,
+                              subject: 'QuoteFlow: Daily Scroll Quotes',
+                            ),
+                          ),
+                        ],
+                      ).animate().fadeIn(duration: FlowDurations.regular),
                     ],
                   );
                 },
@@ -182,198 +217,227 @@ class TodayTabScreen extends ConsumerWidget {
       ),
     );
   }
+
+  String _lockscreenDateLabel(DateTime date) {
+    const weekdays = <String>[
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    const months = <String>[
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${weekdays[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}';
+  }
 }
 
-class _TodayQuoteContainer extends StatelessWidget {
-  const _TodayQuoteContainer({
+class _LockscreenQuoteContent extends StatelessWidget {
+  const _LockscreenQuoteContent({
     required this.quote,
     required this.author,
-    required this.palette,
-    required this.onAuthorTap,
+    required this.onAuthorDetails,
   });
 
   final String quote;
   final String author;
-  final QuoteContainerPalette palette;
-  final VoidCallback onAuthorTap;
+  final VoidCallback onAuthorDetails;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final words = quote
+        .split(RegExp(r'\s+'))
+        .where((token) => token.trim().isNotEmpty)
+        .length;
+
+    final quoteSize = switch (words) {
+      <= 12 => 40.0,
+      <= 22 => 35.0,
+      <= 34 => 30.0,
+      <= 48 => 26.0,
+      _ => 22.0,
+    };
+
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 760, minWidth: 220),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 380;
-          final quoteFontSize = compact ? 29.0 : 33.0;
-          final cardPadding = compact
-              ? const EdgeInsets.fromLTRB(18, 20, 18, 16)
-              : const EdgeInsets.fromLTRB(24, 24, 24, 18);
-          final accent = palette.chromeTint.withValues(alpha: 0.78);
-
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 9, sigmaY: 9),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      palette.fillTop,
-                      Color.alphaBlend(
-                        Colors.black.withValues(alpha: 0.06),
-                        palette.fillBottom,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: FlowSpace.sm,
+          vertical: FlowSpace.md,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _TodayAuthorPortrait(author: author),
+            const SizedBox(height: FlowSpace.md),
+            Text(
+              '"',
+              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                color: colors?.textSecondary.withValues(alpha: 0.36),
+                height: 0.66,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              quote,
+              textAlign: TextAlign.center,
+              style:
+                  FlowTypography.quoteStyle(
+                    color: colors?.textPrimary ?? Colors.white,
+                    fontSize: quoteSize,
+                  ).copyWith(
+                    height: words > 42 ? 1.45 : 1.38,
+                    shadows: [
+                      Shadow(
+                        blurRadius: 24,
+                        color: Colors.black.withValues(alpha: 0.28),
+                        offset: const Offset(0, 12),
                       ),
                     ],
                   ),
-                  border: Border.all(color: palette.border, width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: palette.glow.withValues(alpha: 0.2),
-                      blurRadius: 30,
-                      offset: const Offset(0, 14),
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.white.withValues(alpha: 0.045),
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.05),
-                            ],
-                            stops: const [0.0, 0.45, 1.0],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: cardPadding,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.05),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: palette.border.withValues(alpha: 0.7),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.auto_awesome_rounded,
-                                  size: 14,
-                                  color: accent,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'QUOTE OF THE DAY',
-                                  style: Theme.of(context).textTheme.labelMedium
-                                      ?.copyWith(
-                                        color: palette.tagText.withValues(
-                                          alpha: 0.95,
-                                        ),
-                                        letterSpacing: 0.9,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Icon(
-                            Icons.format_quote_rounded,
-                            size: 26,
-                            color: accent,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            quote,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.sourceSerif4(
-                              fontSize: quoteFontSize,
-                              height: 1.34,
-                              color: palette.quoteText,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          Container(
-                            height: 1,
-                            width: compact ? 110 : 140,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.transparent,
-                                  palette.border.withValues(alpha: 0.75),
-                                  Colors.transparent,
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 13),
-                          Text(
-                            author,
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(
-                                  color: palette.authorText,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.3,
-                                ),
-                          ),
-                          const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size(0, 38),
-                              visualDensity: VisualDensity.compact,
-                              foregroundColor: palette.tagText,
-                              side: BorderSide(
-                                color: palette.border.withValues(alpha: 0.68),
-                              ),
-                              backgroundColor: Colors.white.withValues(
-                                alpha: 0.03,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                            ),
-                            onPressed: onAuthorTap,
-                            icon: const Icon(
-                              Icons.person_search_outlined,
-                              size: 18,
-                            ),
-                            label: const Text('Author details'),
-                          ),
-                        ],
-                      ),
-                    ),
+            ),
+            const SizedBox(height: FlowSpace.lg),
+            Container(
+              height: 1,
+              width: 172,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.transparent,
+                    colors?.divider.withValues(alpha: 0.9) ??
+                        Colors.white.withValues(alpha: 0.2),
+                    Colors.transparent,
                   ],
                 ),
               ),
             ),
-          );
-        },
+            const SizedBox(height: FlowSpace.sm),
+            Text(
+              '— $author',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: colors?.textSecondary.withValues(alpha: 0.96),
+                letterSpacing: 0.24,
+              ),
+            ),
+            const SizedBox(height: FlowSpace.xs),
+            TextButton.icon(
+              onPressed: onAuthorDetails,
+              icon: const Icon(Icons.open_in_new_rounded, size: 14),
+              label: const Text('Author details'),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: colors?.textSecondary.withValues(alpha: 0.95),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TodayAuthorPortrait extends ConsumerWidget {
+  const _TodayAuthorPortrait({required this.author});
+
+  final String author;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final profileAsync = ref.watch(_todayAuthorProfileProvider(author));
+
+    return profileAsync.when(
+      data: (profile) {
+        final imageUrl = profile?.imageUrl?.trim();
+        final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+
+        return SizedBox(
+          width: 122,
+          height: 122,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 118,
+                height: 118,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: (colors?.accent ?? Colors.white).withValues(
+                        alpha: 0.28,
+                      ),
+                      blurRadius: 30,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 108,
+                height: 108,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      colors?.accent.withValues(alpha: 0.78) ?? Colors.white70,
+                      colors?.surface.withValues(alpha: 0.9) ?? Colors.black54,
+                    ],
+                  ),
+                  border: Border.all(
+                    color:
+                        colors?.divider.withValues(alpha: 0.95) ??
+                        Colors.white.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: colors?.surface.withValues(alpha: 0.9),
+                backgroundImage: hasImage ? NetworkImage(imageUrl) : null,
+                child: hasImage
+                    ? null
+                    : Icon(
+                        Icons.person_outline_rounded,
+                        size: 34,
+                        color: colors?.textSecondary.withValues(alpha: 0.92),
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => SizedBox(
+        width: 108,
+        height: 108,
+        child: CircularProgressIndicator(strokeWidth: 2, color: colors?.accent),
+      ),
+      error: (error, stackTrace) => CircleAvatar(
+        radius: 50,
+        backgroundColor: colors?.surface.withValues(alpha: 0.9),
+        child: Icon(
+          Icons.person_outline_rounded,
+          size: 34,
+          color: colors?.textSecondary.withValues(alpha: 0.92),
+        ),
       ),
     );
   }

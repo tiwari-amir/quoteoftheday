@@ -127,7 +127,7 @@ class NotificationSettingsNotifier
     _loadFuture = _loadInternal();
     await _loadFuture;
     debugPrint('[Notifications] Startup reschedule requested.');
-    await _applySchedule();
+    await _applySchedule(requestPermissions: false);
   }
 
   Future<void> update(NotificationSettingsModel next) async {
@@ -135,7 +135,7 @@ class NotificationSettingsNotifier
     final sanitized = _sanitize(next);
     state = sanitized;
     await _persist(sanitized);
-    await _applySchedule();
+    await _applySchedule(requestPermissions: true);
   }
 
   Future<void> _persist(NotificationSettingsModel settings) async {
@@ -156,13 +156,16 @@ class NotificationSettingsNotifier
     await prefs.setBool(_kStreakEnabled, settings.streakEnabled);
   }
 
-  Future<void> _applySchedule() async {
+  Future<void> _applySchedule({required bool requestPermissions}) async {
     if (_isRescheduling) return;
     _isRescheduling = true;
 
     final service = _ref.read(notificationsServiceProvider);
     try {
       await service.initialize();
+      final permissionsGranted = await service.ensurePermissions(
+        requestIfNeeded: requestPermissions,
+      );
 
       // Hard reset on each pass to avoid stale schedules from previous models.
       await service.cancelAllScheduledNotifications();
@@ -170,7 +173,7 @@ class NotificationSettingsNotifier
         '[Notifications] Cleared existing schedules before reschedule.',
       );
 
-      if (!service.notificationsGranted) {
+      if (!permissionsGranted) {
         debugPrint(
           '[Notifications] Permissions not granted; skipping schedule.',
         );
@@ -178,15 +181,30 @@ class NotificationSettingsNotifier
       }
 
       if (state.dailyEnabled) {
-        await _scheduleDailyQuote();
+        try {
+          await _scheduleDailyQuote();
+        } catch (error, stack) {
+          debugPrint('[Notifications] Daily reminder schedule failed: $error');
+          debugPrint('[Notifications] $stack');
+        }
       }
 
       if (state.extraEnabled) {
-        await _scheduleOptionalExtra();
+        try {
+          await _scheduleOptionalExtra();
+        } catch (error, stack) {
+          debugPrint('[Notifications] Extra reminder schedule failed: $error');
+          debugPrint('[Notifications] $stack');
+        }
       }
 
       if (state.streakEnabled) {
-        await _scheduleStreakReminder();
+        try {
+          await _scheduleStreakReminder();
+        } catch (error, stack) {
+          debugPrint('[Notifications] Streak reminder schedule failed: $error');
+          debugPrint('[Notifications] $stack');
+        }
       }
     } catch (error, stack) {
       debugPrint('[Notifications] Scheduling failed: $error');
@@ -198,18 +216,37 @@ class NotificationSettingsNotifier
 
   Future<void> _scheduleDailyQuote() async {
     final service = _ref.read(notificationsServiceProvider);
-    final quote = await _ref.read(dailyQuoteProvider.future);
     final schedule = _nextInstanceOfTime(state.dailyHour, state.dailyMinute);
+    String quoteBody;
+    String authorName = 'QuoteFlow';
+    String? authorImageUrl;
+    bool showReadFullAction = false;
+    try {
+      final quote = await _ref.read(dailyQuoteProvider.future);
+      quoteBody = _trimQuoteBody(quote.quote);
+      authorName = quote.author;
+      authorImageUrl = await _loadAuthorImageUrl(quote.author);
+      showReadFullAction = _isLongQuote(quote.quote);
+    } catch (error) {
+      debugPrint(
+        '[Notifications] Failed to load daily quote content, using fallback copy: $error',
+      );
+      quoteBody = 'Open QuoteFlow for your daily quote.';
+    }
     debugPrint(
       '[Notifications] Scheduling daily quote: id=$_kNotificationDailyId, trigger=$schedule',
     );
+    final title = authorName.trim().isEmpty ? 'QuoteFlow' : authorName.trim();
 
     await service.scheduleReminder(
       id: _kNotificationDailyId,
       schedule: schedule,
-      title: 'Your Daily Quote',
-      body: _trimQuoteBody(quote.quote),
+      title: title,
+      body: quoteBody,
+      authorName: authorName,
+      authorImageUrl: authorImageUrl,
       payload: '/today',
+      showReadFullAction: showReadFullAction,
       repeatDaily: true,
     );
   }
@@ -225,12 +262,19 @@ class NotificationSettingsNotifier
     debugPrint(
       '[Notifications] Scheduling extra quote: id=$_kNotificationExtraId, trigger=$schedule',
     );
+    final title = planned.quote.author.trim().isEmpty
+        ? planned.title
+        : planned.quote.author.trim();
+    final showReadFullAction = _isLongQuote(planned.quote.quote);
     await service.scheduleReminder(
       id: _kNotificationExtraId,
       schedule: schedule,
-      title: planned.title,
+      title: title,
       body: _trimQuoteBody(planned.quote.quote),
+      authorName: planned.quote.author,
+      authorImageUrl: planned.authorImageUrl,
       payload: planned.payload,
+      showReadFullAction: showReadFullAction,
       repeatDaily: true,
     );
   }
@@ -247,9 +291,11 @@ class NotificationSettingsNotifier
       if (savedQuotes.isEmpty) return null;
 
       final quote = _pickRandom(savedQuotes);
+      final authorImageUrl = await _loadAuthorImageUrl(quote.author);
       return _PlannedExtraNotification(
         title: 'From Your Collection',
         quote: quote,
+        authorImageUrl: authorImageUrl,
         payload: '/viewer/saved/all?quoteId=${quote.id}',
       );
     }
@@ -268,6 +314,7 @@ class NotificationSettingsNotifier
       if (quotes.isEmpty) continue;
 
       final quote = _pickRandom(quotes);
+      final authorImageUrl = await _loadAuthorImageUrl(quote.author);
       final routeTag = tag == 'series' ? 'movies/series' : tag;
       final title = tag == 'series'
           ? 'From Movies/Series'
@@ -275,6 +322,7 @@ class NotificationSettingsNotifier
       return _PlannedExtraNotification(
         title: title,
         quote: quote,
+        authorImageUrl: authorImageUrl,
         payload:
             '/viewer/category/${Uri.encodeComponent(routeTag)}?quoteId=${quote.id}',
       );
@@ -307,8 +355,9 @@ class NotificationSettingsNotifier
     await service.scheduleReminder(
       id: _kNotificationStreakId,
       schedule: schedule,
-      title: 'Don\'t break your streak 🔥',
+      title: 'Don\'t break your streak',
       body: 'Read 3 quotes today to keep it going.',
+      authorName: 'QuoteFlow',
       payload: '/today',
       repeatDaily: false,
     );
@@ -393,6 +442,29 @@ class NotificationSettingsNotifier
     return '${clean.substring(0, 117).trimRight()}...';
   }
 
+  bool _isLongQuote(String quote) {
+    final clean = quote.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return clean.length > 120;
+  }
+
+  Future<String?> _loadAuthorImageUrl(String author) async {
+    final normalized = author.trim();
+    if (normalized.isEmpty) return null;
+    try {
+      final profile = await _ref
+          .read(authorWikiServiceProvider)
+          .fetchAuthor(normalized);
+      final imageUrl = profile?.imageUrl?.trim();
+      if (imageUrl == null || imageUrl.isEmpty) return null;
+      return imageUrl;
+    } catch (error) {
+      debugPrint(
+        '[Notifications] Failed to resolve author image for "$author": $error',
+      );
+      return null;
+    }
+  }
+
   String _ymd(DateTime value) {
     final year = value.year.toString().padLeft(4, '0');
     final month = value.month.toString().padLeft(2, '0');
@@ -405,11 +477,13 @@ class _PlannedExtraNotification {
   const _PlannedExtraNotification({
     required this.title,
     required this.quote,
+    required this.authorImageUrl,
     required this.payload,
   });
 
   final String title;
   final QuoteModel quote;
+  final String? authorImageUrl;
   final String payload;
 }
 

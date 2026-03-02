@@ -19,6 +19,27 @@ class QuoteOfTheDayApp extends ConsumerStatefulWidget {
 
 class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
   bool _showSplash = true;
+  bool _didStartBootstrap = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startNotificationBootstrap();
+  }
+
+  void _startNotificationBootstrap() {
+    if (_didStartBootstrap) return;
+    _didStartBootstrap = true;
+    Future<void>(() async {
+      try {
+        await ref
+            .read(notificationSettingsProvider.notifier)
+            .rescheduleFromStartup();
+      } catch (error) {
+        debugPrint('[Notifications] Startup bootstrap failed: $error');
+      }
+    });
+  }
 
   void _handleSplashFinished() {
     if (!mounted || !_showSplash) return;
@@ -31,7 +52,6 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
     ref.watch(authBootstrapProvider);
     ref.watch(streakProvider);
-    ref.watch(notificationBootstrapProvider);
     ref.listen(notificationTapProvider, (previous, next) {
       final route = next.valueOrNull;
       if (route == null || route.isEmpty) return;
@@ -51,7 +71,29 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
               child: Listener(
                 behavior: HitTestBehavior.translucent,
                 onPointerDown: (event) {
-                  AnimatedGradientBackground.emitGlobalRipple(event.position);
+                  AnimatedGradientBackground.emitGlobalPointerDown(
+                    event.position,
+                  );
+                },
+                onPointerMove: (event) {
+                  AnimatedGradientBackground.emitGlobalPointerMove(
+                    event.position,
+                  );
+                },
+                onPointerHover: (event) {
+                  AnimatedGradientBackground.emitGlobalPointerMove(
+                    event.position,
+                  );
+                },
+                onPointerUp: (event) {
+                  AnimatedGradientBackground.emitGlobalPointerUp(
+                    event.position,
+                  );
+                },
+                onPointerCancel: (event) {
+                  AnimatedGradientBackground.emitGlobalPointerUp(
+                    event.position,
+                  );
                 },
                 child: const SizedBox.expand(),
               ),

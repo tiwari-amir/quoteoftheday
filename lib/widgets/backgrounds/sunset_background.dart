@@ -110,7 +110,7 @@ class _SunsetPainter extends CustomPainter {
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [palette.baseTop, const Color(0xFF7A536B), palette.baseBottom],
+        colors: [palette.baseTop, const Color(0xFF6E4A64), palette.baseBottom],
         stops: const [0.0, 0.58, 1.0],
       ).createShader(Offset.zero & size);
     canvas.drawRect(Offset.zero & size, sky);
@@ -142,7 +142,7 @@ class _SunsetPainter extends CustomPainter {
         height: cloud.height * size.height,
       );
       final paint = Paint()
-        ..color = const Color(0xFFFFE8D7).withValues(alpha: cloud.alpha)
+        ..color = const Color(0xFFF0DCD0).withValues(alpha: cloud.alpha)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7.0);
       canvas.drawOval(rect, paint);
     }
@@ -171,7 +171,7 @@ class _SunsetPainter extends CustomPainter {
         ..shader =
             RadialGradient(
               colors: [
-                const Color(0xFFFFD6B6).withValues(alpha: alpha * 0.22),
+                const Color(0xFFF0CCB2).withValues(alpha: alpha * 0.22),
                 Colors.transparent,
               ],
             ).createShader(

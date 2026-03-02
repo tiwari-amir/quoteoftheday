@@ -11,7 +11,9 @@ import '../../models/quote_model.dart';
 import '../../providers/liked_quotes_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
+import '../../theme/design_tokens.dart';
 import '../../widgets/editorial_background.dart';
+import '../../widgets/premium/premium_components.dart';
 
 enum _LibraryMode { saved, liked }
 
@@ -53,7 +55,12 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
           const EditorialBackground(),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              padding: const EdgeInsets.fromLTRB(
+                FlowSpace.lg,
+                FlowSpace.md,
+                FlowSpace.lg,
+                FlowSpace.md,
+              ),
               child: quotesAsync.when(
                 data: (quotes) {
                   final filtered = _filterQuotes(
@@ -64,33 +71,29 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                   final isSavedMode = _mode == _LibraryMode.saved;
 
                   return ListView(
+                    physics: const BouncingScrollPhysics(),
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Library',
-                              style: Theme.of(context).textTheme.headlineMedium,
-                            ),
-                          ),
-                        ],
+                      const SectionHeader(
+                        title: 'Library',
+                        subtitle: 'Saved thoughts and personal favorites',
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: FlowSpace.sm),
                       Wrap(
-                        spacing: 8,
+                        spacing: FlowSpace.xs,
+                        runSpacing: FlowSpace.xs,
                         children: [
-                          ChoiceChip(
-                            label: Text('Saved (${scopedSavedIds.length})'),
+                          PremiumPillChip(
+                            label: 'Saved (${scopedSavedIds.length})',
                             selected: isSavedMode,
-                            onSelected: (_) {
+                            onTap: () {
                               setState(() => _mode = _LibraryMode.saved);
                               queryNotifier.setQueryDebounced('');
                             },
                           ),
-                          ChoiceChip(
-                            label: Text('Liked (${likedIds.length})'),
+                          PremiumPillChip(
+                            label: 'Liked (${likedIds.length})',
                             selected: !isSavedMode,
-                            onSelected: (_) {
+                            onTap: () {
                               setState(() => _mode = _LibraryMode.liked);
                               queryNotifier.setQueryDebounced('');
                             },
@@ -98,80 +101,74 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                         ],
                       ),
                       if (isSavedMode) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: FlowSpace.sm),
                         const CollectionChipsBar(),
                       ],
-                      const SizedBox(height: 10),
-                      TextField(
-                        onChanged: queryNotifier.setQueryDebounced,
-                        decoration: InputDecoration(
-                          hintText: isSavedMode
-                              ? 'Search in saved'
-                              : 'Search in liked',
-                          prefixIcon: const Icon(Icons.search),
+                      const SizedBox(height: FlowSpace.sm),
+                      PremiumSurface(
+                        radius: FlowRadii.lg,
+                        elevation: 1,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: FlowSpace.sm,
+                          vertical: FlowSpace.xxs,
+                        ),
+                        child: TextField(
+                          onChanged: queryNotifier.setQueryDebounced,
+                          decoration: InputDecoration(
+                            hintText: isSavedMode
+                                ? 'Search in saved quotes'
+                                : 'Search in liked quotes',
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: FlowSpace.sm,
+                              vertical: FlowSpace.sm,
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: FlowSpace.md),
                       if (filtered.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 24),
-                          child: Text(
-                            isSavedMode
-                                ? 'No saved quotes found.'
-                                : 'No liked quotes found.',
+                        PremiumSurface(
+                          radius: FlowRadii.lg,
+                          elevation: 1,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: FlowSpace.sm,
+                            ),
+                            child: Text(
+                              isSavedMode
+                                  ? 'No saved quotes found.'
+                                  : 'No liked quotes found.',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
                           ),
                         )
                       else
                         for (final quote in filtered.take(100))
-                          Card(
-                            child: ListTile(
-                              title: Text(
-                                quote.quote,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: Text(quote.author),
-                              onTap: () => context.push(
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: FlowSpace.sm,
+                            ),
+                            child: _LibraryQuoteTile(
+                              quote: quote,
+                              isSavedMode: isSavedMode,
+                              onOpen: () => context.push(
                                 '/viewer/${isSavedMode ? 'saved' : 'liked'}/${isSavedMode ? 'saved' : 'liked'}?quoteId=${quote.id}',
                               ),
-                              trailing: PopupMenuButton<String>(
-                                onSelected: (v) {
-                                  if (v == 'collections') {
-                                    showAddToCollectionSheet(
-                                      context,
-                                      ref,
-                                      quote.id,
-                                    );
-                                  }
-                                  if (v == 'remove_saved') {
-                                    ref
-                                        .read(savedQuoteIdsProvider.notifier)
-                                        .remove(quote.id);
-                                  }
-                                  if (v == 'remove_liked') {
-                                    ref
-                                        .read(likedQuoteIdsProvider.notifier)
-                                        .toggle(quote.id);
-                                  }
-                                },
-                                itemBuilder: (_) => isSavedMode
-                                    ? const [
-                                        PopupMenuItem(
-                                          value: 'collections',
-                                          child: Text('Add to collection'),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'remove_saved',
-                                          child: Text('Remove saved'),
-                                        ),
-                                      ]
-                                    : const [
-                                        PopupMenuItem(
-                                          value: 'remove_liked',
-                                          child: Text('Remove liked'),
-                                        ),
-                                      ],
+                              onCollections: () => showAddToCollectionSheet(
+                                context,
+                                ref,
+                                quote.id,
                               ),
+                              onRemoveSaved: () => ref
+                                  .read(savedQuoteIdsProvider.notifier)
+                                  .remove(quote.id),
+                              onRemoveLiked: () => ref
+                                  .read(likedQuoteIdsProvider.notifier)
+                                  .toggle(quote.id),
                             ),
                           ),
                     ],
@@ -202,5 +199,95 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
               quote.revisedTags.join(' ').toLowerCase().contains(q);
         })
         .toList(growable: false);
+  }
+}
+
+class _LibraryQuoteTile extends StatelessWidget {
+  const _LibraryQuoteTile({
+    required this.quote,
+    required this.isSavedMode,
+    required this.onOpen,
+    required this.onCollections,
+    required this.onRemoveSaved,
+    required this.onRemoveLiked,
+  });
+
+  final QuoteModel quote;
+  final bool isSavedMode;
+  final VoidCallback onOpen;
+  final VoidCallback onCollections;
+  final VoidCallback onRemoveSaved;
+  final VoidCallback onRemoveLiked;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+
+    return PremiumSurface(
+      radius: FlowRadii.lg,
+      elevation: 1,
+      padding: const EdgeInsets.fromLTRB(
+        FlowSpace.md,
+        FlowSpace.sm,
+        FlowSpace.xs,
+        FlowSpace.sm,
+      ),
+      child: InkWell(
+        borderRadius: FlowRadii.radiusLg,
+        onTap: onOpen,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    quote.quote,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: colors?.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: FlowSpace.xs),
+                  Text(
+                    quote.author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert_rounded, color: colors?.textSecondary),
+              onSelected: (v) {
+                if (v == 'collections') onCollections();
+                if (v == 'remove_saved') onRemoveSaved();
+                if (v == 'remove_liked') onRemoveLiked();
+              },
+              itemBuilder: (_) => isSavedMode
+                  ? const [
+                      PopupMenuItem(
+                        value: 'collections',
+                        child: Text('Add to collection'),
+                      ),
+                      PopupMenuItem(
+                        value: 'remove_saved',
+                        child: Text('Remove saved'),
+                      ),
+                    ]
+                  : const [
+                      PopupMenuItem(
+                        value: 'remove_liked',
+                        child: Text('Remove liked'),
+                      ),
+                    ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -162,7 +162,7 @@ class _SpacePainter extends CustomPainter {
       final alpha = (0.12 + star.depth * 0.33) * twinkle;
       final paint = Paint()
         ..color = const Color(
-          0xFFE8EDF6,
+          0xFFD9E1F2,
         ).withValues(alpha: alpha.clamp(0.04, 0.38))
         ..maskFilter = MaskFilter.blur(
           BlurStyle.normal,
@@ -193,7 +193,7 @@ class _SpacePainter extends CustomPainter {
         ..shader = LinearGradient(
           colors: [
             const Color(0x00FFFFFF),
-            const Color(0xFFE8EEF6).withValues(alpha: alpha * 0.4),
+            const Color(0xFFDCE4F4).withValues(alpha: alpha * 0.4),
           ],
         ).createShader(Rect.fromPoints(current, trail));
       canvas.drawLine(trail, current, paint);
@@ -207,12 +207,12 @@ class _SpacePainter extends CustomPainter {
       final ring = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.1
-        ..color = const Color(0xFFDDE8FB).withValues(alpha: alpha * 0.22);
+        ..color = const Color(0xFFD1DDF2).withValues(alpha: alpha * 0.22);
       final halo = Paint()
         ..shader =
             RadialGradient(
               colors: [
-                const Color(0xB89BB6E0).withValues(alpha: alpha * 0.14),
+                const Color(0xB88EA7D4).withValues(alpha: alpha * 0.14),
                 Colors.transparent,
               ],
             ).createShader(

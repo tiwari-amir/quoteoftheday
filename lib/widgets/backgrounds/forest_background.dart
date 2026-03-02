@@ -149,8 +149,8 @@ class _ForestPainter extends CustomPainter {
       final paint = Paint()
         ..shader = RadialGradient(
           colors: [
-            const Color(0xFFD5ECA4).withValues(alpha: alpha * 0.42),
-            const Color(0x66AFC97E).withValues(alpha: alpha * 0.18),
+            const Color(0xFFC9DF9E).withValues(alpha: alpha * 0.42),
+            const Color(0x669BB273).withValues(alpha: alpha * 0.18),
             Colors.transparent,
           ],
           stops: const [0.0, 0.55, 1.0],
@@ -167,7 +167,7 @@ class _ForestPainter extends CustomPainter {
         ..shader =
             RadialGradient(
               colors: [
-                const Color(0xFFCFE5A5).withValues(alpha: alpha * 0.2),
+                const Color(0xFFC3D89C).withValues(alpha: alpha * 0.2),
                 Colors.transparent,
               ],
             ).createShader(

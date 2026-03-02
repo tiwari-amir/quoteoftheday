@@ -2,15 +2,18 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/v3_search/search_service.dart';
 import '../../core/constants.dart';
+import '../../features/v3_search/search_service.dart';
 import '../../models/quote_model.dart';
 import '../../providers/quote_providers.dart';
 import '../../services/quote_service.dart';
+import '../../theme/design_tokens.dart';
 import '../../widgets/editorial_background.dart';
+import '../../widgets/premium/premium_components.dart';
 
 class ExploreTabScreen extends ConsumerStatefulWidget {
   const ExploreTabScreen({super.key});
@@ -61,6 +64,7 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
     final categoriesAsync = ref.watch(categoryCountsProvider);
     final moodsAsync = ref.watch(moodCountsProvider);
     final service = ref.read(quoteServiceProvider);
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
 
     return Scaffold(
       body: Stack(
@@ -68,7 +72,12 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
           const EditorialBackground(),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              padding: const EdgeInsets.fromLTRB(
+                FlowSpace.lg,
+                FlowSpace.md,
+                FlowSpace.lg,
+                FlowSpace.md,
+              ),
               child: quotesAsync.when(
                 data: (quotes) {
                   _ensureExploreCaches(quotes);
@@ -88,102 +97,116 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                   );
 
                   return ListView(
+                    physics: const BouncingScrollPhysics(),
                     children: [
-                      Text(
-                        'Explore',
-                        style: Theme.of(context).textTheme.headlineMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _controller,
-                        onChanged: _onSearchChanged,
-                        decoration: InputDecoration(
-                          hintText: 'Search quotes, author, tags',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _controller.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  onPressed: () {
-                                    _controller.clear();
-                                    setState(() => _query = '');
-                                  },
-                                  icon: const Icon(Icons.close),
-                                ),
+                      const SectionHeader(
+                        title: 'Explore',
+                        subtitle:
+                            'Curated categories, moods, and timeless favorites.',
+                      ).animate().fadeIn(duration: FlowDurations.regular),
+                      const SizedBox(height: FlowSpace.md),
+                      PremiumSurface(
+                        radius: FlowRadii.lg,
+                        elevation: 1,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: FlowSpace.sm,
+                          vertical: FlowSpace.xxs,
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ChoiceChip(
-                            label: const Text('Any length'),
-                            selected: _lengthFilter == null,
-                            onSelected: (_) =>
-                                setState(() => _lengthFilter = null),
+                        child: TextField(
+                          controller: _controller,
+                          onChanged: _onSearchChanged,
+                          decoration: InputDecoration(
+                            hintText: 'Search quotes, author, tags',
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            suffixIcon: _controller.text.isEmpty
+                                ? null
+                                : IconButton(
+                                    onPressed: () {
+                                      _controller.clear();
+                                      setState(() => _query = '');
+                                    },
+                                    icon: const Icon(Icons.close_rounded),
+                                  ),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: FlowSpace.sm,
+                              vertical: FlowSpace.sm,
+                            ),
                           ),
-                          ChoiceChip(
-                            label: const Text('Short'),
+                        ),
+                      ).animate().fadeIn(duration: FlowDurations.regular),
+                      const SizedBox(height: FlowSpace.sm),
+                      Wrap(
+                        spacing: FlowSpace.xs,
+                        runSpacing: FlowSpace.xs,
+                        children: [
+                          PremiumPillChip(
+                            label: 'Any length',
+                            selected: _lengthFilter == null,
+                            onTap: () => setState(() => _lengthFilter = null),
+                          ),
+                          PremiumPillChip(
+                            label: 'Short',
                             selected: _lengthFilter == 'short',
-                            onSelected: (_) =>
+                            onTap: () =>
                                 setState(() => _lengthFilter = 'short'),
                           ),
-                          ChoiceChip(
-                            label: const Text('Medium'),
+                          PremiumPillChip(
+                            label: 'Medium',
                             selected: _lengthFilter == 'medium',
-                            onSelected: (_) =>
+                            onTap: () =>
                                 setState(() => _lengthFilter = 'medium'),
                           ),
-                          ChoiceChip(
-                            label: const Text('Long'),
+                          PremiumPillChip(
+                            label: 'Long',
                             selected: _lengthFilter == 'long',
-                            onSelected: (_) =>
-                                setState(() => _lengthFilter = 'long'),
+                            onTap: () => setState(() => _lengthFilter = 'long'),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: FlowSpace.sm),
                       SizedBox(
-                        height: 42,
+                        height: 44,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           physics: const BouncingScrollPhysics(),
                           itemCount: topTags.length + 1,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(width: 8),
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(width: FlowSpace.xs),
                           itemBuilder: (context, index) {
                             if (index == 0) {
-                              return ChoiceChip(
-                                label: const Text('All tags'),
+                              return PremiumPillChip(
+                                label: 'All tags',
                                 selected: _tagFilter == null,
-                                onSelected: (_) =>
-                                    setState(() => _tagFilter = null),
+                                onTap: () => setState(() => _tagFilter = null),
                               );
                             }
                             final tag = topTags[index - 1];
-                            return ChoiceChip(
-                              label: Text(_displayTag(tag, service)),
+                            return PremiumPillChip(
+                              label: _displayTag(tag, service),
                               selected: _tagFilter == tag,
-                              onSelected: (_) =>
-                                  setState(() => _tagFilter = tag),
+                              onTap: () => setState(() => _tagFilter = tag),
                             );
                           },
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: FlowSpace.lg),
                       if (_query.isNotEmpty)
                         _SearchResultsSection(results: searchResults)
                       else ...[
                         _PreviewSection(title: 'For You', items: _forYouCache),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: FlowSpace.xl),
                         if (_showMostLikedSection)
                           const _ExploreMostLikedSection(),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: FlowSpace.xl),
                         categoriesAsync.when(
                           data: (cats) {
                             final tags = _categoryPreviewTags(cats.keys);
                             return _TagSection(
                               title: 'Categories',
+                              subtitle: 'Browse by focus and topic',
                               tags: tags,
                               display: service,
                               onSeeMore: () => context.push('/categories'),
@@ -204,7 +227,7 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                           loading: () => const SizedBox.shrink(),
                           error: (error, stack) => const SizedBox.shrink(),
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: FlowSpace.xl),
                         moodsAsync.when(
                           data: (moods) {
                             final moodTags = _pickExploreMoods(moods);
@@ -220,6 +243,7 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                           error: (error, stack) => const SizedBox.shrink(),
                         ),
                       ],
+                      SizedBox(height: FlowSpace.sm + (colors == null ? 0 : 0)),
                     ],
                   );
                 },
@@ -342,7 +366,7 @@ class _SearchResultsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (results.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.only(top: 20),
+        padding: EdgeInsets.only(top: FlowSpace.lg),
         child: Text('No search results'),
       );
     }
@@ -350,17 +374,13 @@ class _SearchResultsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Results'),
-        const SizedBox(height: 8),
+        const SectionHeader(title: 'Results'),
+        const SizedBox(height: FlowSpace.sm),
         for (final quote in results.take(12))
-          Card(
-            child: ListTile(
-              title: Text(
-                quote.quote,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(quote.author),
+          Padding(
+            padding: const EdgeInsets.only(bottom: FlowSpace.sm),
+            child: _ExploreResultTile(
+              quote: quote,
               onTap: () =>
                   context.push('/viewer?type=explore&tag=&quoteId=${quote.id}'),
             ),
@@ -381,46 +401,23 @@ class _PreviewSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
+        SectionHeader(title: title),
+        const SizedBox(height: FlowSpace.sm),
         SizedBox(
-          height: 150,
+          height: 186,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
             itemCount: items.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 10),
+            separatorBuilder: (_, _) => const SizedBox(width: FlowSpace.sm),
             itemBuilder: (context, index) {
               final quote = items[index];
               return SizedBox(
-                width: 230,
-                child: Card(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () => context.push(
-                      '/viewer?type=explore&tag=&quoteId=${quote.id}',
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              quote.quote,
-                              maxLines: 4,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            quote.author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                      ),
-                    ),
+                width: 264,
+                child: _ExploreQuotePreviewCard(
+                  quote: quote,
+                  onTap: () => context.push(
+                    '/viewer?type=explore&tag=&quoteId=${quote.id}',
                   ),
                 ),
               );
@@ -471,24 +468,18 @@ class _ExploreLoaderState extends State<_ExploreLoader>
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-      color: Colors.white.withValues(alpha: 0.82),
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.2,
-    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         RotationTransition(
           turns: CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-          child: Icon(
-            Icons.auto_awesome_rounded,
-            size: 32,
-            color: Colors.white.withValues(alpha: 0.9),
-          ),
+          child: const Icon(Icons.auto_awesome_rounded, size: 30),
         ),
-        const SizedBox(height: 10),
-        Text('Curating quotes...', style: textStyle),
+        const SizedBox(height: FlowSpace.sm),
+        Text(
+          'Curating quotes...',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
       ],
     );
   }
@@ -497,6 +488,7 @@ class _ExploreLoaderState extends State<_ExploreLoader>
 class _TagSection extends StatelessWidget {
   const _TagSection({
     required this.title,
+    this.subtitle,
     required this.tags,
     required this.display,
     required this.onTap,
@@ -504,6 +496,7 @@ class _TagSection extends StatelessWidget {
   });
 
   final String title;
+  final String? subtitle;
   final List<String> tags;
   final QuoteService display;
   final ValueChanged<String> onTap;
@@ -514,21 +507,21 @@ class _TagSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
-            ),
-            TextButton(onPressed: onSeeMore, child: const Text('See more')),
-          ],
+        SectionHeader(
+          title: title,
+          subtitle: subtitle,
+          trailing: TextButton(
+            onPressed: onSeeMore,
+            child: const Text('See all'),
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: FlowSpace.sm),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: FlowSpace.xs,
+          runSpacing: FlowSpace.xs,
           children: [
             for (final tag in tags)
-              _FlowPillChip(
+              PremiumPillChip(
                 label: tag == 'all'
                     ? 'All'
                     : tag == 'series'
@@ -572,18 +565,17 @@ class _MoodGridSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visibleMoods = moods.take(6).toList(growable: false);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Moods', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
+        const SectionHeader(title: 'Moods'),
+        const SizedBox(height: FlowSpace.sm),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: FlowSpace.xs,
+          runSpacing: FlowSpace.xs,
           children: [
             for (final tag in visibleMoods)
-              _FlowPillChip(
+              PremiumPillChip(
                 label: display.toTitleCase(tag),
                 icon: _moodIcons[tag] ?? Icons.mood_rounded,
                 onTap: () => onTap(tag),
@@ -595,44 +587,125 @@ class _MoodGridSection extends StatelessWidget {
   }
 }
 
-class _FlowPillChip extends StatelessWidget {
-  const _FlowPillChip({required this.label, required this.onTap, this.icon});
+class _ExploreResultTile extends StatelessWidget {
+  const _ExploreResultTile({required this.quote, required this.onTap});
 
-  final String label;
+  final QuoteModel quote;
   final VoidCallback onTap;
-  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: Colors.transparent,
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    return PremiumSurface(
+      radius: FlowRadii.lg,
+      elevation: 1,
+      padding: const EdgeInsets.fromLTRB(
+        FlowSpace.md,
+        FlowSpace.sm,
+        FlowSpace.sm,
+        FlowSpace.sm,
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: FlowRadii.radiusLg,
         onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: scheme.surface.withValues(alpha: 0.72),
-            border: Border.all(color: scheme.secondary.withValues(alpha: 0.34)),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 16, color: scheme.primary),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.95),
-                  fontWeight: FontWeight.w700,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    quote.quote,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: colors?.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: FlowSpace.xs),
+                  Text(
+                    quote.author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: FlowSpace.xs),
+            Icon(Icons.north_east_rounded, color: colors?.accent, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExploreQuotePreviewCard extends StatelessWidget {
+  const _ExploreQuotePreviewCard({required this.quote, required this.onTap});
+
+  final QuoteModel quote;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+
+    return PremiumSurface(
+      radius: FlowRadii.lg,
+      elevation: 2,
+      padding: const EdgeInsets.fromLTRB(
+        FlowSpace.md,
+        FlowSpace.md,
+        FlowSpace.md,
+        FlowSpace.sm,
+      ),
+      child: InkWell(
+        borderRadius: FlowRadii.radiusLg,
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.format_quote_rounded,
+              size: 20,
+              color: colors?.accent.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: FlowSpace.xs),
+            Expanded(
+              child: Text(
+                quote.quote,
+                maxLines: 5,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: colors?.textPrimary,
+                  height: 1.36,
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: FlowSpace.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    quote.author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors?.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 16,
+                  color: colors?.accent,
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

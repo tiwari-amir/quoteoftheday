@@ -125,10 +125,10 @@ class _QuoteFlowGlowPainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: <Color>[
-          Color(0xFF120A1D),
-          Color(0xFF241432),
-          Color(0xFF45233F),
-          Color(0xFF794A4B),
+          Color(0xFF100A19),
+          Color(0xFF1D142A),
+          Color(0xFF382337),
+          Color(0xFF694447),
         ],
         stops: <double>[0.0, 0.42, 0.74, 1.0],
       ).createShader(Offset.zero & size);
@@ -161,7 +161,7 @@ class _QuoteFlowGlowPainter extends CustomPainter {
       canvas.drawOval(
         rect,
         Paint()
-          ..color = const Color(0xFFFFD6B8).withValues(alpha: veil.alpha)
+          ..color = const Color(0xFFF2D3BF).withValues(alpha: veil.alpha)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
       );
     }
@@ -172,7 +172,7 @@ class _QuoteFlowGlowPainter extends CustomPainter {
       y: 0.62 + math.sin(elapsed * 0.08) * 0.008,
       amplitude: 16,
       phase: 0.2,
-      color: const Color(0x5CF5C8A5),
+      color: const Color(0x52E9C7AB),
     );
     _paintWaveBand(
       canvas,
@@ -180,7 +180,7 @@ class _QuoteFlowGlowPainter extends CustomPainter {
       y: 0.72 + math.sin(elapsed * 0.07 + 1.3) * 0.01,
       amplitude: 20,
       phase: 1.15,
-      color: const Color(0x4DD89DB6),
+      color: const Color(0x46C792B0),
     );
     _paintWaveBand(
       canvas,
@@ -188,7 +188,7 @@ class _QuoteFlowGlowPainter extends CustomPainter {
       y: 0.8 + math.sin(elapsed * 0.06 + 2.3) * 0.01,
       amplitude: 17,
       phase: 2.1,
-      color: const Color(0x36765D8E),
+      color: const Color(0x326B5A84),
     );
 
     for (final particle in dust) {
@@ -200,7 +200,7 @@ class _QuoteFlowGlowPainter extends CustomPainter {
         Offset(px, py),
         particle.radius,
         Paint()
-          ..color = const Color(0xFFFFEEDB).withValues(alpha: alpha)
+          ..color = const Color(0xFFF3E7D7).withValues(alpha: alpha)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8),
       );
     }
@@ -217,7 +217,7 @@ class _QuoteFlowGlowPainter extends CustomPainter {
           ..shader =
               RadialGradient(
                 colors: <Color>[
-                  const Color(0xFFFFE0BE).withValues(alpha: alpha * 0.24),
+                  const Color(0xFFF6DCC6).withValues(alpha: alpha * 0.24),
                   Colors.transparent,
                 ],
               ).createShader(

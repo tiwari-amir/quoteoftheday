@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../features/v3_background/background_theme_provider.dart';
+import 'design_tokens.dart';
 
 @immutable
 class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
@@ -66,220 +66,150 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
   }
 }
 
-class _ThemePalette {
-  const _ThemePalette({
-    required this.primary,
-    required this.secondary,
-    required this.tertiary,
-    required this.scaffold,
-    required this.surface,
-    required this.navBar,
-    required this.inputFill,
-    required this.viewerAccent,
-  });
-
-  final Color primary;
-  final Color secondary;
-  final Color tertiary;
-  final Color scaffold;
-  final Color surface;
-  final Color navBar;
-  final Color inputFill;
-  final Color viewerAccent;
-}
-
 class AppTheme {
   static ThemeData darkThemeFor(AppBackgroundTheme backgroundTheme) {
-    final palette = _paletteFor(backgroundTheme);
+    final flow = flowTokensFor(backgroundTheme);
+    final colors = flow.colors;
+
     final scheme =
         ColorScheme.fromSeed(
-          seedColor: palette.primary,
+          seedColor: colors.accent,
           brightness: Brightness.dark,
         ).copyWith(
-          primary: palette.primary,
-          secondary: palette.secondary,
-          tertiary: palette.tertiary,
-          surface: palette.surface,
-          onPrimary: _onColorFor(palette.primary),
-          onSecondary: _onColorFor(palette.secondary),
-          onTertiary: _onColorFor(palette.tertiary),
-          onSurface: Colors.white.withValues(alpha: 0.96),
-          outline: palette.secondary.withValues(alpha: 0.35),
+          surface: colors.surface,
+          primary: colors.accent,
+          secondary: colors.accent.withValues(alpha: 0.88),
+          tertiary: colors.accent.withValues(alpha: 0.78),
+          onSurface: colors.textPrimary,
+          onPrimary: colors.background,
+          outline: colors.divider,
+          outlineVariant: colors.divider.withValues(alpha: 0.55),
           shadow: Colors.black,
-          scrim: const Color(0xFF010203),
+          scrim: const Color(0xFF030406),
         );
 
-    final tokens = AppThemeTokens(
-      glassFill: scheme.surface.withValues(alpha: 0.44),
-      glassBorder: Colors.white.withValues(alpha: 0.14),
-      glassShadow: Colors.black.withValues(alpha: 0.24),
-      chipBase: scheme.surface.withValues(alpha: 0.62),
-      chipSelected: scheme.primary.withValues(alpha: 0.18),
-      chipBorder: scheme.secondary.withValues(alpha: 0.34),
-      chipGlow: scheme.primary.withValues(alpha: 0.22),
-      viewerAccent: palette.viewerAccent,
+    final legacyTokens = AppThemeTokens(
+      glassFill: colors.surface.withValues(alpha: 0.62),
+      glassBorder: colors.divider.withValues(alpha: 0.7),
+      glassShadow: Colors.black.withValues(alpha: 0.3),
+      chipBase: colors.elevatedSurface.withValues(alpha: 0.74),
+      chipSelected: colors.accent.withValues(alpha: 0.2),
+      chipBorder: colors.divider,
+      chipGlow: colors.accent.withValues(alpha: 0.26),
+      viewerAccent: colors.accent,
     );
 
+    final textTheme = FlowTypography.buildTextTheme(colors);
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: palette.scaffold,
+      scaffoldBackgroundColor: colors.background,
       colorScheme: scheme,
-      extensions: <ThemeExtension<dynamic>>[tokens],
+      dividerColor: colors.divider,
+      textTheme: textTheme,
+      extensions: <ThemeExtension<dynamic>>[flow, legacyTokens],
     );
 
     return base.copyWith(
-      textTheme: GoogleFonts.dmSansTextTheme(base.textTheme).copyWith(
-        headlineLarge: GoogleFonts.cormorantGaramond(
-          fontSize: 30,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
-        ),
-        headlineMedium: GoogleFonts.cormorantGaramond(
-          fontSize: 24,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
-        ),
-        titleLarge: GoogleFonts.cormorantGaramond(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
-        ),
-        bodyLarge: GoogleFonts.dmSans(
-          fontSize: 16,
-          color: Colors.white.withValues(alpha: 0.92),
-          height: 1.45,
-        ),
-        bodyMedium: GoogleFonts.dmSans(
-          fontSize: 14,
-          color: Colors.white.withValues(alpha: 0.76),
-          letterSpacing: 0.1,
-        ),
+      appBarTheme: AppBarTheme(
+        elevation: 0,
+        centerTitle: false,
+        backgroundColor: colors.surface.withValues(alpha: 0.7),
+        foregroundColor: colors.textPrimary,
       ),
       cardTheme: CardThemeData(
-        color: scheme.surface.withValues(alpha: 0.68),
-        elevation: 2,
-        shadowColor: tokens.glassShadow,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        color: colors.surface.withValues(alpha: 0.92),
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusLg),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: palette.inputFill,
-        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.56)),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+        fillColor: colors.elevatedSurface.withValues(alpha: 0.9),
+        hintStyle: textTheme.bodyMedium?.copyWith(
+          color: colors.textSecondary.withValues(alpha: 0.92),
         ),
+        prefixIconColor: colors.textSecondary,
+        suffixIconColor: colors.textSecondary,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
+          horizontal: FlowSpace.lg,
+          vertical: FlowSpace.md,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: FlowRadii.radiusMd,
+          borderSide: BorderSide(color: colors.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: FlowRadii.radiusMd,
+          borderSide: BorderSide(color: colors.accent.withValues(alpha: 0.86)),
         ),
       ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: palette.surface.withValues(alpha: 0.46),
-        foregroundColor: Colors.white,
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: colors.surface.withValues(alpha: 0.92),
+        selectedItemColor: colors.accent,
+        unselectedItemColor: colors.textSecondary,
+        type: BottomNavigationBarType.fixed,
         elevation: 0,
+        showUnselectedLabels: true,
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: colors.textPrimary,
+          hoverColor: colors.accent.withValues(alpha: 0.12),
+          highlightColor: colors.accent.withValues(alpha: 0.2),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusMd),
+        backgroundColor: colors.elevatedSurface.withValues(alpha: 0.96),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: colors.textPrimary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: colors.accent,
+        selectionColor: colors.accent.withValues(alpha: 0.32),
+        selectionHandleColor: colors.accent,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: scheme.primary.withValues(alpha: 0.92),
-          foregroundColor: _onColorFor(scheme.primary),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+          backgroundColor: colors.accent,
+          foregroundColor: colors.background,
+          shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusMd),
+          padding: const EdgeInsets.symmetric(
+            horizontal: FlowSpace.lg,
+            vertical: FlowSpace.sm,
+          ),
+          textStyle: textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.white,
-          side: BorderSide(color: scheme.secondary.withValues(alpha: 0.42)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+          foregroundColor: colors.textPrimary,
+          side: BorderSide(color: colors.divider.withValues(alpha: 0.95)),
+          shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusMd),
+          padding: const EdgeInsets.symmetric(
+            horizontal: FlowSpace.lg,
+            vertical: FlowSpace.sm,
           ),
         ),
       ),
-      bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: palette.navBar.withValues(alpha: 0.9),
-        selectedItemColor: scheme.primary,
-        unselectedItemColor: Colors.white.withValues(alpha: 0.72),
-        type: BottomNavigationBarType.fixed,
+      chipTheme: ChipThemeData(
+        backgroundColor: colors.surface.withValues(alpha: 0.82),
+        selectedColor: colors.accent.withValues(alpha: 0.24),
+        disabledColor: colors.surface.withValues(alpha: 0.48),
+        side: BorderSide(color: colors.divider),
+        shape: RoundedRectangleBorder(borderRadius: FlowRadii.pill(999)),
+        labelStyle: textTheme.labelLarge,
+        padding: const EdgeInsets.symmetric(
+          horizontal: FlowSpace.sm,
+          vertical: FlowSpace.xs,
+        ),
       ),
-      chipTheme: base.chipTheme.copyWith(
-        backgroundColor: tokens.chipBase,
-        selectedColor: tokens.chipSelected,
-        side: BorderSide(color: tokens.chipBorder.withValues(alpha: 0.42)),
-        labelStyle: const TextStyle(fontWeight: FontWeight.w600),
-      ),
+      dividerTheme: DividerThemeData(color: colors.divider, thickness: 1),
     );
-  }
-
-  static _ThemePalette _paletteFor(AppBackgroundTheme theme) {
-    return switch (theme) {
-      AppBackgroundTheme.oceanFloor => const _ThemePalette(
-        primary: Color(0xFF79CFC1),
-        secondary: Color(0xFF9FDCD4),
-        tertiary: Color(0xFFC4D5A0),
-        scaffold: Color(0xFF081516),
-        surface: Color(0xFF12262A),
-        navBar: Color(0xFF0B1C20),
-        inputFill: Color(0xC712262A),
-        viewerAccent: Color(0xFF87D5C9),
-      ),
-      AppBackgroundTheme.spaceGalaxies => const _ThemePalette(
-        primary: Color(0xFF8DB1FF),
-        secondary: Color(0xFFB4C6FF),
-        tertiary: Color(0xFF8EE5FF),
-        scaffold: Color(0xFF070B17),
-        surface: Color(0xFF151D36),
-        navBar: Color(0xFF0D142B),
-        inputFill: Color(0xC7151D36),
-        viewerAccent: Color(0xFF97BAFF),
-      ),
-      AppBackgroundTheme.rainyCity => const _ThemePalette(
-        primary: Color(0xFF78C6E3),
-        secondary: Color(0xFFA2D8EC),
-        tertiary: Color(0xFFB9CFE0),
-        scaffold: Color(0xFF08131C),
-        surface: Color(0xFF112331),
-        navBar: Color(0xFF0D1A27),
-        inputFill: Color(0xC6112331),
-        viewerAccent: Color(0xFF8ED3EA),
-      ),
-      AppBackgroundTheme.deepForest => const _ThemePalette(
-        primary: Color(0xFF8DDEA5),
-        secondary: Color(0xFFB0E9C0),
-        tertiary: Color(0xFFCEE4A5),
-        scaffold: Color(0xFF06140C),
-        surface: Color(0xFF11241A),
-        navBar: Color(0xFF0B1A12),
-        inputFill: Color(0xC611241A),
-        viewerAccent: Color(0xFF97E2AF),
-      ),
-      AppBackgroundTheme.sunsetCity => const _ThemePalette(
-        primary: Color(0xFFFFB67A),
-        secondary: Color(0xFFFF9EAD),
-        tertiary: Color(0xFFFFD69F),
-        scaffold: Color(0xFF1A111B),
-        surface: Color(0xFF332131),
-        navBar: Color(0xFF241824),
-        inputFill: Color(0xC7332131),
-        viewerAccent: Color(0xFFFFC58E),
-      ),
-      AppBackgroundTheme.quoteflowGlow => const _ThemePalette(
-        primary: Color(0xFFFFC38D),
-        secondary: Color(0xFFDDA0C2),
-        tertiary: Color(0xFFFFE2AE),
-        scaffold: Color(0xFF120A1D),
-        surface: Color(0xFF2A1B35),
-        navBar: Color(0xFF1D1226),
-        inputFill: Color(0xC72A1B35),
-        viewerAccent: Color(0xFFFFD29D),
-      ),
-    };
-  }
-
-  static Color _onColorFor(Color color) {
-    return color.computeLuminance() > 0.5 ? Colors.black : Colors.white;
   }
 }

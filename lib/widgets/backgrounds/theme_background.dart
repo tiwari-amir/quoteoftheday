@@ -3,24 +3,84 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// Global pointer bus for subtle environment reactions.
+enum ThemePointerPhase { down, move, up }
+
+@immutable
+class ThemeTouchEvent {
+  const ThemeTouchEvent({required this.globalPosition, required this.phase});
+
+  final Offset globalPosition;
+  final ThemePointerPhase phase;
+}
+
+@immutable
+class BackgroundInteraction {
+  const BackgroundInteraction({
+    required this.phase,
+    required this.localPosition,
+    required this.normalizedPosition,
+    required this.elapsedSeconds,
+  });
+
+  final ThemePointerPhase phase;
+  final Offset localPosition;
+  final Offset normalizedPosition;
+  final double elapsedSeconds;
+}
+
+/// Global pointer bus for subtle environment reactions and parallax focus.
 class ThemeTouchBus {
   ThemeTouchBus._();
 
-  static final StreamController<Offset> _bus =
-      StreamController<Offset>.broadcast();
+  static final StreamController<ThemeTouchEvent> _bus =
+      StreamController<ThemeTouchEvent>.broadcast();
 
-  static Stream<Offset> get stream => _bus.stream;
+  static Stream<ThemeTouchEvent> get eventStream => _bus.stream;
 
+  /// Backward compatibility stream (down events only).
+  static Stream<Offset> get stream => _bus.stream
+      .where((event) => event.phase == ThemePointerPhase.down)
+      .map((event) => event.globalPosition);
+
+  /// Backward compatibility alias.
   static void emit(Offset globalPosition) {
+    emitDown(globalPosition);
+  }
+
+  static void emitDown(Offset globalPosition) {
     if (_bus.isClosed) return;
-    _bus.add(globalPosition);
+    _bus.add(
+      ThemeTouchEvent(
+        globalPosition: globalPosition,
+        phase: ThemePointerPhase.down,
+      ),
+    );
+  }
+
+  static void emitMove(Offset globalPosition) {
+    if (_bus.isClosed) return;
+    _bus.add(
+      ThemeTouchEvent(
+        globalPosition: globalPosition,
+        phase: ThemePointerPhase.move,
+      ),
+    );
+  }
+
+  static void emitUp(Offset globalPosition) {
+    if (_bus.isClosed) return;
+    _bus.add(
+      ThemeTouchEvent(
+        globalPosition: globalPosition,
+        phase: ThemePointerPhase.up,
+      ),
+    );
   }
 }
 
-/// Base widget used by all cinematic theme backgrounds.
-abstract class ThemeBackground extends StatefulWidget {
-  const ThemeBackground({
+/// Base widget used by premium interactive theme backgrounds.
+abstract class InteractiveBackground extends StatefulWidget {
+  const InteractiveBackground({
     super.key,
     required this.seed,
     required this.motionScale,
@@ -35,18 +95,28 @@ abstract class ThemeBackground extends StatefulWidget {
 /// - Frame callbacks mutate lightweight model data only
 /// - Repaint driven by [repaint] on CustomPainter (no rebuild loop)
 /// - Auto pause/resume with app lifecycle + TickerMode
-abstract class ThemeBackgroundState<T extends ThemeBackground> extends State<T>
+abstract class InteractiveBackgroundState<T extends InteractiveBackground>
+    extends State<T>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController controller;
   late final math.Random random;
 
   Duration get animationDuration;
   Size get sceneSize => _sceneSize;
+  Alignment get parallaxAlignment => _parallax;
+
+  Offset get parallaxOffsetPixels => Offset(
+    _parallax.x * _sceneSize.width * 0.045,
+    _parallax.y * _sceneSize.height * 0.03,
+  );
 
   Size _sceneSize = Size.zero;
   double _lastSeconds = 0;
+  double _lastPointerSeconds = 0;
   bool _activeLifecycle = true;
-  StreamSubscription<Offset>? _touchSubscription;
+  StreamSubscription<ThemeTouchEvent>? _touchSubscription;
+  Alignment _parallax = Alignment.center;
+  Alignment _parallaxTarget = Alignment.center;
 
   /// Override for one-time scene setup.
   @protected
@@ -59,6 +129,10 @@ abstract class ThemeBackgroundState<T extends ThemeBackground> extends State<T>
   /// Override for per-theme touch reactions.
   @protected
   void onSceneTap(Offset localPosition) {}
+
+  /// Override for richer touch phases and normalized interaction.
+  @protected
+  void onScenePointer(BackgroundInteraction interaction) {}
 
   /// Return the theme scene.
   @protected
@@ -73,7 +147,7 @@ abstract class ThemeBackgroundState<T extends ThemeBackground> extends State<T>
     controller = AnimationController(vsync: this, duration: animationDuration)
       ..addListener(_handleFrame)
       ..repeat();
-    _touchSubscription = ThemeTouchBus.stream.listen(_handleGlobalTouch);
+    _touchSubscription = ThemeTouchBus.eventStream.listen(_handleGlobalTouch);
   }
 
   @override
@@ -115,20 +189,68 @@ abstract class ThemeBackgroundState<T extends ThemeBackground> extends State<T>
     if (delta <= 0 || delta > 0.1) {
       delta = 1 / 60;
     }
+
+    // Parallax settles to center if pointer has been idle for a short window.
+    if (elapsed - _lastPointerSeconds > 0.45) {
+      _parallaxTarget =
+          Alignment.lerp(
+            _parallaxTarget,
+            Alignment.center,
+            (delta * 4.2).clamp(0.0, 1.0),
+          ) ??
+          Alignment.center;
+    }
+
+    final smoothing = (delta * 10.0).clamp(0.0, 1.0).toDouble();
+    _parallax = Alignment(
+      _parallax.x + (_parallaxTarget.x - _parallax.x) * smoothing,
+      _parallax.y + (_parallaxTarget.y - _parallax.y) * smoothing,
+    );
+
     onFrame(elapsed, delta);
   }
 
-  void _handleGlobalTouch(Offset globalPosition) {
+  void _handleGlobalTouch(ThemeTouchEvent event) {
     final render = context.findRenderObject();
     if (render is! RenderBox || !render.hasSize) return;
-    final local = render.globalToLocal(globalPosition);
+    if (_sceneSize.width <= 0 || _sceneSize.height <= 0) return;
+
+    if (event.phase == ThemePointerPhase.up) {
+      _lastPointerSeconds = _lastSeconds;
+      _parallaxTarget =
+          Alignment.lerp(_parallaxTarget, Alignment.center, 0.78) ??
+          Alignment.center;
+      return;
+    }
+
+    final local = render.globalToLocal(event.globalPosition);
     if (local.dx < 0 ||
         local.dy < 0 ||
         local.dx > render.size.width ||
         local.dy > render.size.height) {
       return;
     }
-    onSceneTap(local);
+
+    final nx = (local.dx / _sceneSize.width).clamp(0.0, 1.0).toDouble();
+    final ny = (local.dy / _sceneSize.height).clamp(0.0, 1.0).toDouble();
+    final ax = (nx * 2 - 1) * 0.16;
+    final ay = (ny * 2 - 1) * 0.14;
+    _parallaxTarget = Alignment(
+      ax.clamp(-0.16, 0.16).toDouble(),
+      ay.clamp(-0.14, 0.14).toDouble(),
+    );
+    _lastPointerSeconds = _lastSeconds;
+
+    final interaction = BackgroundInteraction(
+      phase: event.phase,
+      localPosition: local,
+      normalizedPosition: Offset(nx, ny),
+      elapsedSeconds: _lastSeconds,
+    );
+    onScenePointer(interaction);
+    if (event.phase == ThemePointerPhase.down) {
+      onSceneTap(local);
+    }
   }
 
   @override
@@ -151,3 +273,15 @@ abstract class ThemeBackgroundState<T extends ThemeBackground> extends State<T>
     );
   }
 }
+
+/// Backward-compatible aliases for existing theme files.
+abstract class ThemeBackground extends InteractiveBackground {
+  const ThemeBackground({
+    super.key,
+    required super.seed,
+    required super.motionScale,
+  });
+}
+
+abstract class ThemeBackgroundState<T extends ThemeBackground>
+    extends InteractiveBackgroundState<T> {}

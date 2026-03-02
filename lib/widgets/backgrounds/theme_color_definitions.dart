@@ -20,50 +20,50 @@ class ThemeColorSet {
 /// Restrained, cinematic palettes for all motion environments.
 abstract final class ThemeColorDefinitions {
   static const ocean = ThemeColorSet(
-    baseTop: Color(0xFF0A2328),
-    baseBottom: Color(0xFF050C10),
-    hazeA: Color(0x224DAEA5),
-    hazeB: Color(0x18316F73),
-    accent: Color(0x6694D9D0),
+    baseTop: Color(0xFF081E24),
+    baseBottom: Color(0xFF03090E),
+    hazeA: Color(0x223F9B94),
+    hazeB: Color(0x172A5E64),
+    accent: Color(0x6685C8BC),
   );
 
   static const space = ThemeColorSet(
-    baseTop: Color(0xFF070D1A),
-    baseBottom: Color(0xFF02040A),
-    hazeA: Color(0x20253D76),
-    hazeB: Color(0x16202A4D),
-    accent: Color(0x66D7DEEA),
+    baseTop: Color(0xFF050A14),
+    baseBottom: Color(0xFF010308),
+    hazeA: Color(0x201E3364),
+    hazeB: Color(0x161C2642),
+    accent: Color(0x66BBCFE2),
   );
 
   static const rain = ThemeColorSet(
-    baseTop: Color(0xFF0C1A24),
-    baseBottom: Color(0xFF050A10),
-    hazeA: Color(0x1C6A8EA0),
-    hazeB: Color(0x141F2D39),
-    accent: Color(0x66A7C6CF),
+    baseTop: Color(0xFF091721),
+    baseBottom: Color(0xFF03080E),
+    hazeA: Color(0x1C5F8192),
+    hazeB: Color(0x141A2732),
+    accent: Color(0x669AB9C4),
   );
 
   static const forest = ThemeColorSet(
-    baseTop: Color(0xFF07140F),
-    baseBottom: Color(0xFF030905),
-    hazeA: Color(0x1B395640),
-    hazeB: Color(0x12131F17),
-    accent: Color(0x6698B589),
+    baseTop: Color(0xFF05110C),
+    baseBottom: Color(0xFF010703),
+    hazeA: Color(0x1A304A37),
+    hazeB: Color(0x12101813),
+    accent: Color(0x6687A680),
   );
 
   static const sunset = ThemeColorSet(
-    baseTop: Color(0xFF4A3248),
-    baseBottom: Color(0xFF1B1521),
-    hazeA: Color(0x2CC58B90),
-    hazeB: Color(0x1E6A4F65),
-    accent: Color(0x66F2C3A2),
+    baseTop: Color(0xFF3C2C3E),
+    baseBottom: Color(0xFF14111B),
+    hazeA: Color(0x2CAD828A),
+    hazeB: Color(0x1E5F4C60),
+    accent: Color(0x66DFB79D),
   );
 
   static const glow = ThemeColorSet(
-    baseTop: Color(0xFF120A1D),
-    baseBottom: Color(0xFF1B1224),
-    hazeA: Color(0x33F5B783),
-    hazeB: Color(0x22D28CB2),
-    accent: Color(0x66FFE1B9),
+    baseTop: Color(0xFF100918),
+    baseBottom: Color(0xFF160E1F),
+    hazeA: Color(0x33E0AF87),
+    hazeB: Color(0x22B38AA7),
+    accent: Color(0x66F0D3B8),
   );
 }
