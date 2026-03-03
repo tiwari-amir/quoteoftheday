@@ -10,9 +10,8 @@ import 'providers/storage_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Do not block app launch on timezone channel setup.
-  // Notification scheduling still awaits this internally before creating schedules.
-  initializeNotificationTimezone();
+  // Ensure timezone database/device timezone are ready before any schedule pass.
+  await initializeNotificationTimezone();
   SupabaseConfig.validate();
   await Supabase.initialize(
     url: SupabaseConfig.url,

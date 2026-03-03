@@ -54,6 +54,13 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // Keep explicit release shrinker configuration for plugin reliability.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }

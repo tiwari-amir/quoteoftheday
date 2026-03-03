@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -44,11 +45,16 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
 
   Timer? _hintTimer;
   Timer? _controlsTimer;
+  Timer? _rewardTimer;
 
   int _currentIndex = 0;
   bool _showHint = true;
   bool _showControls = true;
   bool _shuffleEnabled = false;
+  String? _rewardMessage;
+  int _lifetimeScrolledCount = 0;
+  int _lastMilestoneShown = 0;
+  DateTime _lastLongQuoteAdvance = DateTime.fromMillisecondsSinceEpoch(0);
 
   String? _datasetSignature;
   List<QuoteModel> _sourceQuotes = const <QuoteModel>[];
@@ -62,9 +68,10 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       tag: widget.tag.toLowerCase(),
     );
     _pageController = PageController();
-    _shuffleEnabled =
-        ref.read(sharedPreferencesProvider).getBool(prefViewerShuffleEnabled) ??
-        false;
+    final prefs = ref.read(sharedPreferencesProvider);
+    _shuffleEnabled = prefs.getBool(prefViewerShuffleEnabled) ?? false;
+    _lifetimeScrolledCount = prefs.getInt(prefViewerScrolledCount) ?? 0;
+    _lastMilestoneShown = prefs.getInt(prefViewerLastMilestone) ?? 0;
 
     _hintTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
@@ -77,6 +84,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   void dispose() {
     _hintTimer?.cancel();
     _controlsTimer?.cancel();
+    _rewardTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }
@@ -105,7 +113,9 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       return;
     }
 
-    if (_shuffleEnabled) {
+    // Always start each viewer session with a fresh random deck
+    // to keep discovery feeling dynamic even when shuffle is off.
+    if (_shuffleEnabled || !keepCurrentQuote) {
       _displayQuotes = _nextShuffleCycle();
     } else {
       _displayQuotes = List<QuoteModel>.from(_sourceQuotes, growable: false);
@@ -135,6 +145,80 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     final cycle = List<QuoteModel>.from(_sourceQuotes);
     cycle.shuffle(_shuffleRandom);
     return cycle;
+  }
+
+  Future<void> _recordScrollProgress() async {
+    _lifetimeScrolledCount += 1;
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setInt(prefViewerScrolledCount, _lifetimeScrolledCount);
+
+    final milestone = _milestoneFor(_lifetimeScrolledCount);
+    if (milestone == null || milestone <= _lastMilestoneShown) return;
+    _lastMilestoneShown = milestone;
+    await prefs.setInt(prefViewerLastMilestone, milestone);
+    _showReward(_milestoneMessage(milestone));
+  }
+
+  int? _milestoneFor(int count) {
+    const fixed = <int>[5, 15, 25, 50];
+    for (final milestone in fixed) {
+      if (count == milestone) return milestone;
+    }
+    if (count > 50 && count % 50 == 0) {
+      return count;
+    }
+    return null;
+  }
+
+  String _milestoneMessage(int count) {
+    final rank = _scrollRankTitle(count);
+    if (count == 5) return 'Nice start. Momentum unlocked.';
+    if (count == 15) return 'You are in rhythm now.';
+    if (count == 25) return 'Flow mode activated.';
+    return '$rank reached - $count quotes scrolled.';
+  }
+
+  String _scrollRankTitle(int count) {
+    if (count >= 1000) return 'Quote Legend';
+    if (count >= 500) return 'Quote Master';
+    if (count >= 250) return 'Deep Reader';
+    if (count >= 100) return 'Night Scroller';
+    if (count >= 50) return 'Quote Voyager';
+    if (count >= 25) return 'Flow Reader';
+    if (count >= 10) return 'Rising Reader';
+    return 'Fresh Explorer';
+  }
+
+  void _showReward(String message) {
+    _rewardTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _rewardMessage = message;
+    });
+    _rewardTimer = Timer(const Duration(milliseconds: 1900), () {
+      if (!mounted) return;
+      setState(() => _rewardMessage = null);
+    });
+  }
+
+  void _advanceFromLongQuote(int index) {
+    final now = DateTime.now();
+    if (now.difference(_lastLongQuoteAdvance).inMilliseconds < 420) return;
+    _lastLongQuoteAdvance = now;
+
+    final nextIndex = index + 1;
+    if (nextIndex >= _displayQuotes.length) {
+      final nextCycle = _nextShuffleCycle();
+      setState(() {
+        _displayQuotes = [..._displayQuotes, ...nextCycle];
+      });
+    }
+
+    if (!_pageController.hasClients) return;
+    _pageController.nextPage(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _toggleShuffle() {
@@ -183,6 +267,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   }
 
   void _onPageChanged(int index) {
+    final previousIndex = _currentIndex;
     setState(() {
       _currentIndex = index;
       if (_currentIndex > 0) {
@@ -191,18 +276,17 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       _showControls = true;
     });
     _armControlsFade();
+    unawaited(SystemSound.play(SystemSoundType.click));
 
-    if (_shuffleEnabled && index == _displayQuotes.length - 1) {
+    if (index != previousIndex) {
+      unawaited(_recordScrollProgress());
+    }
+
+    if (index == _displayQuotes.length - 1) {
       final nextCycle = _nextShuffleCycle();
       setState(() {
         _displayQuotes = [..._displayQuotes, ...nextCycle];
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('End of quotes. Continuing with a fresh shuffle.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
     }
   }
 
@@ -417,7 +501,6 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
               _displayQuotes[_currentIndex.clamp(0, _displayQuotes.length - 1)];
           final isSaved = savedIds.contains(currentQuote.id);
           final isLiked = likedIds.contains(currentQuote.id);
-          final progressValue = (_currentIndex + 1) / _displayQuotes.length;
 
           return Stack(
             children: [
@@ -487,6 +570,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                                 quote: quote,
                                 authorLabel: authorLabel,
                                 service: service,
+                                onAdvanceRequested: () =>
+                                    _advanceFromLongQuote(index),
                               ),
                             ),
                           ),
@@ -522,12 +607,6 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                               },
                             ),
                             const Spacer(),
-                            _ViewerProgressPill(
-                              progress: progressValue,
-                              currentIndex: _currentIndex,
-                              total: _displayQuotes.length,
-                            ),
-                            const SizedBox(width: FlowSpace.xs),
                             PremiumIconPillButton(
                               icon: _shuffleEnabled
                                   ? Icons.shuffle_on_rounded
@@ -573,6 +652,49 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 72,
+                left: 22,
+                right: 22,
+                child: IgnorePointer(
+                  child: AnimatedSwitcher(
+                    duration: FlowDurations.regular,
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: _rewardMessage == null
+                        ? const SizedBox.shrink()
+                        : Center(
+                            key: ValueKey<String>(_rewardMessage!),
+                            child:
+                                PremiumSurface(
+                                      radius: 999,
+                                      elevation: 2,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: FlowSpace.md,
+                                        vertical: FlowSpace.xs,
+                                      ),
+                                      child: Text(
+                                        _rewardMessage!,
+                                        textAlign: TextAlign.center,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    )
+                                    .animate()
+                                    .fadeIn(duration: FlowDurations.quick)
+                                    .slideY(
+                                      begin: -0.14,
+                                      end: 0,
+                                      curve: FlowDurations.curve,
+                                    ),
+                          ),
                   ),
                 ),
               ),
@@ -635,67 +757,18 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   }
 }
 
-class _ViewerProgressPill extends StatelessWidget {
-  const _ViewerProgressPill({
-    required this.progress,
-    required this.currentIndex,
-    required this.total,
-  });
-
-  final double progress;
-  final int currentIndex;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    return PremiumSurface(
-      radius: 999,
-      elevation: 1,
-      padding: const EdgeInsets.symmetric(
-        horizontal: FlowSpace.sm,
-        vertical: FlowSpace.xs,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 56,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: progress.clamp(0.0, 1.0),
-                minHeight: 4,
-                color: colors?.accent,
-                backgroundColor:
-                    colors?.divider.withValues(alpha: 0.6) ??
-                    Colors.white.withValues(alpha: 0.2),
-              ),
-            ),
-          ),
-          const SizedBox(width: FlowSpace.xs),
-          Text(
-            '${currentIndex + 1}/$total',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: colors?.textSecondary.withValues(alpha: 0.95),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _QuotePanel extends StatelessWidget {
   const _QuotePanel({
     required this.quote,
     required this.authorLabel,
     required this.service,
+    required this.onAdvanceRequested,
   });
 
   final QuoteModel quote;
   final String authorLabel;
   final QuoteService service;
+  final VoidCallback onAdvanceRequested;
 
   @override
   Widget build(BuildContext context) {
@@ -723,12 +796,10 @@ class _QuotePanel extends StatelessWidget {
             ),
     );
     if (showScrollableBody) {
-      quoteBody = SizedBox(
-        height: MediaQuery.of(context).size.height * 0.62,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: quoteBody,
-        ),
+      quoteBody = _LongQuoteBody(
+        maxHeight: MediaQuery.of(context).size.height * 0.62,
+        onRequestNext: onAdvanceRequested,
+        child: quoteBody,
       );
     }
 
@@ -736,6 +807,81 @@ class _QuotePanel extends StatelessWidget {
         .animate(key: ValueKey(quote.id))
         .fadeIn(duration: FlowDurations.regular)
         .slideY(begin: 0.05, end: 0, curve: FlowDurations.curve);
+  }
+}
+
+class _LongQuoteBody extends StatefulWidget {
+  const _LongQuoteBody({
+    required this.maxHeight,
+    required this.onRequestNext,
+    required this.child,
+  });
+
+  final double maxHeight;
+  final VoidCallback onRequestNext;
+  final Widget child;
+
+  @override
+  State<_LongQuoteBody> createState() => _LongQuoteBodyState();
+}
+
+class _LongQuoteBodyState extends State<_LongQuoteBody> {
+  late final ScrollController _controller;
+  double _overscrollAccumulator = 0;
+  DateTime _lastHandoff = DateTime.fromMillisecondsSinceEpoch(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollUpdateNotification ||
+        notification is ScrollEndNotification) {
+      if (notification.metrics.extentAfter > 8) {
+        _overscrollAccumulator = 0;
+      }
+    }
+
+    if (notification is OverscrollNotification) {
+      if (notification.metrics.extentAfter <= 0.5 &&
+          notification.overscroll > 0) {
+        _overscrollAccumulator += notification.overscroll;
+        if (_overscrollAccumulator > 24) {
+          final now = DateTime.now();
+          if (now.difference(_lastHandoff).inMilliseconds > 420) {
+            _lastHandoff = now;
+            _overscrollAccumulator = 0;
+            widget.onRequestNext();
+          }
+        }
+      } else {
+        _overscrollAccumulator = 0;
+      }
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: widget.maxHeight,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: SingleChildScrollView(
+          controller: _controller,
+          physics: const BouncingScrollPhysics(),
+          child: widget.child,
+        ),
+      ),
+    );
   }
 }
 

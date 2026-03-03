@@ -11,6 +11,13 @@ import 'package:timezone/timezone.dart' as tz;
 
 bool _timezoneInitialized = false;
 Future<void>? _timezoneInitializationFuture;
+const AndroidNotificationChannel _quoteReminderChannel =
+    AndroidNotificationChannel(
+      'quote_reminder_channel',
+      'QuoteFlow Reminder',
+      description: 'Daily quote reminders',
+      importance: Importance.high,
+    );
 
 Future<void> initializeNotificationTimezone() {
   if (_timezoneInitialized) return Future.value();
@@ -48,8 +55,9 @@ Future<void> _initializeNotificationTimezoneInternal() async {
   }
 
   _timezoneInitialized = true;
+  final now = tz.TZDateTime.now(tz.local);
   debugPrint(
-    '[Notifications] Timezone initialized. detected="$detectedTimeZone", active="${tz.local.name}"',
+    '[Notifications] Timezone initialized. detected="$detectedTimeZone", active="${tz.local.name}", now="$now"',
   );
 }
 
@@ -67,9 +75,8 @@ class V3NotificationsService {
 
   bool get isSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
   bool get notificationsGranted => _notificationsGranted;
-  AndroidScheduleMode get androidScheduleMode => _canUseExactAlarms
-      ? AndroidScheduleMode.exactAllowWhileIdle
-      : AndroidScheduleMode.inexactAllowWhileIdle;
+  AndroidScheduleMode get androidScheduleMode =>
+      AndroidScheduleMode.inexactAllowWhileIdle;
   Stream<String> get tapStream => _tapController.stream;
 
   Future<void> initialize() async {
@@ -101,6 +108,11 @@ class V3NotificationsService {
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
+
+      await android?.createNotificationChannel(_quoteReminderChannel);
+      debugPrint(
+        '[Notifications] Ensured Android channel: id=${_quoteReminderChannel.id}',
+      );
 
       final enabled = await _areAndroidNotificationsEnabled(android);
       if (enabled != null) {
@@ -323,9 +335,9 @@ class V3NotificationsService {
     );
 
     final androidDetails = AndroidNotificationDetails(
-      'quote_reminder_channel',
-      'QuoteFlow Reminder',
-      channelDescription: 'Daily quote reminders',
+      _quoteReminderChannel.id,
+      _quoteReminderChannel.name,
+      channelDescription: _quoteReminderChannel.description,
       importance: Importance.high,
       priority: Priority.high,
       subText: authorName,
@@ -355,46 +367,21 @@ class V3NotificationsService {
     );
 
     debugPrint(
-      '[Notifications] Scheduling id=$id, repeatDaily=$repeatDaily, timezone=${tz.local.name}, nextTrigger=$schedule',
+      '[Notifications] Scheduling id=$id, mode=${androidScheduleMode.name}, repeatDaily=$repeatDaily, timezone=${tz.local.name}, nextTrigger=${schedule.toIso8601String()}',
     );
 
-    try {
-      await _scheduleWithMode(
-        id: id,
-        title: title,
-        body: body,
-        schedule: schedule,
-        details: details,
-        payload: payload,
-        mode: androidScheduleMode,
-        repeatDaily: repeatDaily,
-      );
-      debugPrint('[Notifications] Scheduled id=$id successfully.');
-      await _logPendingRequests();
-    } catch (error) {
-      if (!Platform.isAndroid ||
-          androidScheduleMode == AndroidScheduleMode.inexactAllowWhileIdle) {
-        rethrow;
-      }
-      debugPrint(
-        'Exact alarm scheduling failed for id=$id, retrying inexact mode: $error',
-      );
-      _canUseExactAlarms = false;
-      await _scheduleWithMode(
-        id: id,
-        title: title,
-        body: body,
-        schedule: schedule,
-        details: details,
-        payload: payload,
-        mode: AndroidScheduleMode.inexactAllowWhileIdle,
-        repeatDaily: repeatDaily,
-      );
-      debugPrint(
-        '[Notifications] Scheduled id=$id with fallback inexact mode.',
-      );
-      await _logPendingRequests();
-    }
+    await _scheduleWithMode(
+      id: id,
+      title: title,
+      body: body,
+      schedule: schedule,
+      details: details,
+      payload: payload,
+      mode: androidScheduleMode,
+      repeatDaily: repeatDaily,
+    );
+    debugPrint('[Notifications] Scheduled id=$id successfully.');
+    await _logPendingRequests();
   }
 
   StyleInformation _buildAndroidStyle({

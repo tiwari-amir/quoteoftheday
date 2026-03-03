@@ -90,10 +90,7 @@ class _AuthorInfoSheetState extends State<AuthorInfoSheet> {
                             );
                           }
 
-                          return _AuthorProfileContent(
-                            requestedAuthor: widget.author,
-                            info: info,
-                          );
+                          return _AuthorProfileContent(info: info);
                         },
                       ),
                     ),
@@ -174,20 +171,12 @@ class _AuthorUnavailableState extends StatelessWidget {
             children: [
               const _AuthorAvatar(imageUrl: null, size: 132),
               const SizedBox(height: 16),
-              Text(
-                author,
+              _GoldBlueFadeName(
+                text: author,
                 textAlign: TextAlign.center,
                 style: textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Author profile',
-                textAlign: TextAlign.center,
-                style: textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.72),
                 ),
               ),
             ],
@@ -210,22 +199,15 @@ class _AuthorUnavailableState extends StatelessWidget {
 }
 
 class _AuthorProfileContent extends StatelessWidget {
-  const _AuthorProfileContent({
-    required this.requestedAuthor,
-    required this.info,
-  });
-
-  final String requestedAuthor;
+  const _AuthorProfileContent({required this.info});
   final AuthorWikiProfile info;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final facts = _AuthorFacts.fromSummary(info.summary);
+    final biography = _formatBiography(info.summary);
     final sourceUrl = info.url?.trim() ?? '';
-    final subtitle = _normalize(requestedAuthor) == _normalize(info.wikiTitle)
-        ? 'Wikipedia profile'
-        : 'Matched from "$requestedAuthor"';
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -238,33 +220,17 @@ class _AuthorProfileContent extends StatelessWidget {
             children: [
               _AuthorAvatar(imageUrl: info.imageUrl, size: 132),
               const SizedBox(height: 16),
-              Text(
-                info.wikiTitle,
+              _GoldBlueFadeName(
+                text: info.wikiTitle,
                 textAlign: TextAlign.center,
                 style: textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   height: 1.1,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                style: textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.72),
-                ),
-              ),
-              if (facts.lifeSpan != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  facts.lifeSpan!,
-                  textAlign: TextAlign.center,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.64),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
-                  ),
-                ),
+              if (facts.hasLifeData) ...[
+                const SizedBox(height: 10),
+                _LifeMetaRow(facts: facts),
               ],
             ],
           ),
@@ -278,7 +244,7 @@ class _AuthorProfileContent extends StatelessWidget {
                   title: 'Known for',
                   child: Text(
                     facts.role!,
-                    textAlign: TextAlign.center,
+                    textAlign: TextAlign.start,
                     style: textTheme.bodyMedium?.copyWith(
                       height: 1.5,
                       color: Colors.white.withValues(alpha: 0.92),
@@ -297,9 +263,9 @@ class _AuthorProfileContent extends StatelessWidget {
               child: _SectionBlock(
                 title: 'Biography',
                 child: Text(
-                  info.summary.isEmpty
+                  biography.isEmpty
                       ? 'Wikipedia entry found, but summary is unavailable.'
-                      : info.summary,
+                      : biography,
                   textAlign: TextAlign.start,
                   style: textTheme.bodyMedium?.copyWith(
                     height: 1.62,
@@ -323,13 +289,72 @@ class _AuthorProfileContent extends StatelessWidget {
       ),
     );
   }
+}
 
-  String _normalize(String value) {
-    return value
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+class _GoldBlueFadeName extends StatelessWidget {
+  const _GoldBlueFadeName({
+    required this.text,
+    required this.style,
+    this.textAlign = TextAlign.start,
+  });
+
+  final String text;
+  final TextStyle? style;
+  final TextAlign textAlign;
+
+  @override
+  Widget build(BuildContext context) {
+    final fillStyle =
+        style?.copyWith(color: Colors.white) ??
+        const TextStyle(color: Colors.white);
+    final edgeStyle = fillStyle.copyWith(
+      foreground: (Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0
+        ..color = const Color(0xFF53340F).withValues(alpha: 0.88)),
+    );
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Text(text, textAlign: textAlign, style: edgeStyle),
+        ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) {
+            return const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF6B4512),
+                Color(0xFFB57A22),
+                Color(0xFFF9DC8E),
+                Color(0xFFC98A2F),
+                Color(0xFF7A5117),
+              ],
+              stops: [0.0, 0.25, 0.5, 0.74, 1.0],
+            ).createShader(bounds);
+          },
+          child: Text(text, textAlign: textAlign, style: fillStyle),
+        ),
+        ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) {
+            return const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0x00FFFFFF),
+                Color(0x99FFF4CD),
+                Color(0x11FFFFFF),
+                Color(0x00FFFFFF),
+              ],
+              stops: [0.0, 0.28, 0.46, 1.0],
+            ).createShader(bounds);
+          },
+          child: Text(text, textAlign: textAlign, style: fillStyle),
+        ),
+      ],
+    );
   }
 }
 
@@ -342,44 +367,56 @@ class _SectionBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.white.withValues(alpha: 0.08),
-            Colors.black.withValues(alpha: 0.16),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.35,
+            color: Colors.white.withValues(alpha: 0.94),
+          ),
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              style: textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: Colors.white.withValues(alpha: 0.92),
-                letterSpacing: 0.4,
-              ),
+        const SizedBox(height: 8),
+        Container(
+          height: 1,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: 0.34),
+                Colors.white.withValues(alpha: 0.12),
+                Colors.transparent,
+              ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Divider(
-              height: 1,
-              color: Colors.white.withValues(alpha: 0.14),
-            ),
-          ),
-          child,
-        ],
+        ),
+        const SizedBox(height: 12),
+        child,
+      ],
+    );
+  }
+}
+
+class _LifeMetaRow extends StatelessWidget {
+  const _LifeMetaRow({required this.facts});
+
+  final _AuthorFacts facts;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final lifeLine = facts.lifeLine;
+    if (lifeLine == null) return const SizedBox.shrink();
+
+    return Text(
+      '($lifeLine)',
+      textAlign: TextAlign.center,
+      style: textTheme.labelSmall?.copyWith(
+        fontSize: 10.6,
+        letterSpacing: 0.24,
+        fontWeight: FontWeight.w600,
+        color: Colors.white.withValues(alpha: 0.78),
       ),
     );
   }
@@ -429,6 +466,14 @@ class _AuthorAvatar extends StatelessWidget {
   }
 }
 
+String _formatBiography(String summary) {
+  if (summary.trim().isEmpty) return '';
+  return summary
+      .replaceAll(RegExp(r'\[[^\]]+\]'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
 class _AvatarFallback extends StatelessWidget {
   const _AvatarFallback({required this.size});
 
@@ -466,10 +511,23 @@ class _AuthorFacts {
   final String? birthYear;
   final String? deathYear;
 
-  String? get lifeSpan {
-    if (birthYear == null && deathYear == null) return null;
-    if (birthYear != null && deathYear != null) return '$birthYear-$deathYear';
-    if (birthYear != null) return 'Born $birthYear';
+  bool get hasLifeData => birthYear != null || deathYear != null;
+
+  String? get lifeLine {
+    if (!hasLifeData) return null;
+    if (birthYear != null && deathYear != null) {
+      return '$birthYear - $deathYear';
+    }
+    if (birthYear != null) {
+      final born = int.tryParse(birthYear!);
+      if (born != null) {
+        final age = DateTime.now().year - born;
+        if (age >= 0 && age <= 125) {
+          return '$birthYear - $age years old';
+        }
+      }
+      return birthYear;
+    }
     return 'Died $deathYear';
   }
 
@@ -481,32 +539,58 @@ class _AuthorFacts {
       r'\b(?:is|was)\s+(?:an?|the)\s+([^.!?]{6,220})',
       caseSensitive: false,
     ).firstMatch(clean);
-    final role = roleMatch == null ? null : _normalize(roleMatch.group(1)!);
+    final role = _refineRole(roleMatch?.group(1));
 
     final rangeMatch = RegExp(
-      r'\((1[5-9]\d{2}|20[0-2]\d)\s*[-\u2013]\s*(1[5-9]\d{2}|20[0-2]\d|present)\)',
+      r'\(([^)]{0,48})\s*[-\u2013]\s*([^)]{0,48})\)',
       caseSensitive: false,
     ).firstMatch(clean);
-    String? birthYear = rangeMatch?.group(1);
-    final rangeDeath = rangeMatch?.group(2);
+    String? birthYear = _extractYearToken(rangeMatch?.group(1) ?? '');
+    final rangeSecond = rangeMatch?.group(2) ?? '';
     String? deathYear;
-    if (rangeDeath != null && rangeDeath.toLowerCase() != 'present') {
-      deathYear = rangeDeath;
+    if (!RegExp(r'\bpresent\b', caseSensitive: false).hasMatch(rangeSecond)) {
+      deathYear = _extractYearToken(rangeSecond);
     }
 
-    birthYear ??= RegExp(
-      r'\bborn\b[^0-9]{0,24}(1[5-9]\d{2}|20[0-2]\d)',
-      caseSensitive: false,
-    ).firstMatch(clean)?.group(1);
-    deathYear ??= RegExp(
-      r'\bdied\b[^0-9]{0,24}(1[5-9]\d{2}|20[0-2]\d)',
-      caseSensitive: false,
-    ).firstMatch(clean)?.group(1);
+    birthYear ??= _extractYearFromKeyword(clean, 'born');
+    deathYear ??= _extractYearFromKeyword(clean, 'died');
 
     return _AuthorFacts(role: role, birthYear: birthYear, deathYear: deathYear);
   }
 
-  static String _normalize(String value) {
-    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String? _refineRole(String? raw) {
+    if (raw == null) return null;
+    var value = raw.replaceAll(RegExp(r'\([^)]*\)'), '');
+    value = value.replaceAll(
+      RegExp(r'\b(best known for|known for)\b.*$', caseSensitive: false),
+      '',
+    );
+    value = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (value.isEmpty) return null;
+    final words = value.split(' ');
+    if (words.length > 14) {
+      value = '${words.take(14).join(' ')}...';
+    }
+    return value;
   }
+
+  static String? _extractYearFromKeyword(String text, String keyword) {
+    final scope = RegExp(
+      '\\b$keyword\\b[^.\\n]{0,80}',
+      caseSensitive: false,
+    ).firstMatch(text)?.group(0);
+    if (scope == null) return null;
+    return _extractYearToken(scope);
+  }
+
+  static String? _extractYearToken(String value) {
+    final cleaned = value.trim();
+    if (cleaned.isEmpty) return null;
+    final year = RegExp(
+      r'(1[5-9]\d{2}|20[0-2]\d)',
+    ).firstMatch(cleaned)?.group(0);
+    if (year != null) return year;
+    return null;
+  }
+
 }

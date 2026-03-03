@@ -284,7 +284,6 @@ class _LockscreenQuoteContent extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             _TodayAuthorPortrait(author: author),
-            const SizedBox(height: FlowSpace.md),
             Text(
               '"',
               style: Theme.of(context).textTheme.headlineLarge?.copyWith(
@@ -327,12 +326,12 @@ class _LockscreenQuoteContent extends StatelessWidget {
               ),
             ),
             const SizedBox(height: FlowSpace.sm),
-            Text(
-              '— $author',
+            _GoldBlueFadeName(
+              text: '- $author',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: colors?.textSecondary.withValues(alpha: 0.96),
                 letterSpacing: 0.24,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: FlowSpace.xs),
@@ -352,6 +351,73 @@ class _LockscreenQuoteContent extends StatelessWidget {
   }
 }
 
+class _GoldBlueFadeName extends StatelessWidget {
+  const _GoldBlueFadeName({
+    required this.text,
+    required this.style,
+    this.textAlign = TextAlign.start,
+  });
+
+  final String text;
+  final TextStyle? style;
+  final TextAlign textAlign;
+
+  @override
+  Widget build(BuildContext context) {
+    final fillStyle =
+        style?.copyWith(color: Colors.white) ??
+        const TextStyle(color: Colors.white);
+    final edgeStyle = fillStyle.copyWith(
+      foreground: (Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0
+        ..color = const Color(0xFF53340F).withValues(alpha: 0.88)),
+    );
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Text(text, textAlign: textAlign, style: edgeStyle),
+        ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) {
+            return const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF6B4512),
+                Color(0xFFB57A22),
+                Color(0xFFF9DC8E),
+                Color(0xFFC98A2F),
+                Color(0xFF7A5117),
+              ],
+              stops: [0.0, 0.25, 0.5, 0.74, 1.0],
+            ).createShader(bounds);
+          },
+          child: Text(text, textAlign: textAlign, style: fillStyle),
+        ),
+        ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) {
+            return const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0x00FFFFFF),
+                Color(0x99FFF4CD),
+                Color(0x11FFFFFF),
+                Color(0x00FFFFFF),
+              ],
+              stops: [0.0, 0.28, 0.46, 1.0],
+            ).createShader(bounds);
+          },
+          child: Text(text, textAlign: textAlign, style: fillStyle),
+        ),
+      ],
+    );
+  }
+}
+
 class _TodayAuthorPortrait extends ConsumerWidget {
   const _TodayAuthorPortrait({required this.author});
 
@@ -366,79 +432,87 @@ class _TodayAuthorPortrait extends ConsumerWidget {
       data: (profile) {
         final imageUrl = profile?.imageUrl?.trim();
         final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+        if (!hasImage) {
+          return const SizedBox.shrink();
+        }
 
-        return SizedBox(
-          width: 122,
-          height: 122,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 118,
-                height: 118,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: (colors?.accent ?? Colors.white).withValues(
-                        alpha: 0.28,
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 132,
+              height: 132,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 132,
+                    height: 132,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          (colors?.accent ?? Colors.white).withValues(
+                            alpha: 0.18,
+                          ),
+                          (colors?.accent ?? Colors.white).withValues(
+                            alpha: 0.08,
+                          ),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.12, 0.52, 1.0],
                       ),
-                      blurRadius: 30,
-                      spreadRadius: 1,
+                      boxShadow: [
+                        BoxShadow(
+                          color: (colors?.accent ?? Colors.white).withValues(
+                            alpha: 0.22,
+                          ),
+                          blurRadius: 42,
+                          spreadRadius: 4,
+                        ),
+                        BoxShadow(
+                          color: (colors?.textPrimary ?? Colors.white)
+                              .withValues(alpha: 0.1),
+                          blurRadius: 24,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              Container(
-                width: 108,
-                height: 108,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      colors?.accent.withValues(alpha: 0.78) ?? Colors.white70,
-                      colors?.surface.withValues(alpha: 0.9) ?? Colors.black54,
-                    ],
                   ),
-                  border: Border.all(
-                    color:
-                        colors?.divider.withValues(alpha: 0.95) ??
-                        Colors.white.withValues(alpha: 0.3),
+                  Container(
+                    width: 108,
+                    height: 108,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: (colors?.accent ?? Colors.white).withValues(
+                            alpha: 0.22,
+                          ),
+                          blurRadius: 26,
+                          spreadRadius: 1,
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 14,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 50,
+                      backgroundColor: colors?.surface.withValues(alpha: 0.9),
+                      backgroundImage: NetworkImage(imageUrl),
+                    ),
                   ),
-                ),
+                ],
               ),
-              CircleAvatar(
-                radius: 50,
-                backgroundColor: colors?.surface.withValues(alpha: 0.9),
-                backgroundImage: hasImage ? NetworkImage(imageUrl) : null,
-                child: hasImage
-                    ? null
-                    : Icon(
-                        Icons.person_outline_rounded,
-                        size: 34,
-                        color: colors?.textSecondary.withValues(alpha: 0.92),
-                      ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: FlowSpace.md),
+          ],
         );
       },
-      loading: () => SizedBox(
-        width: 108,
-        height: 108,
-        child: CircularProgressIndicator(strokeWidth: 2, color: colors?.accent),
-      ),
-      error: (error, stackTrace) => CircleAvatar(
-        radius: 50,
-        backgroundColor: colors?.surface.withValues(alpha: 0.9),
-        child: Icon(
-          Icons.person_outline_rounded,
-          size: 34,
-          color: colors?.textSecondary.withValues(alpha: 0.92),
-        ),
-      ),
+      loading: () => const SizedBox.shrink(),
+      error: (error, stackTrace) => const SizedBox.shrink(),
     );
   }
 }

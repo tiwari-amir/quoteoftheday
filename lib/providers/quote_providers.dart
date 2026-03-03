@@ -39,17 +39,19 @@ final currentUserIdProvider = Provider<String?>((ref) {
 });
 
 final allQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
-  return ref.read(quoteRepositoryProvider).getAllQuotes();
+  final quotes = await ref.read(quoteRepositoryProvider).getAllQuotes();
+  return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
 });
 
 final mediaQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   try {
-    return await ref
+    final quotes = await ref
         .read(freeMediaQuotesServiceProvider)
         .fetchQuotesForCategories(
           categories: const {'movies', 'series'},
           timeout: const Duration(seconds: 2),
         );
+    return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
   } catch (_) {
     return const <QuoteModel>[];
   }
@@ -380,4 +382,35 @@ List<QuoteModel> _quotesForMood(List<QuoteModel> quotes, String mood) {
   });
 
   return scored.map((e) => e.quote).toList(growable: false);
+}
+
+bool _isLikelyEnglishQuote(QuoteModel quote) {
+  final text = '${quote.quote} ${quote.author}'.trim();
+  if (text.isEmpty) return false;
+
+  var letters = 0;
+  var latinLetters = 0;
+  for (final rune in text.runes) {
+    final isAsciiLetter =
+        (rune >= 65 && rune <= 90) || (rune >= 97 && rune <= 122);
+    final isExtendedLatin = rune >= 0x00C0 && rune <= 0x024F;
+    final isAnyLetter =
+        isAsciiLetter ||
+        isExtendedLatin ||
+        (rune >= 0x0370 && rune <= 0x03FF) ||
+        (rune >= 0x0400 && rune <= 0x04FF) ||
+        (rune >= 0x0590 && rune <= 0x05FF) ||
+        (rune >= 0x0600 && rune <= 0x06FF) ||
+        (rune >= 0x4E00 && rune <= 0x9FFF);
+
+    if (!isAnyLetter) continue;
+    letters += 1;
+    if (isAsciiLetter || isExtendedLatin) {
+      latinLetters += 1;
+    }
+  }
+
+  if (letters == 0) return false;
+  final ratio = latinLetters / letters;
+  return ratio >= 0.78;
 }
