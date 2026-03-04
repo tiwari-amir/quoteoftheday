@@ -153,9 +153,17 @@ class SettingsScreen extends ConsumerWidget {
                   value: settings.dailyEnabled,
                   onChanged: kIsWeb
                       ? null
-                      : (value) => ref
-                            .read(notificationSettingsProvider.notifier)
-                            .update(settings.copyWith(dailyEnabled: value)),
+                      : (value) async {
+                          await ref
+                              .read(notificationSettingsProvider.notifier)
+                              .update(settings.copyWith(dailyEnabled: value));
+                          if (!context.mounted || !value) return;
+                          _showNotificationSetMessage(
+                            context,
+                            hour: settings.dailyHour,
+                            minute: settings.dailyMinute,
+                          );
+                        },
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -183,6 +191,14 @@ class SettingsScreen extends ConsumerWidget {
                                   dailyMinute: selected.minute,
                                 ),
                               );
+                          if (!context.mounted || !settings.dailyEnabled) {
+                            return;
+                          }
+                          _showNotificationSetMessage(
+                            context,
+                            hour: selected.hour,
+                            minute: selected.minute,
+                          );
                         },
                 ),
               ],
@@ -199,9 +215,17 @@ class SettingsScreen extends ConsumerWidget {
                   value: settings.extraEnabled,
                   onChanged: kIsWeb
                       ? null
-                      : (value) => ref
-                            .read(notificationSettingsProvider.notifier)
-                            .update(settings.copyWith(extraEnabled: value)),
+                      : (value) async {
+                          await ref
+                              .read(notificationSettingsProvider.notifier)
+                              .update(settings.copyWith(extraEnabled: value));
+                          if (!context.mounted || !value) return;
+                          _showNotificationSetMessage(
+                            context,
+                            hour: settings.extraHour,
+                            minute: settings.extraMinute,
+                          );
+                        },
                 ),
                 if (settings.extraEnabled) ...[
                   const Divider(height: 1),
@@ -230,6 +254,14 @@ class SettingsScreen extends ConsumerWidget {
                                     extraMinute: selected.minute,
                                   ),
                                 );
+                            if (!context.mounted || !settings.extraEnabled) {
+                              return;
+                            }
+                            _showNotificationSetMessage(
+                              context,
+                              hour: selected.hour,
+                              minute: selected.minute,
+                            );
                           },
                   ),
                   const SizedBox(height: FlowSpace.xs),
@@ -368,6 +400,54 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  void _showNotificationSetMessage(
+    BuildContext context, {
+    required int hour,
+    required int minute,
+  }) {
+    final label = _notificationDelayLabel(hour, minute);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Notification set for $label from now'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  String _notificationDelayLabel(int hour, int minute) {
+    final now = DateTime.now();
+    var scheduled = DateTime(now.year, now.month, now.day, hour, minute);
+    if (!scheduled.isAfter(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+
+    final diff = scheduled.difference(now);
+    var totalMinutes = diff.inMinutes;
+    if (diff.inSeconds % 60 != 0) {
+      totalMinutes += 1;
+    }
+    if (totalMinutes < 1) {
+      totalMinutes = 1;
+    }
+
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    String unit(int value, String singular, String plural) {
+      return '$value ${value == 1 ? singular : plural}';
+    }
+
+    if (hours > 0 && minutes > 0) {
+      return '${unit(hours, 'hour', 'hours')} and ${unit(minutes, 'minute', 'minutes')}';
+    }
+    if (hours > 0) {
+      return unit(hours, 'hour', 'hours');
+    }
+    return unit(minutes, 'minute', 'minutes');
   }
 
   IconData _backgroundIcon(AppBackgroundTheme theme) {

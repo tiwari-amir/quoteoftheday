@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../features/v3_audio/ambient_audio_controller.dart';
 import '../../features/v3_background/background_theme_provider.dart';
 import '../../features/v3_share/story_share_sheet.dart';
 import '../../models/quote_model.dart';
@@ -16,6 +17,7 @@ import '../../providers/liked_quotes_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/storage_provider.dart';
+import '../../providers/viewer_progress_provider.dart';
 import '../../services/quote_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/author_info_sheet.dart';
@@ -70,8 +72,9 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     _pageController = PageController();
     final prefs = ref.read(sharedPreferencesProvider);
     _shuffleEnabled = prefs.getBool(prefViewerShuffleEnabled) ?? false;
-    _lifetimeScrolledCount = prefs.getInt(prefViewerScrolledCount) ?? 0;
-    _lastMilestoneShown = prefs.getInt(prefViewerLastMilestone) ?? 0;
+    final progress = ref.read(viewerProgressProvider);
+    _lifetimeScrolledCount = progress.scrolledCount;
+    _lastMilestoneShown = progress.lastMilestone;
 
     _hintTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
@@ -148,14 +151,14 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   }
 
   Future<void> _recordScrollProgress() async {
-    _lifetimeScrolledCount += 1;
-    final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setInt(prefViewerScrolledCount, _lifetimeScrolledCount);
+    _lifetimeScrolledCount = await ref
+        .read(viewerProgressProvider.notifier)
+        .incrementScrolledCount();
 
     final milestone = _milestoneFor(_lifetimeScrolledCount);
     if (milestone == null || milestone <= _lastMilestoneShown) return;
     _lastMilestoneShown = milestone;
-    await prefs.setInt(prefViewerLastMilestone, milestone);
+    await ref.read(viewerProgressProvider.notifier).setLastMilestone(milestone);
     _showReward(_milestoneMessage(milestone));
   }
 
@@ -472,6 +475,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     final scheme = Theme.of(context).colorScheme;
     final flow = Theme.of(context).extension<FlowThemeTokens>();
     final viewerAccent = flow?.colors.accent ?? scheme.primary;
+    final ambientAudio = ref.watch(ambientAudioProvider);
 
     return Scaffold(
       body: quotesAsync.when(
@@ -525,6 +529,9 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                     final authorLabel = cleanedNames.isEmpty
                         ? quote.author
                         : cleanedNames.first;
+                    final media = MediaQuery.of(context);
+                    final topInset = max(70.0, media.padding.top + 52);
+                    final bottomInset = max(82.0, media.padding.bottom + 72);
                     return Stack(
                       children: [
                         EditorialBackground(
@@ -563,7 +570,12 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                         ),
                         SafeArea(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 86, 24, 96),
+                            padding: EdgeInsets.fromLTRB(
+                              24,
+                              topInset,
+                              24,
+                              bottomInset,
+                            ),
                             child: Align(
                               alignment: Alignment.center,
                               child: _QuotePanel(
@@ -607,6 +619,16 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                               },
                             ),
                             const Spacer(),
+                            PremiumIconPillButton(
+                              icon: ambientAudio.muted
+                                  ? Icons.volume_off_rounded
+                                  : Icons.volume_up_rounded,
+                              compact: true,
+                              onTap: () => ref
+                                  .read(ambientAudioProvider.notifier)
+                                  .toggleMute(),
+                            ),
+                            const SizedBox(width: FlowSpace.xs),
                             PremiumIconPillButton(
                               icon: _shuffleEnabled
                                   ? Icons.shuffle_on_rounded
@@ -776,30 +798,38 @@ class _QuotePanel extends StatelessWidget {
         .split(RegExp(r'\s+'))
         .where((word) => word.trim().isNotEmpty)
         .length;
-    final showScrollableBody = words > 40;
+    final showScrollableBody = words > 36;
     final normalizedTags = quote.revisedTags
         .take(3)
         .map(service.toTitleCase)
         .join(' | ');
 
-    Widget quoteBody = QuoteSurface(
-      quote: quote.quote,
-      author: authorLabel,
-      eyebrow: 'QUOTE',
-      footer: normalizedTags.isEmpty
-          ? null
-          : Text(
-              normalizedTags,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-    );
+    Widget quoteBody;
     if (showScrollableBody) {
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      final maxHeight = (screenHeight * 0.78).clamp(400.0, 700.0);
       quoteBody = _LongQuoteBody(
-        maxHeight: MediaQuery.of(context).size.height * 0.62,
+        maxHeight: maxHeight.toDouble(),
         onRequestNext: onAdvanceRequested,
-        child: quoteBody,
+        child: _LongQuoteContent(
+          quote: quote.quote,
+          authorLabel: authorLabel,
+          normalizedTags: normalizedTags,
+        ),
+      );
+    } else {
+      quoteBody = QuoteSurface(
+        quote: quote.quote,
+        author: authorLabel,
+        eyebrow: 'QUOTE',
+        footer: normalizedTags.isEmpty
+            ? null
+            : Text(
+                normalizedTags,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
       );
     }
 
@@ -807,6 +837,117 @@ class _QuotePanel extends StatelessWidget {
         .animate(key: ValueKey(quote.id))
         .fadeIn(duration: FlowDurations.regular)
         .slideY(begin: 0.05, end: 0, curve: FlowDurations.curve);
+  }
+}
+
+class _LongQuoteContent extends StatelessWidget {
+  const _LongQuoteContent({
+    required this.quote,
+    required this.authorLabel,
+    required this.normalizedTags,
+  });
+
+  final String quote;
+  final String authorLabel;
+  final String normalizedTags;
+
+  @override
+  Widget build(BuildContext context) {
+    final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final colors = flow?.colors;
+    final words = quote
+        .split(RegExp(r'\s+'))
+        .where((token) => token.trim().isNotEmpty)
+        .length;
+    final quoteSize = words > 96
+        ? 19.0
+        : words > 72
+        ? 20.0
+        : 22.0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        FlowSpace.lg,
+        FlowSpace.md,
+        FlowSpace.lg,
+        FlowSpace.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            'QUOTE',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: colors?.textSecondary.withValues(alpha: 0.92),
+              letterSpacing: 0.46,
+            ),
+          ),
+          const SizedBox(height: FlowSpace.xs),
+          Text(
+            '"',
+            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+              color: colors?.textSecondary.withValues(alpha: 0.34),
+              height: 0.68,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            quote,
+            textAlign: TextAlign.center,
+            style:
+                FlowTypography.quoteStyle(
+                  color: colors?.textPrimary ?? Colors.white,
+                  fontSize: quoteSize,
+                ).copyWith(
+                  height: 1.5,
+                  shadows: [
+                    Shadow(
+                      blurRadius: 20,
+                      color: Colors.black.withValues(alpha: 0.2),
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+          ),
+          const SizedBox(height: FlowSpace.lg),
+          Container(
+            height: 1,
+            width: 170,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  colors?.divider.withValues(alpha: 0.9) ??
+                      Colors.white.withValues(alpha: 0.22),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: FlowSpace.sm),
+          Text(
+            '- $authorLabel',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: colors?.textSecondary,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (normalizedTags.isNotEmpty) ...[
+            const SizedBox(height: FlowSpace.sm),
+            Text(
+              normalizedTags,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: colors?.textSecondary.withValues(alpha: 0.92),
+              ),
+            ),
+          ],
+          const SizedBox(height: FlowSpace.md),
+        ],
+      ),
+    );
   }
 }
 
@@ -827,7 +968,11 @@ class _LongQuoteBody extends StatefulWidget {
 
 class _LongQuoteBodyState extends State<_LongQuoteBody> {
   late final ScrollController _controller;
-  double _overscrollAccumulator = 0;
+  double _dragAtBottomAccumulator = 0;
+  int _bottomSwipeStage = 0;
+  Timer? _stageResetTimer;
+  Timer? _hintTimer;
+  bool _showNextSwipeHint = false;
   DateTime _lastHandoff = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
@@ -838,47 +983,200 @@ class _LongQuoteBodyState extends State<_LongQuoteBody> {
 
   @override
   void dispose() {
+    _stageResetTimer?.cancel();
+    _hintTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
-    if (notification is ScrollUpdateNotification ||
-        notification is ScrollEndNotification) {
-      if (notification.metrics.extentAfter > 8) {
-        _overscrollAccumulator = 0;
+    final metrics = notification.metrics;
+    final atBottom = metrics.pixels >= (metrics.maxScrollExtent - 1.5);
+
+    if (notification is ScrollUpdateNotification) {
+      if (!atBottom && metrics.extentAfter > 24) {
+        _dragAtBottomAccumulator = 0;
+        _resetSwipeStage();
+      } else {
+        final delta = notification.scrollDelta ?? 0;
+        if (atBottom && delta > 0) {
+          _dragAtBottomAccumulator += delta;
+        }
       }
     }
 
     if (notification is OverscrollNotification) {
-      if (notification.metrics.extentAfter <= 0.5 &&
-          notification.overscroll > 0) {
-        _overscrollAccumulator += notification.overscroll;
-        if (_overscrollAccumulator > 24) {
-          final now = DateTime.now();
-          if (now.difference(_lastHandoff).inMilliseconds > 420) {
-            _lastHandoff = now;
-            _overscrollAccumulator = 0;
-            widget.onRequestNext();
-          }
-        }
-      } else {
-        _overscrollAccumulator = 0;
+      final dragDelta = notification.dragDetails?.primaryDelta ?? 0;
+      final draggingUp = dragDelta < 0;
+      if (atBottom && draggingUp) {
+        _dragAtBottomAccumulator +=
+            notification.overscroll.abs() + dragDelta.abs();
+      } else if (!atBottom) {
+        _dragAtBottomAccumulator = 0;
       }
     }
+
+    if (notification is ScrollEndNotification) {
+      if (atBottom && _dragAtBottomAccumulator > 22) {
+        _registerBottomSwipeAttempt();
+      }
+      _dragAtBottomAccumulator = 0;
+    }
+
     return false;
+  }
+
+  void _registerBottomSwipeAttempt() {
+    final now = DateTime.now();
+    if (now.difference(_lastHandoff).inMilliseconds <= 360) return;
+    if (_bottomSwipeStage == 0) {
+      _bottomSwipeStage = 1;
+      _showSwipeHint();
+      _stageResetTimer?.cancel();
+      _stageResetTimer = Timer(const Duration(seconds: 3), _resetSwipeStage);
+      return;
+    }
+    _resetSwipeStage();
+    _lastHandoff = now;
+    widget.onRequestNext();
+  }
+
+  void _resetSwipeStage() {
+    _stageResetTimer?.cancel();
+    _bottomSwipeStage = 0;
+  }
+
+  void _showSwipeHint() {
+    _hintTimer?.cancel();
+    if (mounted) {
+      setState(() => _showNextSwipeHint = true);
+    }
+    _hintTimer = Timer(const Duration(milliseconds: 1300), () {
+      if (!mounted) return;
+      setState(() => _showNextSwipeHint = false);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final colors = flow?.colors;
     return SizedBox(
       height: widget.maxHeight,
-      child: NotificationListener<ScrollNotification>(
-        onNotification: _onScrollNotification,
-        child: SingleChildScrollView(
-          controller: _controller,
-          physics: const BouncingScrollPhysics(),
-          child: widget.child,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: FlowRadii.radiusXl,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              colors?.quoteFrame.withValues(alpha: 0.95) ??
+                  Colors.white.withValues(alpha: 0.08),
+              colors?.surface.withValues(alpha: 0.78) ??
+                  Colors.black.withValues(alpha: 0.24),
+            ],
+          ),
+          border: Border.all(
+            color:
+                colors?.quoteFrameBorder.withValues(alpha: 0.88) ??
+                Colors.white.withValues(alpha: 0.22),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color:
+                  colors?.quoteFrameGlow.withValues(alpha: 0.24) ??
+                  Colors.black.withValues(alpha: 0.22),
+              blurRadius: 30,
+              offset: const Offset(0, 14),
+            ),
+            ...?flow?.shadows.level2,
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: FlowRadii.radiusXl,
+          child: Stack(
+            children: [
+              NotificationListener<ScrollNotification>(
+                onNotification: _onScrollNotification,
+                child: SingleChildScrollView(
+                  controller: _controller,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.only(bottom: FlowSpace.lg),
+                  child: widget.child,
+                ),
+              ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: Container(
+                    height: 28,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          (colors?.surface ?? Colors.black).withValues(
+                            alpha: 0.24,
+                          ),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: Container(
+                    height: 36,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          (colors?.surface ?? Colors.black).withValues(
+                            alpha: 0.3,
+                          ),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: FlowSpace.md,
+                right: FlowSpace.md,
+                bottom: FlowSpace.sm,
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: _showNextSwipeHint ? 1 : 0,
+                    duration: FlowDurations.quick,
+                    child: Center(
+                      child: PremiumSurface(
+                        radius: 999,
+                        elevation: 1,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: FlowSpace.sm,
+                          vertical: FlowSpace.xs,
+                        ),
+                        child: Text(
+                          'Drag up once more for next quote',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

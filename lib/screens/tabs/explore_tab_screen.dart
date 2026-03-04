@@ -10,6 +10,7 @@ import '../../core/constants.dart';
 import '../../features/v3_search/search_service.dart';
 import '../../models/quote_model.dart';
 import '../../providers/quote_providers.dart';
+import '../../providers/storage_provider.dart';
 import '../../services/quote_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/editorial_background.dart';
@@ -23,7 +24,10 @@ class ExploreTabScreen extends ConsumerStatefulWidget {
 }
 
 class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
+  static const String _kRecentSearchesKey = 'explore.recent_searches_v1';
+  static const int _kRecentSearchesLimit = 12;
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounce;
   String _query = '';
   String? _lengthFilter;
@@ -33,10 +37,23 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
   List<QuoteModel> _forYouCache = const <QuoteModel>[];
   List<String> _topTagsCache = const <String>[];
   bool _showMostLikedSection = false;
+  List<String> _recentSearches = const <String>[];
 
   @override
   void initState() {
     super.initState();
+    _controller.addListener(() {
+      if (!mounted) return;
+      setState(() {});
+    });
+    _searchFocusNode.addListener(() {
+      if (!mounted) return;
+      if (!_searchFocusNode.hasFocus) {
+        unawaited(_pushRecentSearch(_controller.text));
+      }
+      setState(() {});
+    });
+    _loadRecentSearches();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() => _showMostLikedSection = true);
@@ -46,8 +63,51 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _searchFocusNode.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _loadRecentSearches() {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final values = prefs.getStringList(_kRecentSearchesKey) ?? const <String>[];
+    _recentSearches = values
+        .map((entry) => entry.trim())
+        .where((entry) => entry.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> _saveRecentSearches(List<String> values) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setStringList(_kRecentSearchesKey, values);
+  }
+
+  Future<void> _pushRecentSearch(String rawQuery) async {
+    final normalized = rawQuery.trim();
+    if (normalized.isEmpty) return;
+    final updated = <String>[
+      normalized,
+      ..._recentSearches.where(
+        (entry) => entry.toLowerCase() != normalized.toLowerCase(),
+      ),
+    ].take(_kRecentSearchesLimit).toList(growable: false);
+    setState(() => _recentSearches = updated);
+    await _saveRecentSearches(updated);
+  }
+
+  Future<void> _removeRecentSearch(String rawQuery) async {
+    final normalized = rawQuery.trim().toLowerCase();
+    final updated = _recentSearches
+        .where((entry) => entry.trim().toLowerCase() != normalized)
+        .toList(growable: false);
+    setState(() => _recentSearches = updated);
+    await _saveRecentSearches(updated);
+  }
+
+  Future<void> _clearRecentSearches() async {
+    setState(() => _recentSearches = const <String>[]);
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.remove(_kRecentSearchesKey);
   }
 
   void _onSearchChanged(String value) {
@@ -56,6 +116,28 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
       if (!mounted) return;
       setState(() => _query = value.trim());
     });
+  }
+
+  Future<void> _onSearchSubmitted(String value) async {
+    final normalized = value.trim();
+    if (normalized.isEmpty) return;
+    setState(() => _query = normalized);
+    await _pushRecentSearch(normalized);
+    if (!mounted) return;
+    _searchFocusNode.unfocus();
+  }
+
+  Future<void> _selectRecentSearch(String value) async {
+    final normalized = value.trim();
+    if (normalized.isEmpty) return;
+    _controller.text = normalized;
+    _controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: normalized.length),
+    );
+    setState(() => _query = normalized);
+    await _pushRecentSearch(normalized);
+    if (!mounted) return;
+    _searchFocusNode.unfocus();
   }
 
   @override
@@ -95,6 +177,10 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                         _topCategoryPreviewTags(cats.keys, limit: 8),
                     orElse: () => _topTagsCache.take(8).toList(growable: false),
                   );
+                  final showRecentSearches =
+                      _searchFocusNode.hasFocus &&
+                      _query.isEmpty &&
+                      _recentSearches.isNotEmpty;
 
                   return ListView(
                     physics: const BouncingScrollPhysics(),
@@ -105,38 +191,104 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                             'Curated categories, moods, and timeless favorites.',
                       ).animate().fadeIn(duration: FlowDurations.regular),
                       const SizedBox(height: FlowSpace.md),
-                      PremiumSurface(
-                        radius: FlowRadii.lg,
-                        elevation: 1,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: FlowSpace.sm,
-                          vertical: FlowSpace.xxs,
-                        ),
-                        child: TextField(
-                          controller: _controller,
-                          onChanged: _onSearchChanged,
-                          decoration: InputDecoration(
-                            hintText: 'Search quotes, author, tags',
-                            prefixIcon: const Icon(Icons.search_rounded),
-                            suffixIcon: _controller.text.isEmpty
-                                ? null
-                                : IconButton(
-                                    onPressed: () {
-                                      _controller.clear();
-                                      setState(() => _query = '');
-                                    },
-                                    icon: const Icon(Icons.close_rounded),
+                      _ExploreSearchBar(
+                        controller: _controller,
+                        focusNode: _searchFocusNode,
+                        onChanged: _onSearchChanged,
+                        onSubmitted: (value) =>
+                            unawaited(_onSearchSubmitted(value)),
+                        onClear: () {
+                          _controller.clear();
+                          setState(() => _query = '');
+                        },
+                      ).animate().fadeIn(duration: FlowDurations.regular),
+                      if (showRecentSearches) ...[
+                        const SizedBox(height: FlowSpace.sm),
+                        PremiumSurface(
+                          radius: FlowRadii.lg,
+                          elevation: 1,
+                          padding: const EdgeInsets.fromLTRB(
+                            FlowSpace.sm,
+                            FlowSpace.xs,
+                            FlowSpace.sm,
+                            FlowSpace.xs,
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'Recent searches',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelLarge,
                                   ),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: FlowSpace.sm,
-                              vertical: FlowSpace.sm,
-                            ),
+                                  const Spacer(),
+                                  TextButton(
+                                    onPressed: () =>
+                                        unawaited(_clearRecentSearches()),
+                                    style: TextButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: const Text('Clear all'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: FlowSpace.xs),
+                              for (final item in _recentSearches)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    bottom: FlowSpace.xxs,
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: FlowRadii.radiusMd,
+                                      onTap: () =>
+                                          unawaited(_selectRecentSearch(item)),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: FlowSpace.xs,
+                                          vertical: FlowSpace.xs,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.history_rounded,
+                                              size: 17,
+                                            ),
+                                            const SizedBox(width: FlowSpace.xs),
+                                            Expanded(
+                                              child: Text(
+                                                item,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            IconButton(
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              splashRadius: 16,
+                                              onPressed: () => unawaited(
+                                                _removeRecentSearch(item),
+                                              ),
+                                              icon: const Icon(
+                                                Icons.close_rounded,
+                                                size: 17,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                      ).animate().fadeIn(duration: FlowDurations.regular),
+                      ],
                       const SizedBox(height: FlowSpace.sm),
                       Wrap(
                         spacing: FlowSpace.xs,
@@ -354,6 +506,124 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
       return 'Movies/Series';
     }
     return service.toTitleCase(tag);
+  }
+}
+
+class _ExploreSearchBar extends StatelessWidget {
+  const _ExploreSearchBar({
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+    required this.onSubmitted,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final colors = flow?.colors;
+    final focused = focusNode.hasFocus;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: FlowRadii.radiusXl,
+        boxShadow: [
+          BoxShadow(
+            color: (colors?.accent ?? Colors.white).withValues(
+              alpha: focused ? 0.22 : 0.12,
+            ),
+            blurRadius: focused ? 30 : 22,
+            spreadRadius: focused ? 1 : 0,
+          ),
+          ...?flow?.shadows.level1,
+        ],
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: FlowRadii.radiusXl,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              (colors?.elevatedSurface ?? Colors.black).withValues(alpha: 0.9),
+              (colors?.surface ?? Colors.black).withValues(alpha: 0.82),
+            ],
+          ),
+          border: Border.all(
+            color:
+                (focused
+                    ? colors?.accent.withValues(alpha: 0.65)
+                    : colors?.divider.withValues(alpha: 0.82)) ??
+                Colors.white24,
+            width: focused ? 1.15 : 1,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            FlowSpace.sm,
+            FlowSpace.xs,
+            FlowSpace.xs,
+            FlowSpace.xs,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: (colors?.accent ?? Colors.white).withValues(
+                    alpha: 0.15,
+                  ),
+                ),
+                child: Icon(
+                  Icons.search_rounded,
+                  size: 18,
+                  color: colors?.textPrimary.withValues(alpha: 0.94),
+                ),
+              ),
+              const SizedBox(width: FlowSpace.sm),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  onChanged: onChanged,
+                  onSubmitted: onSubmitted,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Search quotes, author, tags',
+                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors?.textSecondary.withValues(alpha: 0.88),
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    isCollapsed: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                  ),
+                ),
+              ),
+              AnimatedOpacity(
+                opacity: controller.text.isEmpty ? 0 : 1,
+                duration: FlowDurations.quick,
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  splashRadius: 18,
+                  onPressed: controller.text.isEmpty ? null : onClear,
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

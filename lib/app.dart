@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'features/v3_audio/ambient_audio_controller.dart';
 import 'features/v3_background/background_theme_provider.dart';
 import 'features/v3_notifications/notification_providers.dart';
 import 'providers/auth_bootstrap_provider.dart';
@@ -50,6 +53,13 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
+    ref.watch(ambientAudioProvider);
+    ref.listen<AppBackgroundTheme>(appBackgroundThemeProvider, (
+      previous,
+      next,
+    ) {
+      ref.read(ambientAudioProvider.notifier).applyTheme(next);
+    });
     ref.watch(authBootstrapProvider);
     ref.watch(streakProvider);
     ref.listen(notificationTapProvider, (previous, next) {
@@ -73,6 +83,9 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
                 onPointerDown: (event) {
                   AnimatedGradientBackground.emitGlobalPointerDown(
                     event.position,
+                  );
+                  unawaited(
+                    ref.read(ambientAudioProvider.notifier).onUserInteraction(),
                   );
                 },
                 onPointerMove: (event) {

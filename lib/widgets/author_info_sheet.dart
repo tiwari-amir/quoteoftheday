@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/author_wiki_service.dart';
 import '../theme/app_theme.dart';
+import 'adaptive_author_image.dart';
 
 class AuthorInfoSheet extends StatefulWidget {
   const AuthorInfoSheet({
@@ -432,6 +433,8 @@ class _AuthorAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
+    final normalizedUrl = imageUrl?.trim();
+    final hasImage = normalizedUrl != null && normalizedUrl.isNotEmpty;
     return Container(
       width: size,
       height: size,
@@ -447,19 +450,12 @@ class _AuthorAvatar extends StatelessWidget {
         ],
       ),
       child: ClipOval(
-        child: imageUrl == null || imageUrl!.trim().isEmpty
+        child: !hasImage
             ? _AvatarFallback(size: size)
-            : Image.network(
-                imageUrl!,
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return _AvatarFallback(size: size);
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return _AvatarFallback(size: size);
-                },
+            : AdaptiveAuthorImage(
+                imageUrl: normalizedUrl,
+                placeholder: _AvatarFallback(size: size),
+                error: _AvatarFallback(size: size),
               ),
       ),
     );
@@ -592,5 +588,4 @@ class _AuthorFacts {
     if (year != null) return year;
     return null;
   }
-
 }

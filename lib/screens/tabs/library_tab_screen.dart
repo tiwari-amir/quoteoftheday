@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/constants.dart';
 import '../../features/v3_collections/collections_model.dart';
 import '../../features/v3_collections/collections_providers.dart';
 import '../../features/v3_collections/collections_ui/add_to_collection_sheet.dart';
@@ -12,7 +11,7 @@ import '../../models/quote_model.dart';
 import '../../providers/liked_quotes_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
-import '../../providers/storage_provider.dart';
+import '../../providers/viewer_progress_provider.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/editorial_background.dart';
 import '../../widgets/premium/premium_components.dart';
@@ -50,8 +49,9 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
     final quotesAsync = ref.watch(allQuotesProvider);
     final queryState = ref.watch(searchQueryProvider);
     final queryNotifier = ref.read(searchQueryProvider.notifier);
-    final prefs = ref.read(sharedPreferencesProvider);
-    final scrolledCount = prefs.getInt(prefViewerScrolledCount) ?? 0;
+    final scrolledCount = ref.watch(
+      viewerProgressProvider.select((state) => state.scrolledCount),
+    );
     final rankTitle = _scrollRankTitle(scrolledCount);
     final nextMilestone = _nextMilestone(scrolledCount);
     final previousMilestone = _previousMilestone(scrolledCount);

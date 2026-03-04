@@ -8,6 +8,7 @@ const String prefStreakLastDate = 'streak_last_date';
 const String prefViewerShuffleEnabled = 'viewer_shuffle_enabled';
 const String prefViewerScrolledCount = 'viewer_scrolled_count';
 const String prefViewerLastMilestone = 'viewer_last_milestone';
+const String prefAmbientAudioMuted = 'ambient_audio_muted';
 
 const String metaStoryAppId = String.fromEnvironment(
   'META_STORY_APP_ID',

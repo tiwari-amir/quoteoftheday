@@ -75,8 +75,9 @@ class V3NotificationsService {
 
   bool get isSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
   bool get notificationsGranted => _notificationsGranted;
-  AndroidScheduleMode get androidScheduleMode =>
-      AndroidScheduleMode.inexactAllowWhileIdle;
+  AndroidScheduleMode get androidScheduleMode => _canUseExactAlarms
+      ? AndroidScheduleMode.exactAllowWhileIdle
+      : AndroidScheduleMode.inexactAllowWhileIdle;
   Stream<String> get tapStream => _tapController.stream;
 
   Future<void> initialize() async {
@@ -456,19 +457,41 @@ class V3NotificationsService {
     required String? payload,
     required AndroidScheduleMode mode,
     required bool repeatDaily,
-  }) {
-    return _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      schedule,
-      details,
-      payload: payload,
-      androidScheduleMode: mode,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: repeatDaily ? DateTimeComponents.time : null,
-    );
+  }) async {
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        schedule,
+        details,
+        payload: payload,
+        androidScheduleMode: mode,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: repeatDaily ? DateTimeComponents.time : null,
+      );
+    } catch (error) {
+      if (!Platform.isAndroid ||
+          mode != AndroidScheduleMode.exactAllowWhileIdle) {
+        rethrow;
+      }
+      debugPrint(
+        '[Notifications] Exact schedule failed for id=$id; falling back to inexact mode: $error',
+      );
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        schedule,
+        details,
+        payload: payload,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: repeatDaily ? DateTimeComponents.time : null,
+      );
+    }
   }
 
   void dispose() {

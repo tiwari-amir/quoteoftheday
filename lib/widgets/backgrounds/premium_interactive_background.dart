@@ -108,17 +108,17 @@ abstract final class PremiumScenePalettes {
   );
 
   static const glow = PremiumScenePalette(
-    baseTop: Color(0xFF1A0F24),
-    baseMid: Color(0xFF35203A),
-    baseBottom: Color(0xFF1A121D),
-    accent: Color(0xFFF0C09F),
-    secondaryAccent: Color(0xFFCB96A7),
-    particleNear: Color(0xFFF9EBDD),
-    particleFar: Color(0xFFC797AB),
-    signature: Color(0x59E4A287),
-    interactionRipple: Color(0x70F4CCB2),
-    overlayTop: Color(0x08000000),
-    overlayBottom: Color(0x8A000000),
+    baseTop: Color(0xFF1B2E3A),
+    baseMid: Color(0xFF29414A),
+    baseBottom: Color(0xFF1A2B2D),
+    accent: Color(0xFFF3C998),
+    secondaryAccent: Color(0xFF9BC2BE),
+    particleNear: Color(0xFFFFF1DF),
+    particleFar: Color(0xFF90B6B4),
+    signature: Color(0x56E1A97D),
+    interactionRipple: Color(0x70F6D2A7),
+    overlayTop: Color(0x06000000),
+    overlayBottom: Color(0x7D000000),
   );
 }
 
@@ -305,19 +305,32 @@ class _PremiumInteractiveBackgroundState
         }
       case PremiumSceneKind.glow:
         _seedParticles(22, baseSize: 1.0);
-        for (var i = 0; i < 14; i++) {
+        for (var i = 0; i < 6; i++) {
+          _clouds.add(
+            _CloudVeil(
+              x: 0.08 + random.nextDouble() * 0.84,
+              y: 0.06 + random.nextDouble() * 0.34,
+              width: 0.25 + random.nextDouble() * 0.3,
+              height: 0.08 + random.nextDouble() * 0.1,
+              alpha: 0.05 + random.nextDouble() * 0.08,
+              speed: 0.004 + random.nextDouble() * 0.007,
+              phase: random.nextDouble() * math.pi * 2,
+            ),
+          );
+        }
+        for (var i = 0; i < 12; i++) {
           final leftCluster = i.isEven;
           _leafShapes.add(
             _LeafShape(
               x: leftCluster
                   ? random.nextDouble() * 0.22
                   : 0.78 + random.nextDouble() * 0.22,
-              y: random.nextDouble() * 0.62,
-              scale: 0.08 + random.nextDouble() * 0.18,
+              y: random.nextDouble() * 0.58,
+              scale: 0.08 + random.nextDouble() * 0.15,
               rotation: leftCluster
                   ? -1.0 + random.nextDouble() * 0.45
                   : 0.55 + random.nextDouble() * 0.45,
-              alpha: 0.08 + random.nextDouble() * 0.1,
+              alpha: 0.08 + random.nextDouble() * 0.12,
             ),
           );
         }
@@ -938,6 +951,20 @@ class _PremiumInteractivePainter extends CustomPainter {
       ).createShader(Offset.zero & size);
     canvas.drawRect(Offset.zero & size, topHaze);
 
+    final rainMist = Paint()
+      ..shader = RadialGradient(
+        center: Alignment(0.0 + parallax.x * 0.03, 0.22 + parallax.y * 0.02),
+        radius: 0.95,
+        colors: [
+          const Color(0xFFB6CBD8).withValues(alpha: 0.14),
+          const Color(0xFF6A7F8D).withValues(alpha: 0.08),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.55, 1.0],
+      ).createShader(Offset.zero & size)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    canvas.drawRect(Offset.zero & size, rainMist);
+
     _paintCitySkyline(
       canvas,
       size,
@@ -986,9 +1013,9 @@ class _PremiumInteractivePainter extends CustomPainter {
       size,
       elapsed,
       tint: const Color(0xFFBFD2DF),
-      altitude: 0.2,
-      scale: 0.56,
-      cycle: 36,
+      altitude: 0.16,
+      scale: 0.46,
+      cycle: 108,
     );
   }
 
@@ -1151,99 +1178,173 @@ class _PremiumInteractivePainter extends CustomPainter {
     _paintPlane(
       canvas,
       size,
-      elapsed + 9,
+      elapsed + 13,
       tint: const Color(0xFFEED6C3),
-      altitude: 0.17,
-      scale: 0.5,
-      cycle: 40,
+      altitude: 0.15,
+      scale: 0.44,
+      cycle: 114,
     );
   }
 
   void _paintGlow(Canvas canvas, Size size, double elapsed) {
-    final sunshine = Paint()
-      ..shader = RadialGradient(
-        center: Alignment(0.0 + parallax.x * 0.03, -0.1 + parallax.y * 0.03),
-        radius: 0.95,
+    final dawnWash = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
         colors: [
-          const Color(0xFFF4D4B0).withValues(alpha: 0.24),
-          const Color(0xFFF0BDA4).withValues(alpha: 0.12),
+          const Color(0xFF1B2F3A).withValues(alpha: 0.88),
+          const Color(0xFF2D4952).withValues(alpha: 0.74),
+          const Color(0xFF4C5C57).withValues(alpha: 0.56),
+          const Color(0xFF816959).withValues(alpha: 0.5),
+        ],
+        stops: const [0.0, 0.42, 0.72, 1.0],
+      ).createShader(Offset.zero & size);
+    canvas.drawRect(Offset.zero & size, dawnWash);
+
+    final sunriseCenter = Offset(
+      size.width * (0.52 + parallax.x * 0.025),
+      size.height * (0.34 + parallax.y * 0.02),
+    );
+    final warmBloom = Paint()
+      ..shader =
+          RadialGradient(
+            colors: [
+              const Color(0xFFFFE6BD).withValues(alpha: 0.34),
+              const Color(0xFFF6C79A).withValues(alpha: 0.18),
+              const Color(0xFFE1A98B).withValues(alpha: 0.08),
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.34, 0.62, 1.0],
+          ).createShader(
+            Rect.fromCircle(
+              center: sunriseCenter,
+              radius: size.shortestSide * 0.72,
+            ),
+          );
+    canvas.drawCircle(sunriseCenter, size.shortestSide * 0.72, warmBloom);
+
+    for (final cloud in clouds) {
+      final cx =
+          cloud.x * size.width +
+          math.sin(elapsed * 0.07 + cloud.phase) * 12 +
+          parallax.x * 10;
+      final cy =
+          cloud.y * size.height +
+          math.cos(elapsed * 0.06 + cloud.phase) * 5 +
+          parallax.y * 5;
+      final rect = Rect.fromCenter(
+        center: Offset(cx, cy),
+        width: cloud.width * size.width,
+        height: cloud.height * size.height,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(64)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFFF1E2CF).withValues(alpha: cloud.alpha * 0.62),
+              const Color(0xFFE8C8AF).withValues(alpha: cloud.alpha * 0.32),
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.48, 1.0],
+          ).createShader(rect)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
+      );
+    }
+
+    final lowerHazeRect = Rect.fromLTWH(
+      0,
+      size.height * 0.54,
+      size.width,
+      size.height * 0.5,
+    );
+    final lowerHaze = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          const Color(0xFFF4D8B8).withValues(alpha: 0.2),
+          const Color(0xFFA6C4BD).withValues(alpha: 0.12),
+          const Color(0xFF3A5656).withValues(alpha: 0.18),
           Colors.transparent,
         ],
-        stops: const [0.0, 0.48, 1.0],
-      ).createShader(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, sunshine);
+        stops: const [0.0, 0.36, 0.7, 1.0],
+      ).createShader(lowerHazeRect)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
+    canvas.drawRect(lowerHazeRect, lowerHaze);
 
     for (final leaf in leafShapes) {
-      final drift = math.sin(elapsed * 0.09 + leaf.y * 5.5) * 4.0;
+      final sway = math.sin(elapsed * 0.11 + leaf.y * 4.8) * 3.0;
       final center = Offset(
-        leaf.x * size.width + parallax.x * 9 + drift,
-        leaf.y * size.height + parallax.y * 5,
+        leaf.x * size.width + parallax.x * 8 + sway,
+        leaf.y * size.height + parallax.y * 4,
       );
       canvas.save();
       canvas.translate(center.dx, center.dy);
       canvas.rotate(
-        leaf.rotation + math.sin(elapsed * 0.12 + leaf.x * 8) * 0.04,
+        leaf.rotation + math.sin(elapsed * 0.14 + leaf.x * 9) * 0.035,
       );
       final leafPath = Path()
-        ..moveTo(0, -leaf.scale * size.width * 0.92)
+        ..moveTo(0, -leaf.scale * size.width)
         ..quadraticBezierTo(
-          leaf.scale * size.width * 0.56,
+          leaf.scale * size.width * 0.48,
           0,
           0,
-          leaf.scale * size.width * 0.92,
+          leaf.scale * size.width,
         )
         ..quadraticBezierTo(
-          -leaf.scale * size.width * 0.52,
+          -leaf.scale * size.width * 0.46,
           0,
           0,
-          -leaf.scale * size.width * 0.92,
+          -leaf.scale * size.width,
         )
         ..close();
+      final leafBounds = Rect.fromLTWH(
+        -leaf.scale * size.width * 0.7,
+        -leaf.scale * size.width,
+        leaf.scale * size.width * 1.4,
+        leaf.scale * size.width * 2.0,
+      );
       canvas.drawPath(
         leafPath,
         Paint()
-          ..shader =
-              LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  const Color(0xFF8EAF86).withValues(alpha: leaf.alpha * 0.82),
-                  const Color(0xFF4E6E57).withValues(alpha: leaf.alpha * 0.9),
-                ],
-              ).createShader(
-                Rect.fromLTWH(
-                  -leaf.scale * size.width * 0.7,
-                  -leaf.scale * size.width,
-                  leaf.scale * size.width * 1.4,
-                  leaf.scale * size.width * 2,
-                ),
-              )
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.3),
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFFA0B996).withValues(alpha: leaf.alpha * 0.76),
+              const Color(0xFF5A7B63).withValues(alpha: leaf.alpha * 0.86),
+            ],
+          ).createShader(leafBounds)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
       );
-      final vein = Paint()
-        ..strokeWidth = 0.8
-        ..strokeCap = StrokeCap.round
-        ..color = const Color(0xFFE3F1CE).withValues(alpha: leaf.alpha * 0.35);
       canvas.drawLine(
-        Offset(0, -leaf.scale * size.width * 0.66),
-        Offset(0, leaf.scale * size.width * 0.66),
-        vein,
+        Offset(0, -leaf.scale * size.width * 0.65),
+        Offset(0, leaf.scale * size.width * 0.65),
+        Paint()
+          ..strokeWidth = 0.8
+          ..strokeCap = StrokeCap.round
+          ..color = const Color(
+            0xFFE8F2D5,
+          ).withValues(alpha: leaf.alpha * 0.26),
       );
       canvas.restore();
     }
 
-    final ambientBloom = Paint()
+    final contrastVignette = Paint()
       ..shader = RadialGradient(
-        center: Alignment(0.05 + parallax.x * 0.04, 0.32 + parallax.y * 0.04),
-        radius: 0.8,
+        center: Alignment(0.04 + parallax.x * 0.03, 0.24 + parallax.y * 0.02),
+        radius: 1.04,
         colors: [
-          const Color(0xFFF7DFC0).withValues(alpha: 0.2),
-          const Color(0xFFDDAF8D).withValues(alpha: 0.06),
           Colors.transparent,
+          Colors.black.withValues(alpha: 0.2),
+          Colors.black.withValues(alpha: 0.34),
         ],
-        stops: const [0.0, 0.45, 1.0],
+        stops: const [0.46, 0.84, 1.0],
       ).createShader(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, ambientBloom);
+    canvas.drawRect(Offset.zero & size, contrastVignette);
 
     _paintDragonfly(canvas, size, elapsed);
   }
@@ -1373,54 +1474,179 @@ class _PremiumInteractivePainter extends CustomPainter {
     required Color tint,
     double altitude = 0.18,
     double scale = 0.56,
-    double cycle = 36,
+    double cycle = 96,
   }) {
-    final visible = cycle * 0.52;
+    final visible = cycle * 0.66;
     final phase = elapsed % cycle;
     if (phase > visible) return;
-    final p = Curves.easeInOutSine.transform(phase / visible);
-    final x = (lerpDouble(-0.18, 1.12, p) ?? 0.0) * size.width + parallax.x * 6;
-    final y = size.height * (altitude + math.sin(p * math.pi * 1.2) * 0.018);
-    final bodyLength = 22.0 * scale;
-    final wingSpan = 13.0 * scale;
-    final tail = Offset(x - bodyLength * 0.52, y + bodyLength * 0.06);
-    final nose = Offset(x + bodyLength * 0.52, y);
-    final wingTop = Offset(x - bodyLength * 0.05, y - wingSpan * 0.36);
-    final wingBottom = Offset(x - bodyLength * 0.02, y + wingSpan * 0.3);
+    final p = Curves.easeInOutCubic.transform(phase / visible);
+    final edgeFade = (math.min(p, 1 - p) / 0.1).clamp(0.0, 1.0);
+    final alphaScale = 0.22 + 0.78 * edgeFade;
+    final x =
+        (lerpDouble(-0.22, 1.18, p) ?? 0.0) * size.width + parallax.x * 3.4;
+    final y =
+        size.height * (altitude + math.sin(p * math.pi * 1.08 + 0.2) * 0.0085);
+    final perspective = 0.9 + 0.14 * math.sin(p * math.pi);
+    final bodyLength = 29.0 * scale * perspective;
+    final bodyHeight = 2.4 * scale * perspective;
+    final wingSpan = 15.8 * scale * perspective;
+    final heading = -0.035 + math.sin(elapsed * 0.14 + 0.6) * 0.01;
 
-    final bodyPaint = Paint()
-      ..color = tint.withValues(alpha: 0.38)
-      ..strokeWidth = 0.9 * scale.clamp(0.45, 0.8)
-      ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.7);
-    canvas.drawLine(tail, nose, bodyPaint);
-    canvas.drawLine(Offset(x - 1.5, y), wingTop, bodyPaint);
-    canvas.drawLine(Offset(x - 1.5, y), wingBottom, bodyPaint);
+    canvas.save();
+    canvas.translate(x, y);
+    canvas.rotate(heading);
 
-    final blink = 0.5 + 0.5 * math.sin(elapsed * 6.4);
     canvas.drawCircle(
-      Offset(x + bodyLength * 0.38, y - 0.7 * scale),
-      0.9 * scale,
+      const Offset(0, 0),
+      bodyLength * 0.8,
       Paint()
-        ..color = const Color(0xFFFFCE96).withValues(alpha: 0.4 + blink * 0.28)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8),
+        ..color = tint.withValues(alpha: 0.045 * alphaScale)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.8),
+    );
+
+    final fuselage = Path()
+      ..moveTo(-bodyLength * 0.58, 0)
+      ..quadraticBezierTo(
+        -bodyLength * 0.14,
+        -bodyHeight * 0.88,
+        bodyLength * 0.52,
+        -bodyHeight * 0.08,
+      )
+      ..quadraticBezierTo(
+        bodyLength * 0.57,
+        bodyHeight * 0.06,
+        bodyLength * 0.5,
+        bodyHeight * 0.18,
+      )
+      ..quadraticBezierTo(
+        -bodyLength * 0.16,
+        bodyHeight * 0.84,
+        -bodyLength * 0.58,
+        0,
+      )
+      ..close();
+    canvas.drawPath(
+      fuselage,
+      Paint()
+        ..color = tint.withValues(alpha: 0.4 * alphaScale)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.55),
+    );
+
+    final wing = Path()
+      ..moveTo(-bodyLength * 0.1, -bodyHeight * 0.04)
+      ..lineTo(-bodyLength * 0.22, -wingSpan * 0.42)
+      ..lineTo(bodyLength * 0.26, -bodyHeight * 0.2)
+      ..close();
+    canvas.drawPath(
+      wing,
+      Paint()..color = tint.withValues(alpha: 0.36 * alphaScale),
+    );
+    final wingMirror = Path()
+      ..moveTo(-bodyLength * 0.1, bodyHeight * 0.04)
+      ..lineTo(-bodyLength * 0.22, wingSpan * 0.42)
+      ..lineTo(bodyLength * 0.26, bodyHeight * 0.2)
+      ..close();
+    canvas.drawPath(
+      wingMirror,
+      Paint()..color = tint.withValues(alpha: 0.36 * alphaScale),
+    );
+
+    final tailWing = Path()
+      ..moveTo(-bodyLength * 0.52, bodyHeight * 0.04)
+      ..lineTo(-bodyLength * 0.64, -wingSpan * 0.22)
+      ..lineTo(-bodyLength * 0.43, -bodyHeight * 0.14)
+      ..close();
+    canvas.drawPath(
+      tailWing,
+      Paint()..color = tint.withValues(alpha: 0.34 * alphaScale),
+    );
+    final fin = Path()
+      ..moveTo(-bodyLength * 0.5, 0)
+      ..lineTo(-bodyLength * 0.43, -bodyHeight * 1.75)
+      ..lineTo(-bodyLength * 0.35, -bodyHeight * 0.04)
+      ..close();
+    canvas.drawPath(
+      fin,
+      Paint()..color = tint.withValues(alpha: 0.35 * alphaScale),
+    );
+
+    final beaconPhase = elapsed % 1.8;
+    final beaconPulse =
+        _blinkPulse(beaconPhase, center: 0.06, spread: 0.055) +
+        _blinkPulse(beaconPhase, center: 0.25, spread: 0.055);
+    final beaconAlpha =
+        (0.08 + 0.58 * beaconPulse).clamp(0.08, 0.7) * alphaScale;
+    final redBeacon = Offset(-bodyLength * 0.34, -bodyHeight * 1.52);
+    canvas.drawCircle(
+      redBeacon,
+      1.7 * scale,
+      Paint()
+        ..color = const Color(0xFFFF4343).withValues(alpha: beaconAlpha * 0.56)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.6),
     );
     canvas.drawCircle(
-      Offset(x - bodyLength * 0.32, y + 0.3 * scale),
-      0.9 * scale,
+      redBeacon,
+      0.52 * scale,
       Paint()
-        ..color = const Color(0xFFFF4B4B).withValues(alpha: 0.24 + blink * 0.34)
+        ..color = const Color(
+          0xFFFFA5A5,
+        ).withValues(alpha: 0.18 + beaconAlpha * 0.8),
+    );
+
+    final strobePhase = (elapsed + 0.3) % 1.6;
+    final strobePulse = _blinkPulse(strobePhase, center: 0.08, spread: 0.028);
+    final strobeAlpha = (0.05 + 0.68 * strobePulse) * alphaScale;
+    final wingTip = Offset(bodyLength * 0.06, -wingSpan * 0.33);
+    canvas.drawCircle(
+      wingTip,
+      1.35 * scale,
+      Paint()
+        ..color = const Color(0xFFFFF7DE).withValues(alpha: strobeAlpha * 0.42)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.8),
+    );
+    canvas.drawCircle(
+      wingTip,
+      0.42 * scale,
+      Paint()
+        ..color = const Color(0xFFFFF2CF).withValues(alpha: 0.18 + strobeAlpha),
+    );
+
+    // Navigation lights (steady low intensity): red on port, green on starboard.
+    final leftWingTip = Offset(-bodyLength * 0.04, -wingSpan * 0.42);
+    final rightWingTip = Offset(-bodyLength * 0.04, wingSpan * 0.42);
+    canvas.drawCircle(
+      leftWingTip,
+      1.05 * scale,
+      Paint()
+        ..color = const Color(0xFFFF4D4D).withValues(alpha: 0.18 * alphaScale)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4),
+    );
+    canvas.drawCircle(
+      rightWingTip,
+      1.05 * scale,
+      Paint()
+        ..color = const Color(0xFF6DFFA0).withValues(alpha: 0.16 * alphaScale)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4),
+    );
+
+    canvas.drawCircle(
+      Offset(bodyLength * 0.42, -bodyHeight * 0.5),
+      0.74 * scale,
+      Paint()
+        ..color = const Color(0xFFFFE5B6).withValues(alpha: 0.25 * alphaScale)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8),
     );
 
     canvas.drawLine(
-      Offset(x - bodyLength * 0.62, y + 0.8 * scale),
-      Offset(x - bodyLength * 1.18, y + 1.6 * scale),
+      Offset(-bodyLength * 0.68, bodyHeight * 0.5),
+      Offset(-bodyLength * 1.35, bodyHeight * 0.78),
       Paint()
-        ..color = tint.withValues(alpha: 0.1)
-        ..strokeWidth = 0.6 * scale
-        ..strokeCap = StrokeCap.round,
+        ..strokeWidth = 0.72 * scale
+        ..strokeCap = StrokeCap.round
+        ..color = tint.withValues(alpha: 0.12 * alphaScale),
     );
+
+    canvas.restore();
   }
 
   void _paintDragonfly(Canvas canvas, Size size, double elapsed) {
@@ -1588,6 +1814,17 @@ double _easeOutCubic(double t) {
   final clamped = t.clamp(0.0, 1.0);
   final p = 1 - clamped;
   return 1 - p * p * p;
+}
+
+double _blinkPulse(
+  double phase, {
+  required double center,
+  required double spread,
+}) {
+  final d = (phase - center).abs();
+  if (d > spread) return 0;
+  final x = 1 - (d / spread);
+  return x * x * (3 - 2 * x);
 }
 
 class _AmbientParticle {

@@ -127,7 +127,9 @@ class NotificationSettingsNotifier
     _loadFuture = _loadInternal();
     await _loadFuture;
     debugPrint('[Notifications] Startup reschedule requested.');
-    await _applySchedule(requestPermissions: false);
+    final shouldRequestPermissions =
+        state.dailyEnabled || state.extraEnabled || state.streakEnabled;
+    await _applySchedule(requestPermissions: shouldRequestPermissions);
   }
 
   Future<void> update(NotificationSettingsModel next) async {

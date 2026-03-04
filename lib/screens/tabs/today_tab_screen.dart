@@ -3,12 +3,14 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/v3_audio/ambient_audio_controller.dart';
 import '../../features/v3_share/story_share_sheet.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/streak_provider.dart';
 import '../../services/author_wiki_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/adaptive_author_image.dart';
 import '../../widgets/author_info_sheet.dart';
 import '../../widgets/editorial_background.dart';
 import '../../widgets/premium/premium_components.dart';
@@ -26,6 +28,7 @@ class TodayTabScreen extends ConsumerWidget {
     final dailyAsync = ref.watch(dailyQuoteProvider);
     final streak = ref.watch(streakProvider);
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final ambientAudio = ref.watch(ambientAudioProvider);
 
     return Scaffold(
       body: Stack(
@@ -107,6 +110,16 @@ class TodayTabScreen extends ConsumerWidget {
                                 ),
                               ],
                             ),
+                          ),
+                          const SizedBox(width: FlowSpace.xs),
+                          PremiumIconPillButton(
+                            icon: ambientAudio.muted
+                                ? Icons.volume_off_rounded
+                                : Icons.volume_up_rounded,
+                            compact: true,
+                            onTap: () => ref
+                                .read(ambientAudioProvider.notifier)
+                                .toggleMute(),
                           ),
                           const SizedBox(width: FlowSpace.xs),
                           PremiumIconPillButton(
@@ -498,10 +511,12 @@ class _TodayAuthorPortrait extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    child: CircleAvatar(
-                      radius: 50,
-                      backgroundColor: colors?.surface.withValues(alpha: 0.9),
-                      backgroundImage: NetworkImage(imageUrl),
+                    child: ClipOval(
+                      child: AdaptiveAuthorImage(
+                        imageUrl: imageUrl,
+                        placeholder: _TodayAvatarFallback(colors: colors),
+                        error: _TodayAvatarFallback(colors: colors),
+                      ),
                     ),
                   ),
                 ],
@@ -513,6 +528,28 @@ class _TodayAuthorPortrait extends ConsumerWidget {
       },
       loading: () => const SizedBox.shrink(),
       error: (error, stackTrace) => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _TodayAvatarFallback extends StatelessWidget {
+  const _TodayAvatarFallback({required this.colors});
+
+  final FlowColorTokens? colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors?.surface.withValues(alpha: 0.9) ?? Colors.black54,
+      ),
+      child: Center(
+        child: Icon(
+          Icons.person_outline_rounded,
+          size: 34,
+          color: colors?.textSecondary.withValues(alpha: 0.92),
+        ),
+      ),
     );
   }
 }
