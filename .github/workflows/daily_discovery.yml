@@ -33,6 +33,15 @@ jobs:
       - name: Install importer dependencies
         run: pip install -r importer/requirements.txt
 
+      - name: Validate runtime secrets
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Missing GitHub Actions secret DATABASE_URL. Add the Postgres connection string in GitHub repo settings under Secrets and variables -> Actions."
+            exit 1
+          fi
+
       - name: Run discovery crawl
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
