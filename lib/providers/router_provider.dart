@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/v3_settings/settings_screen.dart';
+import '../features/v3_notifications/in_app_notifications_screen.dart';
 import '../screens/category/category_screen.dart';
 import '../screens/mood/mood_screen.dart';
+import '../screens/saved/saved_quotes_screen.dart';
 import '../screens/tabs/app_shell_scaffold.dart';
 import '../screens/tabs/explore_tab_screen.dart';
 import '../screens/tabs/library_tab_screen.dart';
@@ -31,9 +33,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/today',
-                pageBuilder: (context, state) => const NoTransitionPage(
-                  child: TodayTabScreen(),
-                ),
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: TodayTabScreen()),
               ),
             ],
           ),
@@ -41,9 +42,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/explore',
-                pageBuilder: (context, state) => const NoTransitionPage(
-                  child: ExploreTabScreen(),
-                ),
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: ExploreTabScreen()),
               ),
             ],
           ),
@@ -51,9 +51,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/library',
-                pageBuilder: (context, state) => const NoTransitionPage(
-                  child: LibraryTabScreen(),
-                ),
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: LibraryTabScreen()),
               ),
             ],
           ),
@@ -84,6 +83,22 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/updates',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: const InAppNotificationsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/saved',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: const SavedQuotesScreen(),
+        ),
+      ),
+      GoRoute(
         path: '/categories',
         parentNavigatorKey: _rootNavigatorKey,
         pageBuilder: (context, state) => _buildTransitionPage(
@@ -92,12 +107,20 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
-        path: '/moods',
+        path: '/categories/:tag',
         parentNavigatorKey: _rootNavigatorKey,
         pageBuilder: (context, state) => _buildTransitionPage(
           key: state.pageKey,
-          child: const MoodScreen(),
+          child: CategoryScreen(
+            selectedTag: Uri.decodeComponent(state.pathParameters['tag'] ?? ''),
+          ),
         ),
+      ),
+      GoRoute(
+        path: '/moods',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) =>
+            _buildTransitionPage(key: state.pageKey, child: const MoodScreen()),
       ),
       GoRoute(
         path: '/settings',

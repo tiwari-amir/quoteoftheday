@@ -1,0 +1,18 @@
+QuoteFlow Dataset Attribution
+
+Primary quote content source:
+Wikiquote (https://en.wikiquote.org)
+
+License:
+Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Attribution notice:
+This app includes quote text sourced from Wikiquote and processed into a
+structured dataset. Where available, each quote record includes a direct
+source URL back to its Wikiquote page.
+
+Share-alike notice:
+If you redistribute adapted Wikiquote-derived content from this app, you must
+provide attribution and preserve the same CC BY-SA 4.0 license terms for that
+adapted content.

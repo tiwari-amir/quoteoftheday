@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/v3_audio/ambient_audio_controller.dart';
+import '../../features/v3_notifications/in_app_notifications_providers.dart';
+import '../../features/v3_notifications/in_app_notifications_screen.dart';
 import '../../features/v3_share/story_share_sheet.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
@@ -27,6 +31,10 @@ class TodayTabScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dailyAsync = ref.watch(dailyQuoteProvider);
     final streak = ref.watch(streakProvider);
+    final hasUnreadNotifications = ref.watch(
+      hasUnreadInAppNotificationsProvider,
+    );
+    final latestNotification = ref.watch(latestInAppNotificationProvider);
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
     final ambientAudio = ref.watch(ambientAudioProvider);
 
@@ -110,6 +118,24 @@ class TodayTabScreen extends ConsumerWidget {
                                 ),
                               ],
                             ),
+                          ),
+                          const SizedBox(width: FlowSpace.xs),
+                          _TodayNotificationsButton(
+                            hasUnread: hasUnreadNotifications,
+                            onTap: () async {
+                              final latestId = latestNotification?.id ?? 0;
+                              if (latestId > 0) {
+                                unawaited(
+                                  ref
+                                      .read(
+                                        inAppNotificationPreferencesProvider
+                                            .notifier,
+                                      )
+                                      .markSeenUpTo(latestId),
+                                );
+                              }
+                              await showInAppNotificationsSheet(context);
+                            },
                           ),
                           const SizedBox(width: FlowSpace.xs),
                           PremiumIconPillButton(
@@ -426,6 +452,57 @@ class _GoldBlueFadeName extends StatelessWidget {
           },
           child: Text(text, textAlign: textAlign, style: fillStyle),
         ),
+      ],
+    );
+  }
+}
+
+class _TodayNotificationsButton extends StatelessWidget {
+  const _TodayNotificationsButton({
+    required this.hasUnread,
+    required this.onTap,
+  });
+
+  final bool hasUnread;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        PremiumIconPillButton(
+          icon: Icons.notifications_none_rounded,
+          compact: true,
+          onTap: onTap,
+        ),
+        if (hasUnread)
+          Positioned(
+            right: -1,
+            top: -1,
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: colors?.accent ?? Colors.white,
+                border: Border.all(
+                  color: colors?.surface ?? Colors.black,
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: (colors?.accent ?? Colors.white).withValues(
+                      alpha: 0.4,
+                    ),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }

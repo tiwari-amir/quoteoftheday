@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'features/v3_audio/ambient_audio_controller.dart';
 import 'features/v3_background/background_theme_provider.dart';
+import 'features/v3_notifications/in_app_notifications_providers.dart';
 import 'features/v3_notifications/notification_providers.dart';
 import 'providers/auth_bootstrap_provider.dart';
 import 'providers/router_provider.dart';
@@ -62,6 +63,7 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
     });
     ref.watch(authBootstrapProvider);
     ref.watch(streakProvider);
+    ref.watch(inAppNotificationsBootstrapProvider);
     ref.listen(notificationTapProvider, (previous, next) {
       final route = next.valueOrNull;
       if (route == null || route.isEmpty) return;

@@ -13,7 +13,9 @@ import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/viewer_progress_provider.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/author_portrait_circle.dart';
 import '../../widgets/editorial_background.dart';
+import '../../widgets/premium/premium_search_field.dart';
 import '../../widgets/premium/premium_components.dart';
 
 enum _LibraryMode { saved, liked }
@@ -27,6 +29,15 @@ class LibraryTabScreen extends ConsumerStatefulWidget {
 
 class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
   _LibraryMode _mode = _LibraryMode.saved;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +66,12 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
     final rankTitle = _scrollRankTitle(scrolledCount);
     final nextMilestone = _nextMilestone(scrolledCount);
     final previousMilestone = _previousMilestone(scrolledCount);
+    if (_searchController.text != queryState.query) {
+      _searchController.value = TextEditingValue(
+        text: queryState.query,
+        selection: TextSelection.collapsed(offset: queryState.query.length),
+      );
+    }
 
     return Scaffold(
       body: Stack(
@@ -101,6 +118,7 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                             selected: isSavedMode,
                             onTap: () {
                               setState(() => _mode = _LibraryMode.saved);
+                              _searchController.clear();
                               queryNotifier.setQueryDebounced('');
                             },
                           ),
@@ -109,6 +127,7 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                             selected: !isSavedMode,
                             onTap: () {
                               setState(() => _mode = _LibraryMode.liked);
+                              _searchController.clear();
                               queryNotifier.setQueryDebounced('');
                             },
                           ),
@@ -119,29 +138,17 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                         const CollectionChipsBar(),
                       ],
                       const SizedBox(height: FlowSpace.sm),
-                      PremiumSurface(
-                        radius: FlowRadii.lg,
-                        elevation: 1,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: FlowSpace.sm,
-                          vertical: FlowSpace.xxs,
-                        ),
-                        child: TextField(
-                          onChanged: queryNotifier.setQueryDebounced,
-                          decoration: InputDecoration(
-                            hintText: isSavedMode
-                                ? 'Search in saved quotes'
-                                : 'Search in liked quotes',
-                            prefixIcon: const Icon(Icons.search_rounded),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: FlowSpace.sm,
-                              vertical: FlowSpace.sm,
-                            ),
-                          ),
-                        ),
+                      PremiumSearchField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        hintText: isSavedMode
+                            ? 'Search in saved quotes'
+                            : 'Search in liked quotes',
+                        onChanged: queryNotifier.setQueryDebounced,
+                        onClear: () {
+                          _searchController.clear();
+                          queryNotifier.setQueryDebounced('');
+                        },
                       ),
                       const SizedBox(height: FlowSpace.md),
                       if (filtered.isEmpty)
@@ -435,18 +442,22 @@ class _LibraryQuoteTile extends StatelessWidget {
         borderRadius: FlowRadii.radiusLg,
         onTap: onOpen,
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            AuthorPortraitCircle(author: quote.author, size: 54),
+            const SizedBox(width: FlowSpace.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     quote.quote,
-                    maxLines: 2,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: colors?.textPrimary,
                       fontWeight: FontWeight.w600,
+                      height: 1.38,
                     ),
                   ),
                   const SizedBox(height: FlowSpace.xs),

@@ -35,6 +35,7 @@ WIKIQUOTE_API_URL = "https://en.wikiquote.org/w/api.php"
 WIKIQUOTE_LICENSE = "CC BY-SA 4.0"
 DISCOVERY_NOTIFICATION_TYPE = "discovery_summary"
 DISCOVERY_NOTIFICATION_ROUTE = "/updates"
+APP_NOTIFICATION_RETENTION_LIMIT = 10
 REQUEST_INTERVAL_SECONDS = 0.5
 MAX_PARSE_WIKITEXT_CHARS = 300_000
 MAX_PARSE_WIKITEXT_LINES = 6_000
@@ -1002,6 +1003,68 @@ def ensure_ingestion_notification_schema(cur: Any) -> None:
         create index if not exists idx_app_notifications_type_created_at
         on public.app_notifications(notification_type, created_at desc)
         """
+    )
+    cur.execute(
+        """
+        create or replace function public.prune_app_notifications(
+          p_keep_latest integer default 10
+        )
+        returns integer
+        language plpgsql
+        security definer
+        set search_path = public
+        as $$
+        declare
+          safe_keep integer := greatest(coalesce(p_keep_latest, 10), 0);
+          deleted_count integer := 0;
+        begin
+          with stale as (
+            select id
+            from public.app_notifications
+            order by created_at desc, id desc
+            offset safe_keep
+          ),
+          deleted as (
+            delete from public.app_notifications
+            where id in (select id from stale)
+            returning 1
+          )
+          select count(*)::integer into deleted_count
+          from deleted;
+          return deleted_count;
+        end;
+        $$;
+        """
+    )
+    cur.execute(
+        f"""
+        create or replace function public.enforce_app_notifications_retention()
+        returns trigger
+        language plpgsql
+        security definer
+        set search_path = public
+        as $$
+        begin
+          perform public.prune_app_notifications({APP_NOTIFICATION_RETENTION_LIMIT});
+          return null;
+        end;
+        $$;
+        """,
+    )
+    cur.execute(
+        "drop trigger if exists trg_app_notifications_keep_latest on public.app_notifications"
+    )
+    cur.execute(
+        """
+        create trigger trg_app_notifications_keep_latest
+        after insert on public.app_notifications
+        for each statement
+        execute function public.enforce_app_notifications_retention()
+        """
+    )
+    cur.execute(
+        "select public.prune_app_notifications(%s)",
+        (APP_NOTIFICATION_RETENTION_LIMIT,),
     )
 
 
@@ -2005,6 +2068,10 @@ def create_discovery_app_notification(
             DISCOVERY_NOTIFICATION_ROUTE,
             json.dumps(metadata),
         ),
+    )
+    cur.execute(
+        "select public.prune_app_notifications(%s)",
+        (APP_NOTIFICATION_RETENTION_LIMIT,),
     )
 
 

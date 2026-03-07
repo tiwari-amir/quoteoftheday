@@ -126,7 +126,7 @@ class HomeScreen extends ConsumerWidget {
                               NeonChip(
                                 label: service.toTitleCase(tag),
                                 onTap: () => context.push(
-                                  '/viewer/category/${Uri.encodeComponent(tag)}',
+                                  "/categories/${Uri.encodeComponent(tag == 'series' ? 'movies/series' : tag)}",
                                 ),
                               ),
                           ],

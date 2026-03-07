@@ -11,6 +11,8 @@ import '../../features/v3_search/search_bar_widget.dart';
 import '../../features/v3_search/search_providers.dart';
 import '../../models/quote_model.dart';
 import '../../providers/saved_quotes_provider.dart';
+import '../../theme/design_tokens.dart';
+import '../../widgets/author_portrait_circle.dart';
 import '../../widgets/editorial_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/glass_icon_button.dart';
@@ -319,42 +321,56 @@ class _SavedCard extends ConsumerWidget {
         borderRadius: 18,
         padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            AuthorPortraitCircle(author: quote.author, size: 56),
+            const SizedBox(width: FlowSpace.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     quote.quote,
-                    maxLines: 3,
+                    maxLines: 4,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyLarge,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      height: 1.38,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     quote.author,
-                    style: Theme.of(context).textTheme.bodyMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
             ),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'remove') {
-                  ref.read(savedQuoteIdsProvider.notifier).remove(quote.id);
-                  return;
-                }
-                if (value == 'collections') {
-                  showAddToCollectionSheet(context, ref, quote.id);
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'collections',
-                  child: Text('Add to collection'),
-                ),
-                PopupMenuItem(value: 'remove', child: Text('Remove saved')),
-              ],
+            Padding(
+              padding: const EdgeInsets.only(left: FlowSpace.xs),
+              child: PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'remove') {
+                    ref.read(savedQuoteIdsProvider.notifier).remove(quote.id);
+                    return;
+                  }
+                  if (value == 'collections') {
+                    showAddToCollectionSheet(context, ref, quote.id);
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'collections',
+                    child: Text('Add to collection'),
+                  ),
+                  PopupMenuItem(value: 'remove', child: Text('Remove saved')),
+                ],
+              ),
             ),
           ],
         ),

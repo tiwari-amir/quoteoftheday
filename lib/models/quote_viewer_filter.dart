@@ -4,5 +4,19 @@ class QuoteViewerFilter {
   final String type;
   final String tag;
 
-  bool get isMood => type.toLowerCase() == 'mood';
+  String get normalizedType => type.trim().toLowerCase();
+  String get normalizedTag => tag.trim().toLowerCase();
+
+  bool get isMood => normalizedType == 'mood';
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is QuoteViewerFilter &&
+        other.normalizedType == normalizedType &&
+        other.normalizedTag == normalizedTag;
+  }
+
+  @override
+  int get hashCode => Object.hash(normalizedType, normalizedTag);
 }

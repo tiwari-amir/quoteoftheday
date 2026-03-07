@@ -18,6 +18,13 @@ const AndroidNotificationChannel _quoteReminderChannel =
       description: 'Daily quote reminders',
       importance: Importance.high,
     );
+const AndroidNotificationChannel _quoteUpdatesChannel =
+    AndroidNotificationChannel(
+      'quote_updates_channel',
+      'QuoteFlow Updates',
+      description: 'Fresh library updates and discovery summaries',
+      importance: Importance.high,
+    );
 
 Future<void> initializeNotificationTimezone() {
   if (_timezoneInitialized) return Future.value();
@@ -111,6 +118,7 @@ class V3NotificationsService {
           >();
 
       await android?.createNotificationChannel(_quoteReminderChannel);
+      await android?.createNotificationChannel(_quoteUpdatesChannel);
       debugPrint(
         '[Notifications] Ensured Android channel: id=${_quoteReminderChannel.id}',
       );
@@ -383,6 +391,58 @@ class V3NotificationsService {
     );
     debugPrint('[Notifications] Scheduled id=$id successfully.');
     await _logPendingRequests();
+  }
+
+  Future<void> showNow({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+    String? authorName,
+    String? authorImageUrl,
+    bool useUpdatesChannel = false,
+  }) async {
+    if (!isSupported) return;
+    await initialize();
+    final allowed = await ensurePermissions(requestIfNeeded: false);
+    if (!allowed) {
+      debugPrint(
+        '[Notifications] Skipping instant notification for id=$id because notifications are not allowed.',
+      );
+      return;
+    }
+
+    final authorImagePath = await _resolveAuthorImagePath(authorImageUrl);
+    final androidChannel = useUpdatesChannel
+        ? _quoteUpdatesChannel
+        : _quoteReminderChannel;
+    final androidDetails = AndroidNotificationDetails(
+      androidChannel.id,
+      androidChannel.name,
+      channelDescription: androidChannel.description,
+      importance: Importance.high,
+      priority: Priority.high,
+      subText: authorName,
+      largeIcon: authorImagePath == null
+          ? null
+          : FilePathAndroidBitmap(authorImagePath),
+      styleInformation: _buildAndroidStyle(
+        body: body,
+        authorName: authorName,
+        authorImagePath: authorImagePath,
+      ),
+    );
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: DarwinNotificationDetails(
+        subtitle: authorName,
+        attachments: authorImagePath == null
+            ? null
+            : [DarwinNotificationAttachment(authorImagePath)],
+      ),
+    );
+
+    await _plugin.show(id, title, body, details, payload: payload);
   }
 
   StyleInformation _buildAndroidStyle({

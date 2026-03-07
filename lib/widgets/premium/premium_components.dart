@@ -288,12 +288,14 @@ class PremiumPillChip extends StatelessWidget {
     this.onTap,
     this.icon,
     this.selected = false,
+    this.compact = false,
   });
 
   final String label;
   final VoidCallback? onTap;
   final IconData? icon;
   final bool selected;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -318,9 +320,9 @@ class PremiumPillChip extends StatelessWidget {
                   : colors?.divider ?? Colors.white24,
             ),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: FlowSpace.md,
-            vertical: FlowSpace.sm,
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? FlowSpace.sm : FlowSpace.md,
+            vertical: compact ? 7 : FlowSpace.sm,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -328,16 +330,18 @@ class PremiumPillChip extends StatelessWidget {
               if (icon != null) ...[
                 Icon(
                   icon,
-                  size: 15,
+                  size: compact ? 12.5 : 15,
                   color: colors?.textPrimary.withValues(alpha: 0.9),
                 ),
-                const SizedBox(width: FlowSpace.xs),
+                SizedBox(width: compact ? 6 : FlowSpace.xs),
               ],
               Text(
                 label,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: colors?.textPrimary.withValues(alpha: 0.95),
                   fontWeight: FontWeight.w600,
+                  fontSize: compact ? 11 : null,
+                  letterSpacing: compact ? 0.18 : 0.3,
                 ),
               ),
             ],

@@ -6,8 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/constants.dart';
 import '../../features/v3_audio/ambient_audio_controller.dart';
 import '../../features/v3_background/background_theme_provider.dart';
 import '../../features/v3_share/story_share_sheet.dart';
@@ -16,13 +16,21 @@ import '../../models/quote_viewer_filter.dart';
 import '../../providers/liked_quotes_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
-import '../../providers/storage_provider.dart';
 import '../../providers/viewer_progress_provider.dart';
+import '../../services/author_wiki_service.dart';
 import '../../services/quote_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/adaptive_author_image.dart';
 import '../../widgets/author_info_sheet.dart';
 import '../../widgets/editorial_background.dart';
 import '../../widgets/premium/premium_components.dart';
+
+final _viewerAuthorProfileProvider =
+    FutureProvider.family<AuthorWikiProfile?, String>((ref, author) async {
+      final normalized = author.trim();
+      if (normalized.isEmpty) return null;
+      return ref.read(authorWikiServiceProvider).fetchAuthor(normalized);
+    });
 
 class QuoteViewerScreen extends ConsumerStatefulWidget {
   const QuoteViewerScreen({
@@ -70,8 +78,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       tag: widget.tag.toLowerCase(),
     );
     _pageController = PageController();
-    final prefs = ref.read(sharedPreferencesProvider);
-    _shuffleEnabled = prefs.getBool(prefViewerShuffleEnabled) ?? false;
+    _shuffleEnabled = false;
     final progress = ref.read(viewerProgressProvider);
     _lifetimeScrolledCount = progress.scrolledCount;
     _lastMilestoneShown = progress.lastMilestone;
@@ -109,6 +116,18 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     _rebuildDeck(preferredQuoteId: widget.quoteId, keepCurrentQuote: false);
   }
 
+  bool get _isPrimaryScrollFeed =>
+      _filter.normalizedType == 'category' && _filter.normalizedTag == 'all';
+
+  bool get _shouldRandomizeDeck => _shuffleEnabled || _isPrimaryScrollFeed;
+
+  List<QuoteModel> _buildDeckForCurrentMode() {
+    if (_shouldRandomizeDeck) {
+      return _nextShuffleCycle();
+    }
+    return List<QuoteModel>.from(_sourceQuotes, growable: false);
+  }
+
   void _rebuildDeck({String? preferredQuoteId, bool keepCurrentQuote = true}) {
     if (_sourceQuotes.isEmpty) {
       _displayQuotes = const <QuoteModel>[];
@@ -116,13 +135,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       return;
     }
 
-    // Always start each viewer session with a fresh random deck
-    // to keep discovery feeling dynamic even when shuffle is off.
-    if (_shuffleEnabled || !keepCurrentQuote) {
-      _displayQuotes = _nextShuffleCycle();
-    } else {
-      _displayQuotes = List<QuoteModel>.from(_sourceQuotes, growable: false);
-    }
+    _displayQuotes = _buildDeckForCurrentMode();
 
     String? targetQuoteId = preferredQuoteId;
     if (keepCurrentQuote &&
@@ -211,7 +224,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
 
     final nextIndex = index + 1;
     if (nextIndex >= _displayQuotes.length) {
-      final nextCycle = _nextShuffleCycle();
+      final nextCycle = _buildDeckForCurrentMode();
       setState(() {
         _displayQuotes = [..._displayQuotes, ...nextCycle];
       });
@@ -234,9 +247,6 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     setState(() {
       final turningOn = !_shuffleEnabled;
       _shuffleEnabled = turningOn;
-      ref
-          .read(sharedPreferencesProvider)
-          .setBool(prefViewerShuffleEnabled, _shuffleEnabled);
 
       if (turningOn) {
         final seenIds = _displayQuotes
@@ -250,7 +260,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
         remaining.shuffle(_shuffleRandom);
         _displayQuotes = [...prefix, ...remaining];
       } else {
-        final restored = List<QuoteModel>.from(_sourceQuotes, growable: false);
+        final restored = _buildDeckForCurrentMode();
         final currentInRestored = restored.indexWhere(
           (q) => q.id == currentQuoteId,
         );
@@ -286,7 +296,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     }
 
     if (index == _displayQuotes.length - 1) {
-      final nextCycle = _nextShuffleCycle();
+      final nextCycle = _buildDeckForCurrentMode();
       setState(() {
         _displayQuotes = [..._displayQuotes, ...nextCycle];
       });
@@ -301,19 +311,16 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     );
   }
 
-  void _showWhy(BuildContext context, QuoteModel quote) {
-    showDialog<void>(
+  void _showSourceDetails(BuildContext context, QuoteModel quote) {
+    final attribution = _buildAttribution(quote);
+    showModalBottomSheet<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Why this quote?'),
-        content: Text(_buildReason(quote)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+      isScrollControlled: true,
+      enableDrag: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) =>
+          _SourceLicenseSheet(quote: quote, attribution: attribution),
     );
   }
 
@@ -419,37 +426,12 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   void _showAuthorInfo(BuildContext context, QuoteModel quote) {
     final cleaned = _authorSearchCandidates(quote.author);
     final displayAuthor = cleaned.isEmpty ? quote.author : cleaned.first;
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      enableDrag: true,
-      isDismissible: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return AuthorInfoSheet(
-          author: displayAuthor,
-          loader: () =>
-              ref.read(authorWikiServiceProvider).fetchAuthor(quote.author),
-        );
-      },
+    showAuthorInfoSheetForAuthor(
+      context,
+      ref,
+      quote.author,
+      displayAuthor: displayAuthor,
     );
-  }
-
-  String _buildReason(QuoteModel quote) {
-    if (quote.revisedTags.isNotEmpty) {
-      return 'Because you are exploring ${quote.revisedTags.first} and related ideas.';
-    }
-
-    final words = quote.quote
-        .split(RegExp(r'\s+'))
-        .where((w) => w.isNotEmpty)
-        .length;
-    if (words <= 12) return 'This is a quick, concise quote for fast reading.';
-    if (words > 24) {
-      return 'This is a longer quote selected for deep reflection.';
-    }
-    return 'This is a balanced pick based on your current feed.';
   }
 
   @override
@@ -658,9 +640,11 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               PremiumIconPillButton(
-                                icon: Icons.info_outline_rounded,
+                                icon: Icons.library_books_outlined,
+                                label: 'Source',
                                 compact: true,
-                                onTap: () => _showWhy(context, currentQuote),
+                                onTap: () =>
+                                    _showSourceDetails(context, currentQuote),
                               ),
                               const SizedBox(width: FlowSpace.xs),
                               PremiumIconPillButton(
@@ -799,10 +783,10 @@ class _QuotePanel extends StatelessWidget {
         .where((word) => word.trim().isNotEmpty)
         .length;
     final showScrollableBody = words > 36;
-    final normalizedTags = quote.revisedTags
+    final tagLabels = quote.revisedTags
         .take(3)
         .map(service.toTitleCase)
-        .join(' | ');
+        .toList(growable: false);
 
     Widget quoteBody;
     if (showScrollableBody) {
@@ -814,7 +798,7 @@ class _QuotePanel extends StatelessWidget {
         child: _LongQuoteContent(
           quote: quote.quote,
           authorLabel: authorLabel,
-          normalizedTags: normalizedTags,
+          tagLabels: tagLabels,
         ),
       );
     } else {
@@ -822,14 +806,10 @@ class _QuotePanel extends StatelessWidget {
         quote: quote.quote,
         author: authorLabel,
         eyebrow: 'QUOTE',
-        footer: normalizedTags.isEmpty
-            ? null
-            : Text(
-                normalizedTags,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
+        footer: _QuoteAttributionFooter(
+          authorLabel: authorLabel,
+          tagLabels: tagLabels,
+        ),
       );
     }
 
@@ -844,12 +824,12 @@ class _LongQuoteContent extends StatelessWidget {
   const _LongQuoteContent({
     required this.quote,
     required this.authorLabel,
-    required this.normalizedTags,
+    required this.tagLabels,
   });
 
   final String quote;
   final String authorLabel;
-  final String normalizedTags;
+  final List<String> tagLabels;
 
   @override
   Widget build(BuildContext context) {
@@ -925,23 +905,34 @@ class _LongQuoteContent extends StatelessWidget {
             ),
           ),
           const SizedBox(height: FlowSpace.sm),
+          _InlineAuthorPortrait(
+            author: authorLabel,
+            size: 58,
+            bottomSpacing: FlowSpace.sm,
+          ),
           Text(
-            '- $authorLabel',
+            authorLabel,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: colors?.textSecondary,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.2,
+              color: colors?.textSecondary ?? Colors.white70,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.24,
             ),
             textAlign: TextAlign.center,
           ),
-          if (normalizedTags.isNotEmpty) ...[
+          if (tagLabels.isNotEmpty) ...[
             const SizedBox(height: FlowSpace.sm),
-            Text(
-              normalizedTags,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: colors?.textSecondary.withValues(alpha: 0.92),
-              ),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: FlowSpace.xs,
+              runSpacing: FlowSpace.xs,
+              children: [
+                for (final tag in tagLabels)
+                  _ViewerMetaChip(
+                    label: tag,
+                    icon: Icons.sell_outlined,
+                    compact: true,
+                  ),
+              ],
             ),
           ],
           const SizedBox(height: FlowSpace.md),
@@ -949,6 +940,565 @@ class _LongQuoteContent extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QuoteAttributionFooter extends StatelessWidget {
+  const _QuoteAttributionFooter({
+    required this.authorLabel,
+    required this.tagLabels,
+  });
+
+  final String authorLabel;
+  final List<String> tagLabels;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _InlineAuthorPortrait(
+          author: authorLabel,
+          size: 46,
+          bottomSpacing: tagLabels.isNotEmpty ? FlowSpace.sm : 0,
+        ),
+        if (tagLabels.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: FlowSpace.xxs),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              spacing: FlowSpace.xs,
+              runSpacing: FlowSpace.xs,
+              children: [
+                for (final tag in tagLabels)
+                  _ViewerMetaChip(
+                    label: tag,
+                    icon: Icons.sell_outlined,
+                    compact: true,
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SourceLicenseSheet extends StatelessWidget {
+  const _SourceLicenseSheet({required this.quote, required this.attribution});
+
+  final QuoteModel quote;
+  final _QuoteAttributionData attribution;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final hasSourceLink = attribution.sourceUrl.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        FlowSpace.md,
+        FlowSpace.md,
+        FlowSpace.md,
+        FlowSpace.lg,
+      ),
+      child: PremiumSurface(
+        radius: FlowRadii.xl,
+        elevation: 3,
+        blurSigma: 18,
+        padding: EdgeInsets.zero,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: FlowRadii.radiusXl,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                (colors?.surface ?? Colors.black).withValues(alpha: 0.98),
+                (colors?.elevatedSurface ?? Colors.black).withValues(
+                  alpha: 0.94,
+                ),
+              ],
+            ),
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+              FlowSpace.lg,
+              FlowSpace.sm,
+              FlowSpace.lg,
+              FlowSpace.lg,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      color: (colors?.divider ?? Colors.white24).withValues(
+                        alpha: 0.85,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: FlowSpace.md),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: (colors?.accent ?? Colors.white).withValues(
+                          alpha: 0.16,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.library_books_outlined,
+                        color: colors?.accent,
+                      ),
+                    ),
+                    const SizedBox(width: FlowSpace.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Source & license',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: FlowSpace.xxs),
+                          Text(
+                            'Review where this quote came from and the reuse terms attached to the imported record.',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: colors?.textSecondary.withValues(
+                                    alpha: 0.94,
+                                  ),
+                                  height: 1.45,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: FlowSpace.md),
+                PremiumSurface(
+                  radius: FlowRadii.lg,
+                  elevation: 1,
+                  padding: const EdgeInsets.fromLTRB(
+                    FlowSpace.md,
+                    FlowSpace.md,
+                    FlowSpace.md,
+                    FlowSpace.sm,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        quote.quote,
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          height: 1.42,
+                        ),
+                      ),
+                      const SizedBox(height: FlowSpace.sm),
+                      Text(
+                        quote.author,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colors?.textSecondary.withValues(alpha: 0.88),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: FlowSpace.md),
+                _SourceDetailCard(
+                  icon: Icons.library_books_outlined,
+                  title: attribution.sourceLabel,
+                  eyebrow: 'Origin',
+                  description: hasSourceLink
+                      ? 'This record points back to the original Wikiquote page so the wording and surrounding context can be verified.'
+                      : 'This quote was imported from Wikiquote, but this record does not currently include a direct page URL.',
+                  detailLabel: hasSourceLink
+                      ? _sourceHostLabel(attribution.sourceUrl)
+                      : 'Direct source link unavailable',
+                  actionLabel: hasSourceLink ? 'Open source page' : null,
+                  onAction: hasSourceLink
+                      ? () => unawaited(_openExternalUrl(attribution.sourceUrl))
+                      : null,
+                ),
+                const SizedBox(height: FlowSpace.sm),
+                _SourceDetailCard(
+                  icon: Icons.verified_outlined,
+                  title: attribution.licenseLabel,
+                  eyebrow: 'Reuse terms',
+                  description:
+                      'This material is distributed under the Creative Commons Attribution-ShareAlike 4.0 license. Sharing and adaptation generally require attribution, and remixed versions should stay under the same license family.',
+                  detailLabel:
+                      'Review the full license terms for exact requirements',
+                  actionLabel: 'Open license details',
+                  onAction: () =>
+                      unawaited(_openExternalUrl(attribution.licenseUrl)),
+                ),
+                const SizedBox(height: FlowSpace.md),
+                Wrap(
+                  spacing: FlowSpace.xs,
+                  runSpacing: FlowSpace.xs,
+                  children: [
+                    if (hasSourceLink)
+                      PremiumIconPillButton(
+                        icon: Icons.open_in_new_rounded,
+                        label: 'Source page',
+                        compact: true,
+                        onTap: () =>
+                            unawaited(_openExternalUrl(attribution.sourceUrl)),
+                      ),
+                    PremiumIconPillButton(
+                      icon: Icons.gavel_rounded,
+                      label: 'License',
+                      compact: true,
+                      onTap: () =>
+                          unawaited(_openExternalUrl(attribution.licenseUrl)),
+                    ),
+                    PremiumIconPillButton(
+                      icon: Icons.close_rounded,
+                      label: 'Close',
+                      compact: true,
+                      onTap: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceDetailCard extends StatelessWidget {
+  const _SourceDetailCard({
+    required this.icon,
+    required this.title,
+    required this.eyebrow,
+    required this.description,
+    required this.detailLabel,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String eyebrow;
+  final String description;
+  final String detailLabel;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+
+    return PremiumSurface(
+      radius: FlowRadii.lg,
+      elevation: 1,
+      padding: const EdgeInsets.fromLTRB(
+        FlowSpace.md,
+        FlowSpace.md,
+        FlowSpace.md,
+        FlowSpace.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: (colors?.accent ?? Colors.white).withValues(
+                    alpha: 0.14,
+                  ),
+                ),
+                child: Icon(icon, size: 18, color: colors?.accent),
+              ),
+              const SizedBox(width: FlowSpace.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      eyebrow,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: colors?.textSecondary.withValues(alpha: 0.82),
+                      ),
+                    ),
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: FlowSpace.sm),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: colors?.textSecondary.withValues(alpha: 0.94),
+              height: 1.48,
+            ),
+          ),
+          const SizedBox(height: FlowSpace.sm),
+          _ViewerMetaChip(
+            label: detailLabel,
+            icon: Icons.info_outline_rounded,
+            compact: true,
+          ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: FlowSpace.sm),
+            PremiumIconPillButton(
+              icon: Icons.open_in_new_rounded,
+              label: actionLabel,
+              compact: true,
+              onTap: onAction!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineAuthorPortrait extends ConsumerWidget {
+  const _InlineAuthorPortrait({
+    required this.author,
+    required this.size,
+    this.bottomSpacing = 0,
+  });
+
+  final String author;
+  final double size;
+  final double bottomSpacing;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final normalizedAuthor = author.trim();
+    if (normalizedAuthor.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final profileAsync = ref.watch(
+      _viewerAuthorProfileProvider(normalizedAuthor),
+    );
+
+    return profileAsync.when(
+      data: (profile) {
+        final imageUrl = profile?.imageUrl?.trim();
+        final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+        if (!hasImage) {
+          return const SizedBox.shrink();
+        }
+
+        final outerSize = size + 12;
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () =>
+                showAuthorInfoSheetForAuthor(context, ref, normalizedAuthor),
+            child: Padding(
+              padding: EdgeInsets.only(bottom: bottomSpacing),
+              child: SizedBox(
+                width: outerSize,
+                height: outerSize,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: outerSize,
+                      height: outerSize,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [
+                            (colors?.accent ?? Colors.white).withValues(
+                              alpha: 0.18,
+                            ),
+                            (colors?.accent ?? Colors.white).withValues(
+                              alpha: 0.08,
+                            ),
+                            Colors.transparent,
+                          ],
+                          stops: const [0.12, 0.52, 1.0],
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: size,
+                      height: size,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: (colors?.accent ?? Colors.white).withValues(
+                              alpha: 0.2,
+                            ),
+                            blurRadius: 22,
+                            spreadRadius: 1,
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.18),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: ClipOval(
+                        child: AdaptiveAuthorImage(
+                          imageUrl: imageUrl,
+                          placeholder: _PortraitFallback(colors: colors),
+                          error: _PortraitFallback(colors: colors),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (error, stackTrace) => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _PortraitFallback extends StatelessWidget {
+  const _PortraitFallback({required this.colors});
+
+  final FlowColorTokens? colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors?.surface.withValues(alpha: 0.92) ?? Colors.black54,
+      ),
+      child: Center(
+        child: Icon(
+          Icons.person_outline_rounded,
+          size: 22,
+          color: colors?.textSecondary.withValues(alpha: 0.92),
+        ),
+      ),
+    );
+  }
+}
+
+class _ViewerMetaChip extends StatelessWidget {
+  const _ViewerMetaChip({
+    required this.label,
+    required this.icon,
+    this.compact = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: compact ? 11.5 : 13,
+          color:
+              colors?.textSecondary.withValues(alpha: 0.84) ?? Colors.white70,
+        ),
+        SizedBox(width: compact ? 5 : 6),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color:
+                colors?.textSecondary.withValues(alpha: 0.84) ?? Colors.white70,
+            fontWeight: FontWeight.w600,
+            fontSize: compact ? 10.2 : null,
+            letterSpacing: compact ? 0.12 : 0.18,
+          ),
+        ),
+      ],
+    );
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: Ink(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? FlowSpace.xs + 2 : FlowSpace.sm,
+          vertical: compact ? 5.5 : 7,
+        ),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: (colors?.surface ?? Colors.black).withValues(alpha: 0.38),
+          border: Border.all(
+            color: (colors?.divider ?? Colors.white24).withValues(alpha: 0.55),
+          ),
+        ),
+        child: content,
+      ),
+    );
+  }
+}
+
+class _QuoteAttributionData {
+  const _QuoteAttributionData({
+    required this.sourceUrl,
+    required this.sourceLabel,
+    required this.licenseLabel,
+    required this.licenseUrl,
+  });
+
+  final String sourceUrl;
+  final String sourceLabel;
+  final String licenseLabel;
+  final String licenseUrl;
+}
+
+_QuoteAttributionData _buildAttribution(QuoteModel quote) {
+  final sourceUrl = quote.sourceUrl?.trim() ?? '';
+  return _QuoteAttributionData(
+    sourceUrl: sourceUrl,
+    sourceLabel: 'Wikiquote',
+    licenseLabel: 'CC BY-SA 4.0',
+    licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/',
+  );
+}
+
+String _sourceHostLabel(String rawUrl) {
+  final uri = Uri.tryParse(rawUrl.trim());
+  final host = uri?.host.trim() ?? '';
+  if (host.isEmpty) return 'Original source page';
+  return host.replaceFirst(RegExp(r'^www\.'), '');
+}
+
+Future<void> _openExternalUrl(String rawUrl) async {
+  final uri = Uri.tryParse(rawUrl.trim());
+  if (uri == null) return;
+  await launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 
 class _LongQuoteBody extends StatefulWidget {

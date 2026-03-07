@@ -78,14 +78,15 @@ class _AdaptiveAuthorImageState extends State<AdaptiveAuthorImage> {
   }
 
   BoxFit _fitFor(double? ratio) {
-    if (ratio == null) return BoxFit.cover;
-    if (ratio > 1.45 || ratio < 0.68) return BoxFit.contain;
     return BoxFit.cover;
   }
 
   Alignment _alignmentFor(double? ratio) {
     if (ratio != null && ratio < 0.9) {
-      return const Alignment(0, -0.2);
+      return const Alignment(0, -0.24);
+    }
+    if (ratio != null && ratio > 1.35) {
+      return const Alignment(0, -0.08);
     }
     return Alignment.center;
   }

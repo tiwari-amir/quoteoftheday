@@ -13,7 +13,9 @@ import '../../providers/quote_providers.dart';
 import '../../providers/storage_provider.dart';
 import '../../services/quote_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/author_portrait_circle.dart';
 import '../../widgets/editorial_background.dart';
+import '../../widgets/premium/premium_search_field.dart';
 import '../../widgets/premium/premium_components.dart';
 
 class ExploreTabScreen extends ConsumerStatefulWidget {
@@ -30,7 +32,6 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounce;
   String _query = '';
-  String? _lengthFilter;
   String? _tagFilter;
   SearchService? _searchService;
   String _quotesSignature = '';
@@ -168,7 +169,6 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                       ? const <QuoteModel>[]
                       : searchService.searchQuotes(
                           _query,
-                          lengthFilter: _lengthFilter,
                           tagFilter: _tagFilter,
                           limit: 100,
                         );
@@ -290,35 +290,6 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                         ),
                       ],
                       const SizedBox(height: FlowSpace.sm),
-                      Wrap(
-                        spacing: FlowSpace.xs,
-                        runSpacing: FlowSpace.xs,
-                        children: [
-                          PremiumPillChip(
-                            label: 'Any length',
-                            selected: _lengthFilter == null,
-                            onTap: () => setState(() => _lengthFilter = null),
-                          ),
-                          PremiumPillChip(
-                            label: 'Short',
-                            selected: _lengthFilter == 'short',
-                            onTap: () =>
-                                setState(() => _lengthFilter = 'short'),
-                          ),
-                          PremiumPillChip(
-                            label: 'Medium',
-                            selected: _lengthFilter == 'medium',
-                            onTap: () =>
-                                setState(() => _lengthFilter = 'medium'),
-                          ),
-                          PremiumPillChip(
-                            label: 'Long',
-                            selected: _lengthFilter == 'long',
-                            onTap: () => setState(() => _lengthFilter = 'long'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: FlowSpace.sm),
                       SizedBox(
                         height: 44,
                         child: ListView.separated(
@@ -364,14 +335,14 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                               onSeeMore: () => context.push('/categories'),
                               onTap: (tag) {
                                 if (tag == 'all') {
-                                  context.push('/viewer/category/all');
+                                  context.push('/categories/all');
                                   return;
                                 }
                                 final routeTag = tag == 'series'
                                     ? 'movies/series'
                                     : tag;
                                 context.push(
-                                  '/viewer/category/${Uri.encodeComponent(routeTag)}',
+                                  '/categories/${Uri.encodeComponent(routeTag)}',
                                 );
                               },
                             );
@@ -526,103 +497,13 @@ class _ExploreSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final flow = Theme.of(context).extension<FlowThemeTokens>();
-    final colors = flow?.colors;
-    final focused = focusNode.hasFocus;
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: FlowRadii.radiusXl,
-        boxShadow: [
-          BoxShadow(
-            color: (colors?.accent ?? Colors.white).withValues(
-              alpha: focused ? 0.22 : 0.12,
-            ),
-            blurRadius: focused ? 30 : 22,
-            spreadRadius: focused ? 1 : 0,
-          ),
-          ...?flow?.shadows.level1,
-        ],
-      ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: FlowRadii.radiusXl,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              (colors?.elevatedSurface ?? Colors.black).withValues(alpha: 0.9),
-              (colors?.surface ?? Colors.black).withValues(alpha: 0.82),
-            ],
-          ),
-          border: Border.all(
-            color:
-                (focused
-                    ? colors?.accent.withValues(alpha: 0.65)
-                    : colors?.divider.withValues(alpha: 0.82)) ??
-                Colors.white24,
-            width: focused ? 1.15 : 1,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            FlowSpace.sm,
-            FlowSpace.xs,
-            FlowSpace.xs,
-            FlowSpace.xs,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: (colors?.accent ?? Colors.white).withValues(
-                    alpha: 0.15,
-                  ),
-                ),
-                child: Icon(
-                  Icons.search_rounded,
-                  size: 18,
-                  color: colors?.textPrimary.withValues(alpha: 0.94),
-                ),
-              ),
-              const SizedBox(width: FlowSpace.sm),
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  onChanged: onChanged,
-                  onSubmitted: onSubmitted,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: 'Search quotes, author, tags',
-                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colors?.textSecondary.withValues(alpha: 0.88),
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    isCollapsed: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 11),
-                  ),
-                ),
-              ),
-              AnimatedOpacity(
-                opacity: controller.text.isEmpty ? 0 : 1,
-                duration: FlowDurations.quick,
-                child: IconButton(
-                  visualDensity: VisualDensity.compact,
-                  splashRadius: 18,
-                  onPressed: controller.text.isEmpty ? null : onClear,
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return PremiumSearchField(
+      controller: controller,
+      focusNode: focusNode,
+      hintText: 'Search quotes, author, tags',
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      onClear: onClear,
     );
   }
 }
@@ -879,18 +760,22 @@ class _ExploreResultTile extends StatelessWidget {
         borderRadius: FlowRadii.radiusLg,
         onTap: onTap,
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            AuthorPortraitCircle(author: quote.author, size: 52),
+            const SizedBox(width: FlowSpace.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     quote.quote,
-                    maxLines: 2,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: colors?.textPrimary,
                       fontWeight: FontWeight.w600,
+                      height: 1.38,
                     ),
                   ),
                   const SizedBox(height: FlowSpace.xs),
@@ -904,7 +789,14 @@ class _ExploreResultTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: FlowSpace.xs),
-            Icon(Icons.north_east_rounded, color: colors?.accent, size: 18),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Icon(
+                Icons.north_east_rounded,
+                color: colors?.accent,
+                size: 18,
+              ),
+            ),
           ],
         ),
       ),

@@ -1,10 +1,41 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/quote_providers.dart';
 import '../services/author_wiki_service.dart';
 import '../theme/app_theme.dart';
 import 'adaptive_author_image.dart';
+
+void showAuthorInfoSheetForAuthor(
+  BuildContext context,
+  WidgetRef ref,
+  String rawAuthor, {
+  String? displayAuthor,
+}) {
+  final author = rawAuthor.trim();
+  if (author.isEmpty || author.toLowerCase() == 'unknown') return;
+
+  final sheetTitle = (displayAuthor?.trim().isNotEmpty ?? false)
+      ? displayAuthor!.trim()
+      : author;
+
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    enableDrag: true,
+    isDismissible: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) {
+      return AuthorInfoSheet(
+        author: sheetTitle,
+        loader: () => ref.read(authorWikiServiceProvider).fetchAuthor(author),
+      );
+    },
+  );
+}
 
 class AuthorInfoSheet extends StatefulWidget {
   const AuthorInfoSheet({

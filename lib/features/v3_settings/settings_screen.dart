@@ -23,7 +23,7 @@ class SettingsScreen extends ConsumerWidget {
 
   Future<void> _showDatasetLicense(BuildContext context) async {
     final licenseText = await rootBundle.loadString(
-      'assets/licenses/dataset_mit_license.txt',
+      'assets/licenses/wikiquote_cc_by_sa_4_license.txt',
     );
     if (!context.mounted) return;
     await showModalBottomSheet<void>(
@@ -53,7 +53,7 @@ class SettingsScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: FlowSpace.sm),
                       Text(
-                        'Dataset License (MIT)',
+                        'Dataset License (Wikiquote CC BY-SA 4.0)',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: FlowSpace.sm),
@@ -393,7 +393,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: FlowSpace.xs),
           PremiumSettingsTile(
-            title: 'Dataset license (MIT)',
+            title: 'Dataset license (Wikiquote CC BY-SA 4.0)',
             subtitle: 'View third-party attribution',
             onTap: () => _showDatasetLicense(context),
           ),

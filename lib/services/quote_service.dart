@@ -2,8 +2,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants.dart';
 import '../models/quote_model.dart';
+import 'quote_selection_service.dart';
+
+const _kRecentDailyQuoteHistory = 'recent_daily_quote_history_v1';
+const _kRecentDailyQuoteHistoryLimit = 30;
 
 class QuoteService {
+  QuoteService({QuoteSelectionService? selectionService})
+    : _selectionService = selectionService ?? const QuoteSelectionService();
+
+  final QuoteSelectionService _selectionService;
+
   QuoteModel pickDailyQuote(
     List<QuoteModel> quotes,
     SharedPreferences prefs,
@@ -22,11 +31,20 @@ class QuoteService {
       if (existing != null) return existing;
     }
 
-    final selected = pickQuoteForDate(quotes, now);
+    final recentIds = _recentDailyQuoteIds(prefs, now);
+    final selected = _selectionService.pickDailyQuote(
+      quotes: quotes,
+      recentlyShownIds: recentIds,
+      date: now,
+    );
 
     prefs
       ..setString(prefDailyQuoteDate, today)
-      ..setString(prefDailyQuoteId, selected.id);
+      ..setString(prefDailyQuoteId, selected.id)
+      ..setStringList(
+        _kRecentDailyQuoteHistory,
+        _recordRecentDailyQuote(prefs, selected.id, now),
+      );
 
     return selected;
   }
@@ -68,6 +86,65 @@ class QuoteService {
   int _dayNumber(DateTime date) {
     final localDay = DateTime(date.year, date.month, date.day);
     return localDay.millisecondsSinceEpoch ~/ Duration.millisecondsPerDay;
+  }
+
+  Set<String> _recentDailyQuoteIds(SharedPreferences prefs, DateTime now) {
+    final cutoff = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 14));
+    final entries =
+        prefs.getStringList(_kRecentDailyQuoteHistory) ?? const <String>[];
+    final ids = <String>{};
+
+    for (final entry in entries) {
+      final parts = entry.split('|');
+      if (parts.length != 2) {
+        continue;
+      }
+      final shownAt = DateTime.tryParse(parts[0]);
+      final quoteId = parts[1].trim();
+      if (shownAt == null || quoteId.isEmpty) {
+        continue;
+      }
+      if (shownAt.isBefore(cutoff)) {
+        continue;
+      }
+      ids.add(quoteId);
+    }
+
+    return ids;
+  }
+
+  List<String> _recordRecentDailyQuote(
+    SharedPreferences prefs,
+    String quoteId,
+    DateTime now,
+  ) {
+    final entries = <String>[
+      '${DateTime(now.year, now.month, now.day).toIso8601String()}|${quoteId.trim()}',
+      ...(prefs.getStringList(_kRecentDailyQuoteHistory) ?? const <String>[]),
+    ];
+    final deduped = <String>[];
+    final seen = <String>{};
+
+    for (final entry in entries) {
+      final parts = entry.split('|');
+      if (parts.length != 2) {
+        continue;
+      }
+      final id = parts[1].trim();
+      if (id.isEmpty || !seen.add(id)) {
+        continue;
+      }
+      deduped.add(entry);
+      if (deduped.length >= _kRecentDailyQuoteHistoryLimit) {
+        break;
+      }
+    }
+
+    return deduped;
   }
 }
 

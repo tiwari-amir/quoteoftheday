@@ -1,142 +1,75 @@
-# Supabase Backend Setup + Kaggle Importer
+# Wikiquote Ingestion Pipeline
 
-This guide sets up the Supabase backend and imports Kaggle quotes using `revised_tags` only.
+This folder contains the ingestion pipeline that grows the Supabase quote
+dataset from Wikiquote through the MediaWiki API.
 
-## 1) Create Supabase project
+Pipeline:
 
-1. Go to Supabase dashboard and create a new project.
-2. Wait for DB provisioning to finish.
-3. Open **Project Settings -> Database**.
-4. Copy the **Connection string** in URI format.
+Wikiquote (MediaWiki API) -> parser/mapper -> Supabase (`quotes`, `pages_queue`)
 
-You will use this as `DATABASE_URL`.
+## Files
 
-## 2) Apply SQL migration
+- `wikiquote_ingest.py`: queue-driven ingestion runner.
+- `wikiquote_parser.py`: wikitext quote extraction and cleanup.
+- `wikiquote_category_mapper.py`: category + mood mapping layer.
+- `db.py`: PostgreSQL/Supabase connection helper.
 
-Migration file:
-- `supabase/migrations/0001_init.sql`
+## Requirements
 
-### Option A: Supabase SQL Editor
-1. Open **SQL Editor**.
-2. Paste content of `supabase/migrations/0001_init.sql`.
-3. Run query.
-
-### Option B: Supabase CLI
-1. Install CLI: https://supabase.com/docs/guides/cli
-2. Link project:
-   ```bash
-   supabase link --project-ref <PROJECT_REF>
-   ```
-3. Push migration:
-   ```bash
-   supabase db push
-   ```
-
-## 3) Setup importer (Python 3.11)
-
-From repo root:
-
-```bash
-cd importer
-python -m venv .venv
-```
-
-Activate venv:
-
-- macOS/Linux:
-  ```bash
-  source .venv/bin/activate
-  ```
-- Windows PowerShell:
-  ```powershell
-  .\.venv\Scripts\Activate.ps1
-  ```
-
-Install deps:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Create `.env` from example:
+Configure `.env` with:
+
+- `DATABASE_URL=postgresql://...`
+- `PGSSLMODE=require` (recommended for Supabase)
+
+## Dry Run
+
+Dry-run mode fetches seed categories and parses pages without DB writes:
 
 ```bash
-cp .env.example .env
+python wikiquote_ingest.py --limit 20
 ```
 
-Set:
-- `DATABASE_URL=postgresql://postgres:<PASSWORD>@db.<PROJECT-REF>.supabase.co:5432/postgres`
-- `PGSSLMODE=require`
+## Commit Mode
 
-## 4) Run importer
-
-### Dry run (no writes)
+Commit mode writes to Supabase, updates `pages_queue`, and upserts quotes:
 
 ```bash
-python import_quotes.py --input ../data/kaggle_quotes.csv --dry-run
+python wikiquote_ingest.py --commit
 ```
 
-### Commit mode (writes to DB)
+First ingestion (seed + larger one-time limit):
 
 ```bash
-python import_quotes.py --input ../data/kaggle_quotes.csv --commit
+python wikiquote_ingest.py --seed --limit 120 --commit
 ```
 
-JSON input also supported:
+Incremental daily/weekly ingestion (safe batch size):
 
 ```bash
-python import_quotes.py --input ../data/kaggle_quotes.json --commit
-python import_quotes.py --input ../data/kaggle_quotes.jsonl --commit
+python wikiquote_ingest.py --limit 40 --commit
 ```
 
-Optional batch size:
+## Scheduler
+
+Run daily or weekly via cron / task scheduler:
 
 ```bash
-python import_quotes.py --input ../data/kaggle_quotes.csv --commit --batch-size 1000
+# daily at 03:00
+0 3 * * * cd /path/to/repo/importer && /path/to/python wikiquote_ingest.py --commit
 ```
 
-## 5) Verify data
+## Data Guarantees
 
-Run in SQL editor:
-
-```sql
-select count(*) as quotes_count from public.quotes;
-select count(*) as tags_count from public.tags;
-select count(*) as quote_tags_count from public.quote_tags;
-
-select type, count(*)
-from public.tags
-group by type
-order by type;
-
-select q.id, q.author, left(q.text, 80) as sample_text
-from public.quotes q
-order by q.created_at desc
-limit 10;
-```
-
-## Importer behavior
-
-- Uses `revised_tags` only.
-- Supports `revised_tags` as comma string, JSON list string, or list.
-- Tag normalization:
-  - lowercase
-  - split comma / JSON parse
-  - dedupe and remove empties
-  - slugify (`spaces/_ -> -`, remove non-alnum except `-`)
-- Tag type classification:
-  - mood allowlist -> `mood`
-  - otherwise -> `category`
-- Quote de-duplication:
-  - normalize quote whitespace
-  - trim author; empty author stored as `NULL`
-  - hash = `sha256(normalized_quote + '|' + normalized_author_or_empty)`
-  - insert with `ON CONFLICT (hash) DO NOTHING`
-- `quote_tags` relation insert uses `ON CONFLICT DO NOTHING`.
-- Logs progress every 1000 rows.
-- Prints summary:
-  - `total_rows`
-  - `quotes_inserted`
-  - `quotes_duplicates`
-  - `tags_upserted`
-  - `relations_inserted`
+- Uses MediaWiki API (`https://en.wikiquote.org/w/api.php`), no HTML scraping.
+- Stores `source_url` for attribution.
+- Stores `license = CC BY-SA 4.0`.
+- Deduplicates using `SHA1(normalized_quote_text)` in `quotes.hash`.
+- Maintains and expands `pages_queue` from discovered internal links.
+- Rate-limits API traffic to max 2 requests/sec (`time.sleep(0.5)`).
+- Retries failed pages up to 3 times, then marks them skipped.

@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/quote_providers.dart';
+import '../../widgets/premium/premium_search_field.dart';
 import '../../widgets/editorial_background.dart';
-import '../../widgets/glass_card.dart';
 import '../../widgets/glass_icon_button.dart';
 import '../../widgets/scale_tap.dart';
 
@@ -18,11 +18,13 @@ class MoodScreen extends ConsumerStatefulWidget {
 
 class _MoodScreenState extends ConsumerState<MoodScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _query = '';
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -55,23 +57,16 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  GlassCard(
-                    borderRadius: 18,
-                    blur: 18,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 4,
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (value) =>
-                          setState(() => _query = value.trim().toLowerCase()),
-                      decoration: const InputDecoration(
-                        icon: Icon(Icons.search_rounded),
-                        border: InputBorder.none,
-                        hintText: 'Search moods',
-                      ),
-                    ),
+                  PremiumSearchField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    hintText: 'Search moods',
+                    onChanged: (value) =>
+                        setState(() => _query = value.trim().toLowerCase()),
+                    onClear: () {
+                      _searchController.clear();
+                      setState(() => _query = '');
+                    },
                   ),
                   const SizedBox(height: 14),
                   Expanded(

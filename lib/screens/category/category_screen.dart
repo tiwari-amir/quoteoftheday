@@ -1,20 +1,28 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/quote_model.dart';
+import '../../models/quote_viewer_filter.dart';
 import '../../providers/quote_providers.dart';
 import '../../services/quote_service.dart';
+import '../../theme/design_tokens.dart';
+import '../../widgets/author_portrait_circle.dart';
 import '../../widgets/editorial_background.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/glass_icon_button.dart';
+import '../../widgets/premium/premium_search_field.dart';
+import '../../widgets/premium/premium_components.dart';
 import '../../widgets/scale_tap.dart';
 
 class CategoryScreen extends ConsumerStatefulWidget {
-  const CategoryScreen({super.key});
+  const CategoryScreen({super.key, this.selectedTag});
+
+  final String? selectedTag;
 
   @override
   ConsumerState<CategoryScreen> createState() => _CategoryScreenState();
@@ -23,23 +31,18 @@ class CategoryScreen extends ConsumerStatefulWidget {
 class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _searchFocusNode = FocusNode();
 
   String _query = '';
-  bool _showMostLikedSection = false;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() => _showMostLikedSection = true);
-    });
-  }
+  bool get _showCategoryDetail =>
+      (widget.selectedTag?.trim().isNotEmpty ?? false);
 
   @override
   void dispose() {
     _searchController.dispose();
     _scrollController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -84,6 +87,12 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return _showCategoryDetail
+        ? _buildCategoryDetail(context)
+        : _buildCategoryBrowser(context);
+  }
+
+  Widget _buildCategoryBrowser(BuildContext context) {
     final categoriesAsync = ref.watch(categoryCountsProvider);
     final service = ref.read(quoteServiceProvider);
 
@@ -119,24 +128,16 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                         curve: Curves.easeOutCubic,
                       ),
                   const SizedBox(height: 16),
-                  GlassCard(
-                        borderRadius: 18,
-                        blur: 18,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 4,
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (value) => setState(
-                            () => _query = value.trim().toLowerCase(),
-                          ),
-                          decoration: const InputDecoration(
-                            icon: Icon(Icons.search_rounded),
-                            border: InputBorder.none,
-                            hintText: 'Search categories',
-                          ),
-                        ),
+                  PremiumSearchField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        hintText: 'Search categories',
+                        onChanged: (value) =>
+                            setState(() => _query = value.trim().toLowerCase()),
+                        onClear: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
                       )
                       .animate(delay: 70.ms)
                       .fadeIn(duration: 260.ms)
@@ -192,12 +193,10 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                                             ) {
                                               final item = filtered[index];
                                               final routeTag =
-                                                  item.tag == 'series'
-                                                  ? 'movies/series'
-                                                  : item.tag;
+                                                  _categoryRouteTag(item.tag);
                                               return ScaleTap(
                                                 onTap: () => context.push(
-                                                  '/viewer/category/${Uri.encodeComponent(routeTag)}',
+                                                  '/categories/${Uri.encodeComponent(routeTag)}',
                                                 ),
                                                 child: _CategoryCard(
                                                   item: item,
@@ -211,17 +210,6 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                                                   mainAxisSpacing: 14,
                                                   childAspectRatio: 1.08,
                                                 ),
-                                          ),
-                                          SliverToBoxAdapter(
-                                            child: Padding(
-                                              padding: const EdgeInsets.only(
-                                                top: 22,
-                                                bottom: 4,
-                                              ),
-                                              child: _showMostLikedSection
-                                                  ? const _MostLikedSection()
-                                                  : const SizedBox.shrink(),
-                                            ),
                                           ),
                                         ],
                                       ),
@@ -263,10 +251,195 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
     );
   }
 
+  Widget _buildCategoryDetail(BuildContext context) {
+    final selectedTag = (widget.selectedTag ?? '').trim().toLowerCase();
+    final routeTag = _categoryRouteTag(selectedTag);
+    final service = ref.read(quoteServiceProvider);
+    final label = _categoryLabel(selectedTag, service);
+    final quotesAsync = ref.watch(
+      quotesByFilterProvider(
+        QuoteViewerFilter(type: 'category', tag: selectedTag),
+      ),
+    );
+
+    return Scaffold(
+      floatingActionButton: quotesAsync.maybeWhen(
+        data: (quotes) => quotes.isEmpty
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: () => context.push(
+                  '/viewer/category/${Uri.encodeComponent(routeTag)}',
+                ),
+                icon: const Icon(Icons.swipe_up_alt_rounded),
+                label: const Text('Scroll category'),
+              ),
+        orElse: () => null,
+      ),
+      body: Stack(
+        children: [
+          const EditorialBackground(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+              child: quotesAsync.when(
+                data: (quotes) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                            children: [
+                              GlassIconButton(
+                                icon: Icons.arrow_back_rounded,
+                                onTap: context.pop,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      label,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleLarge,
+                                    ),
+                                    Text(
+                                      '${quotes.length} quotes',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.68,
+                                            ),
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          )
+                          .animate()
+                          .fadeIn(duration: 260.ms)
+                          .slideY(
+                            begin: -0.05,
+                            end: 0,
+                            duration: 320.ms,
+                            curve: Curves.easeOutCubic,
+                          ),
+                      const SizedBox(height: 16),
+                      GlassCard(
+                            borderRadius: 24,
+                            blur: 24,
+                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Quote list',
+                                  style: Theme.of(context).textTheme.labelLarge
+                                      ?.copyWith(
+                                        letterSpacing: 0.42,
+                                        color: Colors.white.withValues(
+                                          alpha: 0.72,
+                                        ),
+                                      ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Read through the strongest lines in $label, then jump into swipe mode whenever you want the full scroll experience.',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.bodyLarge?.copyWith(height: 1.45),
+                                ),
+                                const SizedBox(height: 14),
+                                Wrap(
+                                  spacing: FlowSpace.xs,
+                                  runSpacing: FlowSpace.xs,
+                                  children: [
+                                    _CategoryInfoChip(
+                                      icon: Icons.menu_book_rounded,
+                                      label: '${quotes.length} entries',
+                                    ),
+                                    const _CategoryInfoChip(
+                                      icon: Icons.touch_app_rounded,
+                                      label: 'Tap a quote to open there',
+                                    ),
+                                    const _CategoryInfoChip(
+                                      icon: Icons.swipe_up_alt_rounded,
+                                      label: 'Scroll mode available',
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          )
+                          .animate(delay: 60.ms)
+                          .fadeIn(duration: 260.ms)
+                          .slideY(
+                            begin: 0.04,
+                            end: 0,
+                            duration: 300.ms,
+                            curve: Curves.easeOutCubic,
+                          ),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: quotes.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'No quotes found for $label',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                              )
+                            : Scrollbar(
+                                controller: _scrollController,
+                                thumbVisibility: true,
+                                child: ListView.separated(
+                                  controller: _scrollController,
+                                  physics: const BouncingScrollPhysics(),
+                                  itemCount: quotes.length,
+                                  padding: const EdgeInsets.only(bottom: 112),
+                                  separatorBuilder: (_, _) =>
+                                      const SizedBox(height: 14),
+                                  itemBuilder: (context, index) {
+                                    final quote = quotes[index];
+                                    return _CategoryQuoteCard(
+                                      quote: quote,
+                                      service: service,
+                                      onTap: () => context.push(
+                                        '/viewer/category/${Uri.encodeComponent(routeTag)}?quoteId=${quote.id}',
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                      ),
+                    ],
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, stack) =>
+                    Center(child: Text('Failed to load: $error')),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _categoryLabel(String rawTag, QuoteService service) {
     final tag = rawTag.trim().toLowerCase();
-    if (tag == 'series') return 'Movies/Series';
+    if (tag == 'series' || tag == 'movies/series') return 'Movies/Series';
     return service.toTitleCase(tag);
+  }
+
+  String _categoryRouteTag(String rawTag) {
+    final tag = rawTag.trim().toLowerCase();
+    if (tag == 'series') return 'movies/series';
+    return tag;
   }
 
   List<String> _buildQuickLetters(List<_TagCount> items) {
@@ -371,7 +544,7 @@ class _CategoryCardState extends State<_CategoryCard> {
                   ),
                   const Spacer(),
                   Icon(
-                    Icons.arrow_forward_rounded,
+                    Icons.menu_book_rounded,
                     size: 18,
                     color: scheme.primary.withValues(alpha: 0.9),
                   ),
@@ -379,6 +552,124 @@ class _CategoryCardState extends State<_CategoryCard> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryInfoChip extends StatelessWidget {
+  const _CategoryInfoChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return PremiumPillChip(label: label, icon: icon);
+  }
+}
+
+class _CategoryQuoteCard extends StatelessWidget {
+  const _CategoryQuoteCard({
+    required this.quote,
+    required this.service,
+    required this.onTap,
+  });
+
+  final QuoteModel quote;
+  final QuoteService service;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final tags = quote.revisedTags
+        .take(2)
+        .map(service.toTitleCase)
+        .toList(growable: false);
+
+    return PremiumSurface(
+      radius: FlowRadii.xl,
+      elevation: 2,
+      padding: const EdgeInsets.fromLTRB(
+        FlowSpace.md,
+        FlowSpace.md,
+        FlowSpace.md,
+        FlowSpace.md,
+      ),
+      child: InkWell(
+        borderRadius: FlowRadii.radiusXl,
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                AuthorPortraitCircle(author: quote.author, size: 38),
+                const SizedBox(width: FlowSpace.sm),
+                Expanded(
+                  child: Text(
+                    quote.author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: colors?.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.swipe_up_alt_rounded,
+                  size: 18,
+                  color: colors?.accent,
+                ),
+              ],
+            ),
+            const SizedBox(height: FlowSpace.sm),
+            Text(
+              quote.quote,
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: colors?.textPrimary,
+                height: 1.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (tags.isNotEmpty) ...[
+              const SizedBox(height: FlowSpace.sm),
+              Wrap(
+                spacing: FlowSpace.xs,
+                runSpacing: FlowSpace.xs,
+                children: [
+                  for (final tag in tags)
+                    PremiumPillChip(
+                      label: tag,
+                      icon: Icons.sell_outlined,
+                      compact: true,
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: FlowSpace.sm),
+            Row(
+              children: [
+                Text(
+                  'Tap to open here',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colors?.textSecondary.withValues(alpha: 0.88),
+                  ),
+                ),
+                const Spacer(),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 18,
+                  color: colors?.accent,
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -502,80 +793,4 @@ class _TagCount {
   final String tag;
   final String label;
   final int count;
-}
-
-class _MostLikedSection extends ConsumerWidget {
-  const _MostLikedSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final quotesAsync = ref.watch(topLikedQuotesProvider);
-    return quotesAsync.when(
-      data: (quotes) {
-        if (quotes.isEmpty) return const SizedBox.shrink();
-        return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Most liked',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 172,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: quotes.length.clamp(0, 10).toInt(),
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(width: 10),
-                    itemBuilder: (context, index) {
-                      final quote = quotes[index];
-                      return SizedBox(
-                        width: 238,
-                        child: GlassCard(
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                          borderRadius: 16,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: () => context.push(
-                              '/viewer?type=explore&tag=&quoteId=${quote.id}',
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  quote.quote,
-                                  maxLines: 4,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const Spacer(),
-                                Text(
-                                  quote.author,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            )
-            .animate()
-            .fadeIn(duration: 240.ms)
-            .slideY(
-              begin: 0.03,
-              end: 0,
-              duration: 300.ms,
-              curve: Curves.easeOutCubic,
-            );
-      },
-      loading: () => const SizedBox.shrink(),
-      error: (error, stack) => const SizedBox.shrink(),
-    );
-  }
 }
