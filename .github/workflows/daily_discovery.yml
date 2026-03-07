@@ -1,0 +1,41 @@
+name: Daily discovery crawl
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Pages to process in this discovery run
+        required: false
+        default: "500"
+      min_quotes_goal:
+        description: Keep crawling until at least this many new quotes are inserted
+        required: false
+        default: "50"
+      trigger:
+        description: Trigger source label passed into the importer
+        required: false
+        default: "manual"
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install importer dependencies
+        run: pip install -r importer/requirements.txt
+
+      - name: Run discovery crawl
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
+          QUOTEFLOW_INGEST_TRIGGER: ${{ inputs.trigger }}
+        run: python importer/wikiquote_ingest.py --discover --limit ${{ inputs.limit }} --min-quotes-goal ${{ inputs.min_quotes_goal }} --commit
