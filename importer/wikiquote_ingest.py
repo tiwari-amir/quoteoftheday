@@ -15,7 +15,13 @@ import requests
 from dotenv import load_dotenv
 
 from db import chunked, get_connection
-from wikiquote_category_mapper import infer_page_type, map_page_tags, normalize_text
+from wikiquote_category_mapper import (
+    CURATED_CATEGORY_DISPLAY,
+    infer_page_type,
+    map_page_tags,
+    map_quote_tags,
+    normalize_text,
+)
 from wikiquote_parser import (
     QuoteCandidate,
     canonicalize_author,
@@ -41,16 +47,236 @@ MAX_PARSE_WIKITEXT_CHARS = 300_000
 MAX_PARSE_WIKITEXT_LINES = 6_000
 MAX_PAGES_QUEUE_SIZE = 50_000
 MAX_NEW_PAGES_PER_RUN = 200
-DEFAULT_SEEDS = [
-    "Love",
-    "Life",
-    "Philosophy",
-    "Humor",
-    "Films",
-    "Television",
-    "Religion",
-    "Poetry",
+CURATED_AUTHOR_DISPLAY_NAMES = [
+    item.strip()
+    for item in """
+William Shakespeare
+Plato
+Aristotle
+Socrates
+Confucius
+Laozi
+Sun Tzu
+Siddhartha Gautama (Buddha)
+Marcus Aurelius
+Seneca
+Epictetus
+Cicero
+Augustine of Hippo
+Thomas Aquinas
+Michel de Montaigne
+Blaise Pascal
+Rene Descartes
+Baruch Spinoza
+John Locke
+David Hume
+Immanuel Kant
+G.W.F. Hegel
+Arthur Schopenhauer
+Soren Kierkegaard
+Friedrich Nietzsche
+Voltaire
+Jean-Jacques Rousseau
+Denis Diderot
+Thomas Hobbes
+Niccolo Machiavelli
+Francis Bacon
+Alexis de Tocqueville
+Karl Marx
+John Stuart Mill
+Bertrand Russell
+Ludwig Wittgenstein
+Hannah Arendt
+Simone de Beauvoir
+Jean-Paul Sartre
+Albert Camus
+Ralph Waldo Emerson
+Henry David Thoreau
+Walt Whitman
+Emily Dickinson
+Edgar Allan Poe
+Mark Twain
+Herman Melville
+Nathaniel Hawthorne
+Henry James
+Oscar Wilde
+George Bernard Shaw
+G.K. Chesterton
+C.S. Lewis
+Aldous Huxley
+George Orwell
+Fyodor Dostoevsky
+Leo Tolstoy
+Anton Chekhov
+Alexander Pushkin
+Nikolai Gogol
+Franz Kafka
+Milan Kundera
+Johann Wolfgang von Goethe
+Friedrich Schiller
+Dante Alighieri
+Petrarch
+Giovanni Boccaccio
+Miguel de Cervantes
+Geoffrey Chaucer
+John Milton
+William Blake
+William Wordsworth
+Samuel Taylor Coleridge
+Lord Byron
+Percy Bysshe Shelley
+John Keats
+Alfred Lord Tennyson
+Robert Browning
+T.S. Eliot
+Ezra Pound
+W.B. Yeats
+Seamus Heaney
+Sylvia Plath
+Ted Hughes
+Langston Hughes
+Maya Angelou
+James Baldwin
+Toni Morrison
+Gabriel Garcia Marquez
+Jorge Luis Borges
+Pablo Neruda
+Octavio Paz
+Mario Vargas Llosa
+Isabel Allende
+Haruki Murakami
+Yukio Mishima
+Rabindranath Tagore
+Kahlil Gibran
+Mahmoud Darwish
+Jalal ad-Din Rumi
+Hafez
+Omar Khayyam
+Li Bai
+Du Fu
+Matsuo Basho
+Yosa Buson
+Kobayashi Issa
+Zhuangzi
+Mencius
+Xunzi
+Chanakya (Kautilya)
+Kalidasa
+Lao She
+Lu Xun
+Mo Yan
+Naguib Mahfouz
+Chinua Achebe
+Wole Soyinka
+Ngugi wa Thiong'o
+Derek Walcott
+Aime Cesaire
+Frantz Fanon
+Edward Said
+Joseph Conrad
+Graham Greene
+Salman Rushdie
+Arundhati Roy
+Jhumpa Lahiri
+Kazuo Ishiguro
+Italo Calvino
+Umberto Eco
+Primo Levi
+Elie Wiesel
+Aleksandr Solzhenitsyn
+Vaclav Havel
+Susan Sontag
+Joan Didion
+Christopher Hitchens
+Sam Harris
+Carl Jung
+Sigmund Freud
+Erich Fromm
+Abraham Maslow
+Viktor Frankl
+Dale Carnegie
+Napoleon Hill
+James Allen
+Wallace D. Wattles
+Stephen Covey
+Jim Rohn
+Tony Robbins
+Robin Sharma
+Paulo Coelho
+Eckhart Tolle
+Alan Watts
+Jiddu Krishnamurti
+Sri Aurobindo
+Swami Vivekananda
+Paramahansa Yogananda
+Thich Nhat Hanh
+Tenzin Gyatso (Dalai Lama)
+Pema Chodron
+Shunryu Suzuki
+Dogen
+Nagarjuna
+Benjamin Franklin
+Thomas Paine
+Abraham Lincoln
+Winston Churchill
+Theodore Roosevelt
+Nelson Mandela
+Martin Luther King Jr.
+Mahatma Gandhi
+Malcolm X
+Vaclav Smil
+Carl Sagan
+Richard Feynman
+Albert Einstein
+Stephen Hawking
+Charles Darwin
+Rachel Carson
+Jane Goodall
+E.O. Wilson
+Oliver Sacks
+Atul Gawande
+Siddhartha Mukherjee
+Daniel Kahneman
+Nassim Nicholas Taleb
+Yuval Noah Harari
+Steven Pinker
+Malcolm Gladwell
+David Brooks
+Ryan Holiday
+Robert Greene
+Peter Drucker
+Clayton Christensen
+Simon Sinek
+Seth Godin
+Naval Ravikant
+Charlie Munger
+Warren Buffett
+""".splitlines()
+    if item.strip()
 ]
+_AUTHOR_SEED_TITLE_ALIASES = {
+    normalize_text("Siddhartha Gautama (Buddha)"): "Buddha",
+    normalize_text("Tenzin Gyatso (Dalai Lama)"): "Dalai Lama",
+    normalize_text("Jalal ad-Din Rumi"): "Rumi",
+    normalize_text("Chanakya (Kautilya)"): "Chanakya",
+    normalize_text("G.W.F. Hegel"): "Georg Wilhelm Friedrich Hegel",
+}
+
+
+def resolve_author_seed_title(author_name: str) -> str:
+    normalized = normalize_text(author_name)
+    return _AUTHOR_SEED_TITLE_ALIASES.get(normalized, author_name.strip())
+
+
+CURATED_AUTHOR_SEED_TITLES = list(
+    dict.fromkeys(
+        resolve_author_seed_title(author_name)
+        for author_name in CURATED_AUTHOR_DISPLAY_NAMES
+        if author_name.strip()
+    )
+)
+
+DEFAULT_SEEDS = list(CURATED_CATEGORY_DISPLAY)
 SOURCE_PRESTIGE = {
     "authors": 5,
     "speeches": 5,
@@ -60,127 +286,8 @@ SOURCE_PRESTIGE = {
     "topics": 3,
 }
 SEED_REGISTRY = {
-    "authors": [
-        "Albert Einstein",
-        "Mahatma Gandhi",
-        "Nelson Mandela",
-        "Martin Luther King Jr.",
-        "Steve Jobs",
-        "Oscar Wilde",
-        "Mark Twain",
-        "Friedrich Nietzsche",
-        "Confucius",
-        "Laozi",
-        "Buddha",
-        "Dalai Lama",
-        "Winston Churchill",
-        "Theodore Roosevelt",
-        "Abraham Lincoln",
-        "Benjamin Franklin",
-        "Rumi",
-        "William Shakespeare",
-        "George Orwell",
-        "Leo Tolstoy",
-        "Maya Angelou",
-        "Marcus Aurelius",
-        "Epictetus",
-        "Seneca",
-        "Voltaire",
-        "Ralph Waldo Emerson",
-        "Henry David Thoreau",
-        "Carl Jung",
-        "Sigmund Freud",
-        "Plato",
-        "Aristotle",
-    ],
-    "films": [
-        "The Godfather",
-        "The Dark Knight",
-        "Rocky",
-        "Dead Poets Society",
-        "Forrest Gump",
-        "The Lord of the Rings",
-        "Star Wars",
-        "Interstellar",
-        "The Matrix",
-        "Good Will Hunting",
-    ],
-    "tv_shows": [
-        "Game of Thrones",
-        "Breaking Bad",
-        "BoJack Horseman",
-        "The Office",
-        "Friends",
-        "Sherlock",
-        "The Sopranos",
-    ],
-    "literature": [
-        "Hamlet",
-        "Macbeth",
-        "The Prophet",
-        "Meditations",
-        "Tao Te Ching",
-        "The Art of War",
-        "Bhagavad Gita",
-    ],
-    "speeches": [
-        "I Have a Dream",
-        "Gettysburg Address",
-        "We Shall Fight on the Beaches",
-        "Tear Down This Wall",
-    ],
-    "topics": [
-        "Life",
-        "Success",
-        "Happiness",
-        "Change",
-        "Courage",
-        "Hope",
-        "Failure",
-        "Time",
-        "Ambition",
-        "Balance",
-        "Inspiration",
-        "Motivation",
-        "Work",
-        "Leadership",
-        "Attitude",
-        "Determination",
-        "Focus",
-        "Preparation",
-        "Excellence",
-        "Hard Work",
-        "Love",
-        "Friendship",
-        "Family",
-        "Kindness",
-        "Forgiveness",
-        "Trust",
-        "Loneliness",
-        "Beauty",
-        "Gratitude",
-        "Empathy",
-        "Wisdom",
-        "Education",
-        "Science",
-        "Art",
-        "Politics",
-        "Religion",
-        "War",
-        "Truth",
-        "Freedom",
-        "Justice",
-        "Funny",
-        "Movies",
-        "Television",
-        "Books",
-        "Sports",
-        "Music",
-        "Proverbs",
-        "Epitaphs",
-        "Slogans",
-        "Misquotations",
-    ],
+    "authors": CURATED_AUTHOR_SEED_TITLES,
+    "topics": list(CURATED_CATEGORY_DISPLAY),
 }
 TOP_QUOTES_PER_PAGE = 3
 TOP_QUOTES_PER_PAGE_BOOTSTRAP = 3
@@ -199,6 +306,9 @@ STORAGE_RECLAIM_BUFFER_BYTES = 2 * 1024 * 1024
 FALLBACK_AVG_QUOTE_STORAGE_BYTES = 2_048
 MIN_PRUNE_BATCH_SIZE = 5
 MAX_PRUNE_BATCH_SIZE = 400
+CURATED_CATEGORY_DISPLAY_BY_SLUG = {
+    normalize_text(label): label for label in CURATED_CATEGORY_DISPLAY
+}
 SOURCE_PRESTIGE_HINTS = {
     "speeches": (
         "speech",
@@ -295,6 +405,7 @@ class IngestStats:
     database_size_bytes_before: int = 0
     database_size_bytes_after: int = 0
     quotes_table_bytes_after: int = 0
+    runtime_budget_reached: bool = False
 
 
 @dataclass
@@ -504,7 +615,6 @@ def build_seed_registry_entries() -> list[SeedPage]:
                     prestige=prestige,
                 )
             )
-    entries.sort(key=lambda item: (-item.prestige, item.source_type, item.title))
     return entries
 
 
@@ -515,7 +625,7 @@ SEED_ENTRY_BY_TITLE = {
 }
 GLOBAL_AUTHOR_REPUTATION = {
     canonicalize_author(author_name)
-    for author_name in SEED_REGISTRY["authors"]
+    for author_name in [*CURATED_AUTHOR_DISPLAY_NAMES, *SEED_REGISTRY["authors"]]
     if canonicalize_author(author_name)
 }
 TOPIC_PRIORITY_TITLES = {
@@ -673,6 +783,11 @@ def parse_args() -> argparse.Namespace:
         help="Cluster near-duplicate quotes and keep only the strongest version",
     )
     parser.add_argument(
+        "--retag-quotes",
+        action="store_true",
+        help="Recompute stored quote categories and moods using the current mapper",
+    )
+    parser.add_argument(
         "--bootstrap",
         action="store_true",
         help="Process only curated seed registry pages with stricter scoring",
@@ -752,6 +867,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Keep crawling until at least this many new quotes are inserted or no more high-signal pages can be primed",
+    )
+    parser.add_argument(
+        "--max-runtime-minutes",
+        type=int,
+        default=0,
+        help="Soft runtime cap for the crawl; ends the run gracefully before external job timeouts",
     )
     parser.add_argument(
         "--user-agent",
@@ -1218,6 +1339,22 @@ class WikiquoteApi:
         return output
 
 
+def safe_fetch_page_links(
+    api: WikiquoteApi,
+    title: str,
+    *,
+    limit: int,
+    context: str,
+) -> list[str]:
+    if limit <= 0:
+        return []
+    try:
+        return api.fetch_page_links(title, limit=limit)
+    except Exception as error:  # pragma: no cover
+        print(f"[warn] {context} link fetch failed for {title!r}: {error}")
+        return []
+
+
 def main() -> None:
     load_dotenv()
     args = parse_args()
@@ -1237,6 +1374,7 @@ def main() -> None:
     )
     stats = IngestStats()
     min_quotes_goal = resolve_min_quotes_goal(args)
+    runtime_deadline = resolve_runtime_deadline(args)
     min_score = max(args.min_score, MIN_GLOBAL_POPULARITY_SCORE)
     if args.bootstrap:
         min_score = max(min_score, MIN_QUOTE_SCORE_BOOTSTRAP)
@@ -1295,6 +1433,17 @@ def main() -> None:
                 ensure_ingestion_notification_schema(cur)
                 run_cluster_quotes(cur=cur, commit=True)
                 conn.commit()
+        return
+
+    if args.retag_quotes:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                ensure_quote_frequency_schema(cur)
+                ensure_quote_cluster_schema(cur)
+                ensure_ingestion_notification_schema(cur)
+                run_retag_quotes(cur=cur, commit=args.commit)
+                if args.commit:
+                    conn.commit()
         return
 
     if not args.commit:
@@ -1366,6 +1515,7 @@ def main() -> None:
                     cur=cur,
                     api=api,
                     limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
+                    deadline=runtime_deadline,
                 )
                 if seeded > 0:
                     stats.seed_pages_enqueued += seeded
@@ -1376,12 +1526,19 @@ def main() -> None:
                     cur=cur,
                     api=api,
                     limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
+                    deadline=runtime_deadline,
                 )
                 if seeded > 0:
                     stats.seed_pages_enqueued += seeded
                     conn.commit()
 
             for index in range(max_pages_per_run):
+                if runtime_budget_reached(runtime_deadline):
+                    stats.runtime_budget_reached = True
+                    print(
+                        "[progress] runtime budget reached; ending discovery run gracefully"
+                    )
+                    break
                 if min_quotes_goal > 0 and stats.quotes_inserted >= min_quotes_goal:
                     break
 
@@ -1400,6 +1557,7 @@ def main() -> None:
                             cur=cur,
                             api=api,
                             limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
+                            deadline=runtime_deadline,
                         )
                         if seeded > 0:
                             stats.seed_pages_enqueued += seeded
@@ -1449,6 +1607,7 @@ def main() -> None:
                             cur=cur,
                             api=api,
                             limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
+                            deadline=runtime_deadline,
                         )
                         if seeded > 0:
                             stats.seed_pages_enqueued += seeded
@@ -1507,6 +1666,17 @@ def resolve_limits(args: argparse.Namespace) -> tuple[int, int]:
 
 def resolve_min_quotes_goal(args: argparse.Namespace) -> int:
     return max(0, int(args.min_quotes_goal or 0))
+
+
+def resolve_runtime_deadline(args: argparse.Namespace) -> float | None:
+    max_runtime_minutes = max(0, int(args.max_runtime_minutes or 0))
+    if max_runtime_minutes <= 0:
+        return None
+    return time.monotonic() + (max_runtime_minutes * 60)
+
+
+def runtime_budget_reached(deadline: float | None) -> bool:
+    return deadline is not None and time.monotonic() >= deadline
 
 
 def discovery_enabled_for_run(
@@ -1612,8 +1782,10 @@ def run_dry(
             page_title=page_row["page_title"],
             page_type=mapping.page_type,
             quote_candidates=quote_candidates,
-            categories=mapping.categories,
-            moods=mapping.moods,
+            seed_categories=page_seed_context,
+            page_categories=all_categories,
+            fallback_categories=mapping.categories,
+            fallback_moods=mapping.moods,
             min_score=min_score,
             top_quotes_per_page=top_quotes_per_page,
             source_prestige=resolved_source_prestige,
@@ -1640,12 +1812,14 @@ def run_dry(
             and should_expand_from_page(accepted_quotes)
             and stats.new_pages_discovered < MAX_NEW_PAGES_PER_RUN
         ):
-            discovered_links = api.fetch_page_links(
+            discovered_links = safe_fetch_page_links(
+                api,
                 page_row["page_title"],
                 limit=min(
                     max_discovered_links,
                     max(0, MAX_NEW_PAGES_PER_RUN - stats.new_pages_discovered),
                 ),
+                context="dry_run_page_expand",
             )
             discovered_count = len(
                 build_discovered_rows(
@@ -1717,8 +1891,14 @@ def run_bootstrap_dry(
             page_title=page_row["page_title"],
             page_type=mapping.page_type,
             quote_candidates=quote_candidates,
-            categories=mapping.categories,
-            moods=mapping.moods,
+            seed_categories=seed_context_for_page(
+                page_title=page_row["page_title"],
+                page_categories=all_categories,
+                seeds=seeds,
+            ),
+            page_categories=all_categories,
+            fallback_categories=mapping.categories,
+            fallback_moods=mapping.moods,
             min_score=min_score,
             top_quotes_per_page=top_quotes_per_page,
             source_prestige=int(page_row["source_prestige"]),
@@ -1894,6 +2074,8 @@ def resolve_run_type(args: argparse.Namespace) -> str:
         return "dedupe"
     if args.cluster_quotes:
         return "cluster"
+    if args.retag_quotes:
+        return "retag"
     if args.reset_dataset:
         return "reset"
     if args.discover:
@@ -1907,6 +2089,7 @@ def build_discovery_notification_copy(
     total_quotes: int,
     pruned_quotes: int,
     min_quotes_goal: int,
+    runtime_budget_reached_flag: bool = False,
 ) -> tuple[str, str]:
     safe_total = max(0, total_quotes)
     safe_added = max(0, quotes_added)
@@ -1924,7 +2107,13 @@ def build_discovery_notification_copy(
             if goal_met:
                 body += f" That cleared the daily target of {safe_goal}."
             else:
-                body += f" The crawl stopped short of the daily target of {safe_goal}."
+                if runtime_budget_reached_flag:
+                    body += (
+                        f" The crawl hit its runtime budget before reaching the daily "
+                        f"target of {safe_goal}."
+                    )
+                else:
+                    body += f" The crawl stopped short of the daily target of {safe_goal}."
     else:
         title = "Discovery run complete"
         body = (
@@ -1932,7 +2121,13 @@ def build_discovery_notification_copy(
             f"{safe_total:,} quotes."
         )
         if safe_goal > 0:
-            body += f" The daily target of {safe_goal} was not reached."
+            if runtime_budget_reached_flag:
+                body += (
+                    f" The crawl hit its runtime budget before reaching the daily "
+                    f"target of {safe_goal}."
+                )
+            else:
+                body += f" The daily target of {safe_goal} was not reached."
 
     if safe_pruned > 0:
         body += (
@@ -1971,6 +2166,7 @@ def record_ingestion_run(
         "quotes_table_bytes_after": stats.quotes_table_bytes_after,
         "min_quotes_goal": min_quotes_goal,
         "goal_met": goal_met,
+        "runtime_budget_reached": stats.runtime_budget_reached,
     }
     cur.execute(
         """
@@ -2035,6 +2231,7 @@ def create_discovery_app_notification(
         total_quotes=stats.quotes_total_after,
         pruned_quotes=stats.pruned_quotes,
         min_quotes_goal=min_quotes_goal,
+        runtime_budget_reached_flag=stats.runtime_budget_reached,
     )
     goal_met = min_quotes_goal <= 0 or stats.quotes_inserted >= min_quotes_goal
     metadata = {
@@ -2049,6 +2246,7 @@ def create_discovery_app_notification(
         "quotes_table_bytes": stats.quotes_table_bytes_after,
         "min_quotes_goal": min_quotes_goal,
         "goal_met": goal_met,
+        "runtime_budget_reached": stats.runtime_budget_reached,
     }
     cur.execute(
         """
@@ -2457,6 +2655,8 @@ def ensure_prestige_discovery_queue(
     cur: Any,
     api: WikiquoteApi,
     limit: int,
+    *,
+    deadline: float | None = None,
 ) -> int:
     queue_remaining = max(0, MAX_PAGES_QUEUE_SIZE - get_pages_queue_size(cur))
     if queue_remaining <= 0 or limit <= 0:
@@ -2465,11 +2665,15 @@ def ensure_prestige_discovery_queue(
     budget = min(limit, queue_remaining)
     inserted_total = 0
     for entry in SEED_ENTRIES:
+        if runtime_budget_reached(deadline):
+            break
         if inserted_total >= budget:
             break
-        discovered_links = api.fetch_page_links(
+        discovered_links = safe_fetch_page_links(
+            api,
             entry.title,
             limit=min(DISCOVERY_LINKS_PER_PRESTIGE_PAGE, budget - inserted_total),
+            context="prestige_queue_prime",
         )
         discovered_rows = build_discovered_rows(
             discovered_links=discovered_links,
@@ -2498,6 +2702,7 @@ def ensure_high_yield_discovery_queue(
     *,
     max_source_pages: int = 24,
     min_quote_density: int = 2,
+    deadline: float | None = None,
 ) -> int:
     queue_remaining = max(0, MAX_PAGES_QUEUE_SIZE - get_pages_queue_size(cur))
     if queue_remaining <= 0 or limit <= 0:
@@ -2530,6 +2735,8 @@ def ensure_high_yield_discovery_queue(
 
     inserted_total = 0
     for source_row in source_rows:
+        if runtime_budget_reached(deadline):
+            break
         if inserted_total >= budget:
             break
         parent_title = str(source_row.get("page_title") or "").strip()
@@ -2542,9 +2749,11 @@ def ensure_high_yield_discovery_queue(
             page_title=parent_title,
             page_type=parent_page_type,
         )
-        discovered_links = api.fetch_page_links(
+        discovered_links = safe_fetch_page_links(
+            api,
             parent_title,
             limit=min(DISCOVERY_LINKS_PER_PRESTIGE_PAGE, budget - inserted_total),
+            context="high_yield_queue_prime",
         )
         discovered_rows = build_discovered_rows(
             discovered_links=discovered_links,
@@ -2565,13 +2774,24 @@ def ensure_target_discovery_queue(
     api: WikiquoteApi,
     *,
     limit: int,
+    deadline: float | None = None,
 ) -> int:
     if limit <= 0:
         return 0
-    inserted = ensure_high_yield_discovery_queue(cur=cur, api=api, limit=limit)
+    inserted = ensure_high_yield_discovery_queue(
+        cur=cur,
+        api=api,
+        limit=limit,
+        deadline=deadline,
+    )
     if inserted > 0:
         return inserted
-    return ensure_prestige_discovery_queue(cur=cur, api=api, limit=limit)
+    return ensure_prestige_discovery_queue(
+        cur=cur,
+        api=api,
+        limit=limit,
+        deadline=deadline,
+    )
 
 
 def process_page(
@@ -2637,8 +2857,10 @@ def process_page(
         page_title=page_title,
         page_type=mapping.page_type,
         quote_candidates=quote_candidates,
-        categories=mapping.categories,
-        moods=mapping.moods,
+        seed_categories=page_seed_context,
+        page_categories=all_categories,
+        fallback_categories=mapping.categories,
+        fallback_moods=mapping.moods,
         min_score=min_score,
         top_quotes_per_page=top_quotes_per_page,
         source_prestige=resolved_source_prestige,
@@ -2695,7 +2917,12 @@ def process_page(
         else 0
     )
     if discovery_budget > 0:
-        discovered_links = api.fetch_page_links(page_title, limit=discovery_budget)
+        discovered_links = safe_fetch_page_links(
+            api,
+            page_title,
+            limit=discovery_budget,
+            context="page_expand",
+        )
         discovered_rows = build_discovered_rows(
             discovered_links=discovered_links,
             parent_source_prestige=resolved_source_prestige,
@@ -2887,8 +3114,10 @@ def build_quote_records(
     page_title: str,
     page_type: str,
     quote_candidates: list[QuoteCandidate],
-    categories: list[str],
-    moods: list[str],
+    seed_categories: list[str],
+    page_categories: list[str],
+    fallback_categories: list[str],
+    fallback_moods: list[str],
     min_score: int,
     top_quotes_per_page: int,
     source_prestige: int,
@@ -2974,6 +3203,16 @@ def build_quote_records(
             occurrence_count=occurrence_count,
             evaluation=evaluation,
         )
+        quote_mapping = map_quote_tags(
+            page_title=page_title,
+            quote_text=text,
+            quote_author=author_display,
+            seed_categories=seed_categories,
+            page_categories=page_categories,
+            fallback_categories=fallback_categories,
+        )
+        resolved_categories = list(quote_mapping.categories)
+        resolved_moods = list(quote_mapping.moods)
         length_tier = classify_length_tier(text)
         accepted_by_frequency = 1 if occurrence_count >= 3 else 0
         accepted = 1 if (popularity.total >= min_score or accepted_by_frequency) else 0
@@ -3002,8 +3241,8 @@ def build_quote_records(
                     canonical_author=canonical_author,
                     source_ref=page_title,
                     source_url=source_url,
-                    categories=list(categories),
-                    moods=list(moods),
+                    categories=resolved_categories,
+                    moods=resolved_moods,
                     length_tier=length_tier,
                     popularity_score=popularity.total,
                     occurrence_count=occurrence_count,
@@ -3743,6 +3982,166 @@ def reassign_duplicate_quote_refs(cur: Any, keep_id: str, duplicate_ids: list[st
     )
 
 
+def _display_name_for_tag_slug(slug: str, tag_type: str) -> str:
+    normalized = normalize_text(slug)
+    if tag_type == "category":
+        return CURATED_CATEGORY_DISPLAY_BY_SLUG.get(
+            normalized,
+            normalized.replace(" ", " ").title(),
+        )
+    return " ".join(part.capitalize() for part in normalized.split())
+
+
+def ensure_tag_id(cur: Any, *, slug: str, tag_type: str) -> str:
+    display_name = _display_name_for_tag_slug(slug, tag_type)
+    cur.execute(
+        """
+        insert into public.tags (slug, display_name, type, is_active)
+        values (%s, %s, %s, true)
+        on conflict (slug) do update
+          set display_name = excluded.display_name,
+              type = excluded.type,
+              is_active = true
+        returning id::text as id
+        """,
+        (slug, display_name, tag_type),
+    )
+    row = cur.fetchone() or {}
+    return str(row.get("id") or "")
+
+
+def replace_quote_category_mood_tags(
+    cur: Any,
+    *,
+    quote_id: str,
+    categories: list[str],
+    moods: list[str],
+) -> None:
+    cur.execute(
+        """
+        delete from public.quote_tags qt
+        using public.tags t
+        where qt.tag_id = t.id
+          and qt.quote_id = %s::uuid
+          and t.type in ('category', 'mood')
+        """,
+        (quote_id,),
+    )
+
+    for slug in categories:
+        tag_id = ensure_tag_id(cur, slug=slug, tag_type="category")
+        if not tag_id:
+            continue
+        cur.execute(
+            """
+            insert into public.quote_tags (quote_id, tag_id, weight)
+            values (%s::uuid, %s::uuid, %s)
+            on conflict (quote_id, tag_id) do update set
+              weight = greatest(public.quote_tags.weight, excluded.weight)
+            """,
+            (quote_id, tag_id, 3),
+        )
+
+    for slug in moods:
+        tag_id = ensure_tag_id(cur, slug=slug, tag_type="mood")
+        if not tag_id:
+            continue
+        cur.execute(
+            """
+            insert into public.quote_tags (quote_id, tag_id, weight)
+            values (%s::uuid, %s::uuid, %s)
+            on conflict (quote_id, tag_id) do update set
+              weight = greatest(public.quote_tags.weight, excluded.weight)
+            """,
+            (quote_id, tag_id, 2),
+        )
+
+
+def _normalized_text_array(values: list[str] | None) -> list[str]:
+    normalized = {
+        normalize_text(str(value or ""))
+        for value in values or []
+        if normalize_text(str(value or ""))
+    }
+    return sorted(normalized)
+
+
+def run_retag_quotes(cur: Any, commit: bool) -> None:
+    cur.execute(
+        """
+        select
+          id::text as id,
+          text,
+          author,
+          source_ref,
+          categories,
+          moods,
+          created_at
+        from public.quotes
+        order by created_at asc, id asc
+        """
+    )
+    rows = [dict(row) for row in list(cur.fetchall() or [])]
+    rows_scanned = len(rows)
+    rows_updated = 0
+    rows_without_categories = 0
+
+    for row in rows:
+        quote_id = str(row.get("id") or "").strip()
+        if not quote_id:
+            continue
+        cleaned_text = clean_quote_display_text(str(row.get("text") or ""))
+        author = normalize_author_display(str(row.get("author") or ""))
+        source_ref = str(row.get("source_ref") or "").strip()
+        stored_page_type, _ = infer_stored_quote_context(
+            author=author,
+            source_ref=source_ref,
+        )
+        mapping = map_quote_tags(
+            page_title=source_ref or author,
+            quote_text=cleaned_text,
+            quote_author=author,
+            seed_categories=[source_ref] if source_ref else [],
+            page_categories=["authors"] if stored_page_type == "author" else [],
+            fallback_categories=list(row.get("categories") or []),
+        )
+        new_categories = _normalized_text_array(mapping.categories)
+        new_moods = _normalized_text_array(mapping.moods)
+        if not new_categories:
+            rows_without_categories += 1
+
+        old_categories = _normalized_text_array(row.get("categories") or [])
+        old_moods = _normalized_text_array(row.get("moods") or [])
+        if old_categories == new_categories and old_moods == new_moods:
+            continue
+
+        rows_updated += 1
+        if not commit:
+            continue
+
+        cur.execute(
+            """
+            update public.quotes
+            set categories = %s::text[],
+                moods = %s::text[]
+            where id = %s::uuid
+            """,
+            (new_categories, new_moods, quote_id),
+        )
+        replace_quote_category_mood_tags(
+            cur,
+            quote_id=quote_id,
+            categories=new_categories,
+            moods=new_moods,
+        )
+
+    mode = "COMMIT" if commit else "DRY-RUN"
+    print(f"\n[{mode}] Quote retag summary")
+    print(f"rows_scanned={rows_scanned}")
+    print(f"rows_updated={rows_updated}")
+    print(f"rows_without_categories={rows_without_categories}")
+
+
 def run_dedupe_quotes(cur: Any, commit: bool) -> None:
     cur.execute(
         """
@@ -4153,6 +4552,7 @@ def print_summary(stats: IngestStats, commit: bool) -> None:
     print(f"database_size_bytes_before={stats.database_size_bytes_before}")
     print(f"database_size_bytes_after={stats.database_size_bytes_after}")
     print(f"quotes_table_bytes_after={stats.quotes_table_bytes_after}")
+    print(f"runtime_budget_reached={stats.runtime_budget_reached}")
     print(f"license={WIKIQUOTE_LICENSE}")
 
 

@@ -1,185 +1,476 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+CURATED_CATEGORY_DISPLAY = [
+    "Love",
+    "Happiness",
+    "Life",
+    "Wisdom",
+    "Success",
+    "Friendship",
+    "Inspiration",
+    "Hope",
+    "Courage",
+    "Freedom",
+    "Truth",
+    "Strength",
+    "Time",
+    "Purpose",
+    "Knowledge",
+    "Growth",
+    "Leadership",
+    "Motivation",
+    "Beauty",
+    "Creativity",
+    "Faith",
+    "Peace",
+    "Ambition",
+    "Failure",
+    "Resilience",
+    "Justice",
+    "Power",
+    "Nature",
+    "Death",
+    "Society",
+    "Identity",
+    "Self-Discovery",
+    "Forgiveness",
+    "Regret",
+    "Healing",
+    "Loss",
+    "Grief",
+    "Fear",
+    "Anxiety",
+    "Desire",
+    "Passion",
+    "Imagination",
+    "Gratitude",
+    "Discipline",
+    "Legacy",
+    "Doubt",
+    "Heartbreak",
+    "Pain",
+    "Mortality",
+    "Suffering",
+]
 
 PRIMARY_EXPLORE_CATEGORIES = [
     "love",
+    "happiness",
     "life",
-    "inspirational",
-    "humour",
-    "philosophy",
-    "god",
-    "truth",
     "wisdom",
     "success",
-    "romance",
-    "poetry",
-    "death",
-    "happiness",
-    "hope",
-    "faith",
-    "motivation",
     "friendship",
-    "relationships",
-    "change",
-    "self improvement",
-    "tv shows",
-    "films",
+    "inspiration",
+    "hope",
+    "courage",
+    "freedom",
+    "truth",
+    "strength",
+    "time",
+    "purpose",
+    "knowledge",
+    "growth",
+    "leadership",
+    "motivation",
+    "beauty",
+    "creativity",
+    "faith",
+    "peace",
+    "ambition",
+    "failure",
+    "resilience",
+    "justice",
+    "power",
+    "nature",
+    "death",
+    "society",
+    "identity",
+    "self discovery",
+    "forgiveness",
+    "regret",
+    "healing",
+    "loss",
+    "grief",
+    "fear",
+    "anxiety",
+    "desire",
+    "passion",
+    "imagination",
+    "gratitude",
+    "discipline",
+    "legacy",
+    "doubt",
+    "heartbreak",
+    "pain",
+    "mortality",
+    "suffering",
 ]
 
 GROUPED_CATEGORIES = {
-    "life_personal_growth": [
+    "inner_life": [
         "life",
-        "success",
-        "happiness",
-        "change",
-        "courage",
-        "hope",
-        "failure",
-        "time",
-        "ambition",
-        "balance",
+        "purpose",
+        "identity",
+        "self discovery",
+        "growth",
+        "discipline",
+        "legacy",
+        "doubt",
     ],
-    "motivation_action": [
-        "inspiration",
-        "motivation",
-        "work",
-        "leadership",
-        "attitude",
-        "determination",
-        "focus",
-        "preparation",
-        "excellence",
-        "hard work",
-    ],
-    "relationships_emotions": [
+    "emotion_relationships": [
         "love",
         "friendship",
-        "family",
-        "kindness",
         "forgiveness",
-        "trust",
-        "loneliness",
-        "beauty",
         "gratitude",
-        "empathy",
+        "desire",
+        "passion",
+        "heartbreak",
+        "regret",
     ],
-    "intellect_society": [
+    "resilience_conflict": [
+        "hope",
+        "courage",
+        "strength",
+        "failure",
+        "resilience",
+        "fear",
+        "anxiety",
+        "pain",
+        "suffering",
+    ],
+    "thought_expression": [
         "wisdom",
-        "education",
-        "science",
-        "art",
-        "politics",
-        "religion",
-        "war",
         "truth",
+        "knowledge",
+        "creativity",
+        "beauty",
+        "imagination",
+    ],
+    "world_society": [
         "freedom",
         "justice",
+        "power",
+        "nature",
+        "society",
+        "peace",
+        "leadership",
+        "ambition",
     ],
-    "entertainment_culture": [
-        "funny",
-        "movies",
-        "films",
-        "tv shows",
-        "books",
-        "literature",
-        "sports",
-        "music",
-        "proverbs",
-        "epitaphs",
-        "slogans",
-        "misquotations",
+    "mortality_healing": [
+        "death",
+        "mortality",
+        "loss",
+        "grief",
+        "healing",
     ],
+}
+
+GROUP_BY_TAG = {
+    " ".join(
+        str(tag).strip().lower().replace("_", " ").replace("-", " ").replace("/", " ").split()
+    ): group_name
+    for group_name, tags in GROUPED_CATEGORIES.items()
+    for tag in tags
+}
+
+GROUP_SELECTION_LIMITS = {
+    "inner_life": 1,
+    "emotion_relationships": 2,
+    "resilience_conflict": 2,
+    "thought_expression": 1,
+    "world_society": 1,
+    "mortality_healing": 2,
 }
 
 SEED_CATEGORY_ALIAS = {
-    "love": "love",
-    "life": "life",
-    "philosophy": "philosophy",
-    "humor": "humour",
-    "humour": "humour",
-    "films": "films",
-    "film": "films",
-    "movies": "films",
-    "television": "tv shows",
-    "tv": "tv shows",
-    "religion": "religion",
-    "poetry": "poetry",
+    "self-discovery": "self discovery",
+    "self discovery": "self discovery",
+    "self improvement": "growth",
+    "self-improvement": "growth",
+    "motivational": "motivation",
+    "inspirational": "inspiration",
+    "humor": "creativity",
+    "humour": "creativity",
+    "romance": "love",
+    "romantic": "love",
+    "poetry": "creativity",
+    "literature": "creativity",
+    "art": "creativity",
+    "music": "creativity",
+    "religion": "faith",
+    "science": "knowledge",
+    "philosophy": "wisdom",
+    "politics": "power",
+    "family": "love",
+    "funny": "happiness",
+    "peaceful": "peace",
+    "spirituality": "faith",
+    "knowledge": "knowledge",
+    "truth": "truth",
+    "society": "society",
+    "identity": "identity",
+    "mortality": "mortality",
+    "death": "death",
+    "loss": "loss",
+    "grief": "grief",
+    "fear": "fear",
+    "anxiety": "anxiety",
+    "beauty": "beauty",
+    "nature": "nature",
+    "friendship": "friendship",
+    "leadership": "leadership",
+    "freedom": "freedom",
+    "justice": "justice",
+    "success": "success",
+    "failure": "failure",
+    "resilience": "resilience",
+    "power": "power",
 }
 
 TAG_KEYWORDS = {
-    "love": ["love", "affection", "heart", "romantic"],
-    "life": ["life", "living", "existence"],
-    "inspirational": ["inspiration", "inspire", "uplift"],
-    "humour": ["humor", "humour", "funny", "comedy", "joke"],
-    "philosophy": ["philosophy", "philosopher", "metaphysics"],
-    "god": ["god", "divine", "deity"],
-    "truth": ["truth", "honesty", "real"],
-    "wisdom": ["wisdom", "wise", "insight"],
-    "success": ["success", "achievement", "win", "accomplish"],
-    "romance": ["romance", "romantic"],
-    "poetry": ["poetry", "poem", "poet"],
-    "death": ["death", "dying", "mortality"],
-    "happiness": ["happiness", "happy", "joy"],
-    "hope": ["hope", "optimism", "optimist"],
-    "faith": ["faith", "belief"],
-    "motivation": ["motivation", "motivated", "drive"],
-    "friendship": ["friendship", "friend"],
-    "relationships": ["relationship", "relationships", "partner"],
-    "change": ["change", "transformation"],
-    "self improvement": ["self improvement", "self-help", "growth", "discipline"],
-    "tv shows": ["television", "tv", "series", "sitcom"],
-    "films": ["film", "movie", "cinema"],
-    "movies": ["movie", "movies", "film", "cinema"],
-    "series": ["series", "television", "tv show"],
-    "courage": ["courage", "bravery", "brave"],
-    "failure": ["failure", "fail", "mistake"],
-    "time": ["time", "timing", "clock"],
-    "ambition": ["ambition", "aspiration"],
-    "balance": ["balance", "equilibrium"],
-    "inspiration": ["inspiration", "inspire"],
-    "work": ["work", "career", "job"],
-    "leadership": ["leadership", "leader"],
-    "attitude": ["attitude", "mindset"],
-    "determination": ["determination", "persistent", "perseverance"],
-    "focus": ["focus", "concentration"],
-    "preparation": ["preparation", "prepare"],
-    "excellence": ["excellence", "excellent"],
-    "hard work": ["hard work", "effort", "diligence"],
-    "family": ["family", "parent", "mother", "father"],
-    "kindness": ["kindness", "kind", "compassion"],
-    "forgiveness": ["forgiveness", "forgive"],
-    "trust": ["trust", "loyalty"],
-    "loneliness": ["lonely", "loneliness", "alone"],
-    "beauty": ["beauty", "beautiful"],
-    "gratitude": ["gratitude", "grateful", "thankful"],
-    "empathy": ["empathy", "empathetic"],
-    "education": ["education", "learning", "study"],
-    "science": ["science", "scientific"],
-    "art": ["art", "artist"],
-    "politics": ["politics", "political", "government"],
-    "religion": ["religion", "religious", "spiritual"],
-    "war": ["war", "battle"],
-    "freedom": ["freedom", "liberty"],
-    "justice": ["justice", "law", "rights"],
-    "funny": ["funny", "humor", "humour", "joke"],
-    "books": ["book", "books"],
-    "literature": ["literature", "novel", "writer"],
-    "sports": ["sport", "sports", "athlete"],
-    "music": ["music", "song", "musician"],
-    "proverbs": ["proverb", "proverbs"],
-    "epitaphs": ["epitaph", "epitaphs"],
-    "slogans": ["slogan", "slogans"],
-    "misquotations": ["misquotation", "misquotations"],
+    "love": (
+        "love",
+        "loved",
+        "beloved",
+        "lover",
+        "loved one",
+        "affection",
+        "heart",
+    ),
+    "happiness": (
+        "happiness",
+        "happy",
+        "joy",
+        "joyful",
+        "delight",
+        "cheerful",
+        "cheer",
+        "smile",
+        "smiling",
+        "laugh",
+        "laughter",
+        "bliss",
+        "glad",
+    ),
+    "life": ("life", "living", "existence", "alive"),
+    "wisdom": ("wisdom", "wise", "insight", "understanding"),
+    "success": ("success", "succeed", "achievement", "accomplish", "victory"),
+    "friendship": ("friendship", "friend", "companion", "companionship"),
+    "inspiration": ("inspiration", "inspire", "uplift", "encourage"),
+    "hope": ("hope", "hopeful", "optimism", "optimistic"),
+    "courage": ("courage", "bravery", "brave", "valor"),
+    "freedom": ("freedom", "free", "liberty", "liberation"),
+    "truth": ("truth", "true", "honesty", "honest"),
+    "strength": ("strength", "strong", "fortitude", "endurance"),
+    "time": ("time", "timing", "moment", "future", "past"),
+    "purpose": (
+        "purpose",
+        "meaning",
+        "meanings",
+        "meaningful",
+        "calling",
+        "mission",
+        "goal",
+        "goals",
+        "aim",
+        "aims",
+        "destiny",
+        "reason",
+        "reasons",
+    ),
+    "knowledge": ("knowledge", "know", "learn", "learning", "study", "science"),
+    "growth": ("growth", "grow", "become", "self improvement", "self improvement"),
+    "leadership": ("leadership", "leader", "lead", "govern"),
+    "motivation": ("motivation", "motivated", "drive", "driven"),
+    "beauty": ("beauty", "beautiful", "beautifully"),
+    "creativity": (
+        "creativity",
+        "creative",
+        "art",
+        "artist",
+        "poetry",
+        "poem",
+        "image",
+        "music",
+        "song",
+        "sing",
+        "dance",
+        "imagination",
+    ),
+    "faith": ("faith", "belief", "believe", "spiritual", "divine"),
+    "peace": ("peace", "peaceful", "calm", "serenity"),
+    "ambition": ("ambition", "aspiration", "aspire"),
+    "failure": ("failure", "fail", "mistake", "defeat"),
+    "resilience": (
+        "resilience",
+        "resilient",
+        "persevere",
+        "perseverance",
+        "persist",
+        "persistence",
+        "endure",
+        "enduring",
+        "endurable",
+        "overcome",
+        "survive",
+        "survival",
+        "rise again",
+        "stand back up",
+    ),
+    "justice": ("justice", "just", "rights", "fairness", "law"),
+    "power": ("power", "powerful", "authority", "rule"),
+    "nature": ("nature", "earth", "forest", "sea", "sky"),
+    "death": ("death", "die", "dying", "dead"),
+    "society": ("society", "social", "culture", "civilization"),
+    "identity": ("identity", "self", "who am i", "who we are"),
+    "self discovery": ("self discovery", "know yourself", "be yourself", "inner self"),
+    "forgiveness": ("forgiveness", "forgive", "mercy"),
+    "regret": ("regret", "remorse", "repent"),
+    "healing": (
+        "healing",
+        "heal",
+        "cure",
+        "recover",
+        "recovery",
+        "healed",
+        "heals",
+        "cured",
+        "incurable",
+        "mend",
+        "comfort",
+        "solace",
+        "restoration",
+        "remedy",
+    ),
+    "loss": ("loss", "lost", "absence"),
+    "grief": ("grief", "mourning", "sorrow"),
+    "fear": ("fear", "afraid", "terror", "fright"),
+    "anxiety": ("anxiety", "anxious", "worry", "worrying"),
+    "desire": ("desire", "want", "longing", "craving"),
+    "passion": ("passion", "passionate", "ardor", "fire"),
+    "imagination": ("imagination", "imagine", "dream", "vision"),
+    "gratitude": ("gratitude", "grateful", "thankful", "thanks"),
+    "discipline": ("discipline", "self control", "self-control", "habit", "consistency"),
+    "legacy": ("legacy", "remembered", "memory", "inheritance"),
+    "doubt": ("doubt", "uncertainty", "skepticism", "skeptical"),
+    "heartbreak": ("heartbreak", "broken heart", "heartbroken"),
+    "pain": ("pain", "hurt", "wound", "suffer"),
+    "mortality": ("mortality", "mortal", "finite", "impermanence"),
+    "suffering": ("suffering", "suffer", "agony", "torment"),
+}
+
+STRICT_TEXT_EVIDENCE_TAGS = {
+    "death",
+    "happiness",
+    "life",
+    "truth",
+    "time",
+    "power",
+    "knowledge",
+    "growth",
+    "society",
+    "identity",
+    "self discovery",
+    "pain",
+    "mortality",
+    "suffering",
+    "success",
+    "failure",
+}
+
+TAG_MIN_SCORE = {
+    "love": 4.0,
+    "friendship": 4.0,
+    "hope": 4.0,
+    "courage": 4.0,
+    "freedom": 4.0,
+    "justice": 4.0,
+    "nature": 4.0,
+    "purpose": 3.5,
+    "forgiveness": 4.0,
+    "gratitude": 4.0,
+    "healing": 3.0,
+    "heartbreak": 4.0,
+    "grief": 4.0,
+    "resilience": 3.0,
+    "death": 4.0,
+    "happiness": 4.0,
+    "life": 4.5,
+    "truth": 4.5,
+    "time": 4.5,
+    "power": 4.5,
+    "knowledge": 4.5,
+    "growth": 4.5,
+    "society": 4.5,
+    "identity": 4.5,
+    "pain": 4.0,
+    "mortality": 4.0,
+    "suffering": 4.0,
+}
+
+WEAK_KEYWORDS = {
+    "creativity": {"art"},
+    "desire": {"want"},
+    "failure": {"mistake"},
+    "faith": {"belief", "believe"},
+    "friendship": {"friend"},
+    "growth": {"become"},
+    "identity": {"self"},
+    "knowledge": {"know"},
+    "life": {"living", "alive"},
+    "loss": {"lost"},
+    "nature": {"earth", "sky"},
+    "pain": {"hurt"},
+    "peace": {"calm"},
+    "power": {"rule"},
+    "society": {"social"},
+    "strength": {"strong"},
+    "time": {"moment"},
+    "truth": {"true"},
+}
+
+BOOSTED_KEYWORDS = {
+    "cure",
+    "cured",
+    "recover",
+    "recovery",
+    "incurable",
+    "meaning",
+    "meanings",
+    "meaningful",
+    "endure",
+    "enduring",
+    "endurable",
+    "overcome",
+    "survive",
+    "survival",
+    "persist",
+    "persistence",
+    "cheerful",
+    "smile",
+    "laughter",
 }
 
 MOOD_FROM_TAG = {
-    "romantic": {"love", "romance", "relationships"},
-    "motivated": {"motivation", "success", "hard work", "determination", "focus"},
-    "happy": {"happiness", "humour", "funny"},
-    "hopeful": {"hope", "faith"},
-    "calm": {"wisdom", "life", "balance", "philosophy"},
-    "angry": {"truth", "politics", "war", "justice"},
+    "romantic": {"love", "friendship", "desire", "passion", "heartbreak"},
+    "hopeful": {"hope", "healing", "forgiveness", "gratitude", "resilience"},
+    "driven": {"success", "motivation", "discipline", "leadership", "ambition"},
+    "reflective": {
+        "life",
+        "wisdom",
+        "truth",
+        "time",
+        "purpose",
+        "identity",
+        "self discovery",
+        "doubt",
+    },
+    "peaceful": {"peace", "faith", "beauty", "nature"},
+    "heavy": {"death", "mortality", "loss", "grief", "pain", "suffering", "regret"},
+    "bold": {"courage", "strength", "freedom", "justice", "power"},
 }
 
 AUTHOR_CATEGORY_HINTS = {
@@ -203,6 +494,17 @@ class PageTagMapping:
     page_type: str
 
 
+def normalize_text(value: str) -> str:
+    return " ".join(
+        value.strip()
+        .lower()
+        .replace("_", " ")
+        .replace("-", " ")
+        .replace("/", " ")
+        .split()
+    )
+
+
 def infer_page_type(page_title: str, page_categories: list[str]) -> str:
     title = normalize_text(page_title)
     if "(film)" in title or "(tv" in title or "season " in title:
@@ -221,38 +523,216 @@ def map_page_tags(
     page_categories: list[str],
 ) -> PageTagMapping:
     page_type = infer_page_type(page_title, page_categories)
-
-    categories: list[str] = []
-    seen = set()
-
-    for raw in seed_categories:
-        alias = SEED_CATEGORY_ALIAS.get(normalize_text(raw))
-        if alias and alias not in seen:
-            seen.add(alias)
-            categories.append(alias)
-
-    corpus = " | ".join([page_title, *seed_categories, *page_categories]).lower()
-    for tag, keywords in TAG_KEYWORDS.items():
-        if any(keyword in corpus for keyword in keywords):
-            if tag not in seen:
-                seen.add(tag)
-                categories.append(tag)
-
-    if not categories:
-        categories.append("life")
-
-    ordered_categories = _prioritize_categories(categories)
-    moods = _derive_moods(ordered_categories)
-
+    categories = _prioritize_categories(
+        _direct_context_categories(
+            page_title=page_title,
+            seed_categories=seed_categories,
+            page_categories=page_categories,
+            fallback_categories=[],
+        )
+    )
     return PageTagMapping(
-        categories=ordered_categories,
-        moods=moods,
+        categories=categories,
+        moods=_derive_moods(categories),
         page_type=page_type,
     )
 
 
-def normalize_text(value: str) -> str:
-    return " ".join(value.strip().lower().replace("_", " ").split())
+def map_quote_tags(
+    page_title: str,
+    quote_text: str,
+    quote_author: str,
+    seed_categories: list[str],
+    page_categories: list[str],
+    fallback_categories: list[str],
+) -> PageTagMapping:
+    page_type = infer_page_type(page_title, page_categories)
+    categories = _score_quote_categories(
+        page_title=page_title,
+        quote_text=quote_text,
+        quote_author=quote_author,
+        seed_categories=seed_categories,
+        page_categories=page_categories,
+        fallback_categories=fallback_categories,
+        page_type=page_type,
+    )
+    return PageTagMapping(
+        categories=categories,
+        moods=_derive_moods(categories),
+        page_type=page_type,
+    )
+
+
+def _score_quote_categories(
+    *,
+    page_title: str,
+    quote_text: str,
+    quote_author: str,
+    seed_categories: list[str],
+    page_categories: list[str],
+    fallback_categories: list[str],
+    page_type: str,
+) -> list[str]:
+    normalized_quote = normalize_text(quote_text)
+    normalized_title = normalize_text(page_title)
+    normalized_author = normalize_text(quote_author)
+    direct_context = _direct_context_categories(
+        page_title=page_title,
+        seed_categories=seed_categories,
+        page_categories=page_categories,
+        fallback_categories=fallback_categories,
+    )
+    direct_context_set = set(direct_context if page_type == "topic" else [])
+    direct_page_tag = _canonical_category(page_title)
+
+    scored: list[tuple[float, str]] = []
+    for tag, keywords in TAG_KEYWORDS.items():
+        quote_score = 0.0
+        quote_hits = 0
+        for index, keyword in enumerate(keywords):
+            if not _contains_keyword(normalized_quote, keyword):
+                continue
+            quote_hits += 1
+            quote_score += _keyword_weight(tag=tag, keyword=keyword, index=index)
+
+        title_score = 0.0
+        if page_type == "topic":
+            for index, keyword in enumerate(keywords):
+                if _contains_keyword(normalized_title, keyword):
+                    title_score = max(
+                        title_score,
+                        _keyword_weight(tag=tag, keyword=keyword, index=index) * 0.65,
+                    )
+
+        context_score = 0.0
+        if tag in direct_context_set:
+            context_score += 1.5
+        if direct_page_tag == tag:
+            context_score += 1.25
+
+        total = quote_score + title_score + context_score
+        if quote_score == 0:
+            total = 0.0
+        elif tag in STRICT_TEXT_EVIDENCE_TAGS and quote_score < 4.0:
+            continue
+        elif quote_hits == 1 and _single_hit_is_weak(tag, normalized_quote):
+            total -= 1.0
+
+        if total <= 0:
+            continue
+        scored.append((total, tag))
+
+    scored.sort(key=lambda item: (-item[0], _category_rank(item[1]), item[1]))
+    selected = _select_categories_from_scores(scored)
+    if selected:
+        return selected
+
+    fallback_candidates = [
+        tag
+        for score, tag in scored
+        if score >= 3.0 and tag not in STRICT_TEXT_EVIDENCE_TAGS
+    ]
+    if fallback_candidates:
+        return _prioritize_categories(fallback_candidates[:1])
+
+    safe_context = [
+        tag for tag in direct_context if tag not in STRICT_TEXT_EVIDENCE_TAGS
+    ]
+    return _prioritize_categories(safe_context[:1])
+
+
+def _canonical_category(value: str) -> str | None:
+    normalized = normalize_text(value)
+    if not normalized:
+        return None
+    if normalized in SEED_CATEGORY_ALIAS:
+        return SEED_CATEGORY_ALIAS[normalized]
+    if normalized in PRIMARY_EXPLORE_CATEGORIES:
+        return normalized
+    return None
+
+
+def _contains_keyword(corpus: str, keyword: str) -> bool:
+    normalized_keyword = normalize_text(keyword)
+    if not normalized_keyword:
+        return False
+    return re.search(rf"(?<!\w){re.escape(normalized_keyword)}(?!\w)", corpus) is not None
+
+
+def _keyword_weight(*, tag: str, keyword: str, index: int) -> float:
+    normalized_keyword = normalize_text(keyword)
+    if not normalized_keyword:
+        return 0.0
+    if index < 2 or normalized_keyword == tag:
+        return 4.0
+    if normalized_keyword in BOOSTED_KEYWORDS:
+        return 3.2
+    if normalized_keyword in WEAK_KEYWORDS.get(tag, set()):
+        return 1.5
+    if " " in normalized_keyword:
+        return 3.5
+    if len(normalized_keyword) >= 8:
+        return 3.0
+    return 2.0
+
+
+def _single_hit_is_weak(tag: str, normalized_quote: str) -> bool:
+    weak_tokens = WEAK_KEYWORDS.get(tag, set())
+    return any(_contains_keyword(normalized_quote, token) for token in weak_tokens)
+
+
+def _tag_has_any_text_support(tag: str, normalized_quote: str) -> bool:
+    for keyword in TAG_KEYWORDS.get(tag, ()):
+        if _contains_keyword(normalized_quote, keyword):
+            return True
+    return False
+
+
+def _direct_context_categories(
+    *,
+    page_title: str,
+    seed_categories: list[str],
+    page_categories: list[str],
+    fallback_categories: list[str],
+) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+
+    for raw in [page_title, *seed_categories, *page_categories, *fallback_categories]:
+        canonical = _canonical_category(raw)
+        if canonical and canonical not in seen:
+            seen.add(canonical)
+            ordered.append(canonical)
+    return ordered
+
+
+def _category_rank(tag: str) -> int:
+    try:
+        return PRIMARY_EXPLORE_CATEGORIES.index(tag)
+    except ValueError:
+        return 10_000
+
+
+def _select_categories_from_scores(
+    scored_categories: list[tuple[float, str]],
+) -> list[str]:
+    selected: list[str] = []
+    group_counts: dict[str, int] = {}
+
+    for score, tag in scored_categories:
+        if score < TAG_MIN_SCORE.get(tag, 4.0):
+            continue
+        group_name = GROUP_BY_TAG.get(tag, "")
+        group_limit = GROUP_SELECTION_LIMITS.get(group_name, 1)
+        if group_name and group_counts.get(group_name, 0) >= group_limit:
+            continue
+        selected.append(tag)
+        if group_name:
+            group_counts[group_name] = group_counts.get(group_name, 0) + 1
+        if len(selected) >= 3:
+            break
+
+    return _prioritize_categories(selected)
 
 
 def _prioritize_categories(categories: list[str]) -> list[str]:

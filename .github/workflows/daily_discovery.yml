@@ -11,10 +11,18 @@ on:
         description: Keep crawling until at least this many new quotes are inserted
         required: false
         default: "50"
+      max_runtime_minutes:
+        description: Graceful runtime cap before GitHub timeout
+        required: false
+        default: "78"
       trigger:
         description: Trigger source label passed into the importer
         required: false
         default: "manual"
+
+concurrency:
+  group: daily-discovery
+  cancel-in-progress: false
 
 jobs:
   discover:
@@ -47,4 +55,4 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PGSSLMODE: require
           QUOTEFLOW_INGEST_TRIGGER: ${{ inputs.trigger }}
-        run: python importer/wikiquote_ingest.py --discover --limit ${{ inputs.limit }} --min-quotes-goal ${{ inputs.min_quotes_goal }} --commit
+        run: python importer/wikiquote_ingest.py --discover --limit ${{ inputs.limit }} --min-quotes-goal ${{ inputs.min_quotes_goal }} --max-runtime-minutes ${{ inputs.max_runtime_minutes }} --commit
