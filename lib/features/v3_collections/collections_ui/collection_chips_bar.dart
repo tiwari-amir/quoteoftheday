@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/design_tokens.dart';
+import '../../../theme/flow_responsive.dart';
 import '../../../widgets/premium/premium_components.dart';
+import 'add_to_collection_sheet.dart';
 import '../collections_model.dart';
 import '../collections_providers.dart';
 
@@ -13,6 +15,7 @@ class CollectionChipsBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(collectionsProvider);
     final notifier = ref.read(collectionsProvider.notifier);
+    final layout = FlowLayoutInfo.of(context);
 
     final items = [
       QuoteCollection(
@@ -23,33 +26,44 @@ class CollectionChipsBar extends ConsumerWidget {
       ...state.collections,
     ];
 
+    final chips = <Widget>[
+      for (final collection in items)
+        GestureDetector(
+          onLongPress: collection.id == allSavedCollectionId
+              ? null
+              : () => _showCollectionActions(context, ref, collection),
+          child: PremiumPillChip(
+            label: collection.name,
+            selected: state.selectedCollectionId == collection.id,
+            onTap: () => notifier.selectCollection(collection.id),
+          ),
+        ),
+      PremiumPillChip(
+        label: '+ New',
+        icon: Icons.add_rounded,
+        onTap: () => _showCreateCollectionDialog(context, ref),
+      ),
+    ];
+
+    if (layout.isTablet) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: FlowSpace.xs,
+          runSpacing: FlowSpace.xs,
+          children: chips,
+        ),
+      );
+    }
+
     return SizedBox(
       height: 42,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
-        itemCount: items.length + 1,
+        itemCount: chips.length,
         separatorBuilder: (_, _) => const SizedBox(width: FlowSpace.xs),
-        itemBuilder: (context, index) {
-          if (index == items.length) {
-            return PremiumPillChip(
-              label: '+ New',
-              icon: Icons.add_rounded,
-              onTap: () => _showCreateCollectionDialog(context, ref),
-            );
-          }
-          final collection = items[index];
-          return GestureDetector(
-            onLongPress: collection.id == allSavedCollectionId
-                ? null
-                : () => _showCollectionActions(context, ref, collection),
-            child: PremiumPillChip(
-              label: collection.name,
-              selected: state.selectedCollectionId == collection.id,
-              onTap: () => notifier.selectCollection(collection.id),
-            ),
-          );
-        },
+        itemBuilder: (context, index) => chips[index],
       ),
     );
   }
@@ -58,36 +72,12 @@ class CollectionChipsBar extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
-    final controller = TextEditingController();
-
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusLg),
-          title: const Text('New Collection'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: 'Collection name'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                await ref
-                    .read(collectionsProvider.notifier)
-                    .createCollection(controller.text);
-                if (context.mounted) Navigator.pop(context);
-              },
-              child: const Text('Create'),
-            ),
-          ],
-        );
-      },
+    await showCreateCollectionSheet(
+      context,
+      ref,
+      title: 'Create a new collection',
+      description: 'Give a group of saved quotes its own identity.',
+      hintText: 'Collection name',
     );
   }
 

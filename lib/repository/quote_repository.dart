@@ -114,6 +114,23 @@ class QuoteRepository {
     await _localCache.setLastSyncAt(DateTime.now().toUtc());
   }
 
+  Future<void> refreshNow() async {
+    if (_backgroundSyncInFlight != null) {
+      await _backgroundSyncInFlight;
+      return;
+    }
+
+    final future = _runBackgroundSync();
+    _backgroundSyncInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_backgroundSyncInFlight, future)) {
+        _backgroundSyncInFlight = null;
+      }
+    }
+  }
+
   void _scheduleStartupWarmup() {
     if (_startupWarmupInFlight != null) return;
     final future = _runStartupWarmup();

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../core/constants.dart';
 import '../../models/quote_model.dart';
 import '../../models/quote_viewer_filter.dart';
 import '../../providers/quote_providers.dart';
@@ -25,13 +26,12 @@ const _kExtraSource = 'notifications.extra_source';
 const _kExtraSelectedTags = 'notifications.extra_selected_tags';
 
 const _kStreakEnabled = 'notifications.streak_enabled';
-const _kLastStreakNotificationDate =
-    'notifications.last_streak_notification_date';
 
 const _kNotificationDailyId = 1;
 const _kNotificationExtraId = 2;
 const _kNotificationStreakId = 3;
-const _kTagOptionLimit = 20;
+const _kStreakReminderHour = 18;
+const _kStreakReminderMinute = 0;
 
 final notificationsServiceProvider = Provider<V3NotificationsService>((ref) {
   final service = V3NotificationsService();
@@ -53,21 +53,7 @@ final notificationBootstrapProvider = FutureProvider<void>((ref) async {
 final notificationTagOptionsProvider = FutureProvider<List<String>>((
   ref,
 ) async {
-  final categories = await ref.watch(categoryCountsProvider.future);
-  final ordered = categories.keys
-      .map((c) => c.trim().toLowerCase())
-      .where((c) => c.isNotEmpty && c != 'all')
-      .toList(growable: true);
-  final top = ordered.take(_kTagOptionLimit).toList(growable: true);
-
-  for (final requiredTag in const ['movies', 'series']) {
-    if (top.contains(requiredTag)) continue;
-    if (top.length >= _kTagOptionLimit) {
-      top.removeLast();
-    }
-    top.add(requiredTag);
-  }
-  return top;
+  return <String>[...curatedCategoryTags, 'movies', 'series'];
 });
 
 class NotificationSettingsNotifier
@@ -130,6 +116,11 @@ class NotificationSettingsNotifier
     final shouldRequestPermissions =
         state.dailyEnabled || state.extraEnabled || state.streakEnabled;
     await _applySchedule(requestPermissions: shouldRequestPermissions);
+  }
+
+  Future<void> refreshForRuntimeStateChange() async {
+    await _ensureLoaded();
+    await _applySchedule(requestPermissions: false);
   }
 
   Future<void> update(NotificationSettingsModel next) async {
@@ -334,23 +325,14 @@ class NotificationSettingsNotifier
   }
 
   Future<void> _scheduleStreakReminder() async {
-    final currentStreak = _ref.read(streakProvider);
-    if (currentStreak <= 0) return;
-
     final streakNotifier = _ref.read(streakProvider.notifier);
     if (streakNotifier.hasMetTodayRequirement()) return;
 
-    final now = tz.TZDateTime.now(tz.local);
-    if (now.hour < 18) return;
-
-    final prefs = _ref.read(sharedPreferencesProvider);
-    final todayKey = _ymd(now);
-    final alreadyShown =
-        prefs.getString(_kLastStreakNotificationDate) == todayKey;
-    if (alreadyShown) return;
-
     final service = _ref.read(notificationsServiceProvider);
-    final schedule = now.add(const Duration(seconds: 5));
+    final schedule = _nextInstanceOfTime(
+      _kStreakReminderHour,
+      _kStreakReminderMinute,
+    );
     debugPrint(
       '[Notifications] Scheduling streak reminder: id=$_kNotificationStreakId, trigger=$schedule',
     );
@@ -361,10 +343,8 @@ class NotificationSettingsNotifier
       body: 'Read 3 quotes today to keep it going.',
       authorName: 'QuoteFlow',
       payload: '/today',
-      repeatDaily: false,
+      repeatDaily: true,
     );
-
-    await prefs.setString(_kLastStreakNotificationDate, todayKey);
   }
 
   NotificationSettingsModel _sanitize(NotificationSettingsModel input) {
@@ -465,13 +445,6 @@ class NotificationSettingsNotifier
       );
       return null;
     }
-  }
-
-  String _ymd(DateTime value) {
-    final year = value.year.toString().padLeft(4, '0');
-    final month = value.month.toString().padLeft(2, '0');
-    final day = value.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
   }
 }
 

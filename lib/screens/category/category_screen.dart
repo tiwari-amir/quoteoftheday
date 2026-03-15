@@ -11,12 +11,11 @@ import '../../models/quote_viewer_filter.dart';
 import '../../providers/quote_providers.dart';
 import '../../services/quote_service.dart';
 import '../../theme/design_tokens.dart';
-import '../../widgets/author_portrait_circle.dart';
+import '../../theme/flow_responsive.dart';
 import '../../widgets/editorial_background.dart';
-import '../../widgets/glass_card.dart';
-import '../../widgets/glass_icon_button.dart';
 import '../../widgets/premium/premium_search_field.dart';
 import '../../widgets/premium/premium_components.dart';
+import '../../widgets/quote_priority_list_tile.dart';
 import '../../widgets/scale_tap.dart';
 
 class CategoryScreen extends ConsumerStatefulWidget {
@@ -61,13 +60,22 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
     });
     if (index < 0) return;
 
-    const crossAxisCount = 2;
     const spacing = 14.0;
     const sideBarWidth = 30.0;
+    final layout = FlowLayoutInfo.of(context);
     final gridWidth = math.max(140.0, availableWidth - sideBarWidth - 14);
-    final tileWidth = (gridWidth - spacing) / crossAxisCount;
+    final columns = layout.columnsFor(
+      gridWidth,
+      minTileWidth: _categoryTileMaxExtent(layout),
+      maxColumns: layout.isDesktop ? 4 : 3,
+    );
+    final tileWidth = layout.tileWidthFor(
+      gridWidth,
+      columns: columns,
+      gap: spacing,
+    );
     final tileHeight = tileWidth / 1.08;
-    final row = index ~/ crossAxisCount;
+    final row = index ~/ columns;
     final targetOffset = row * (tileHeight + spacing);
     final maxOffset = _scrollController.position.maxScrollExtent;
     final offset = targetOffset.clamp(0.0, maxOffset);
@@ -85,6 +93,12 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
     );
   }
 
+  double _categoryTileMaxExtent(FlowLayoutInfo layout) {
+    if (layout.isDesktop) return 280;
+    if (layout.isTablet) return 240;
+    return 210;
+  }
+
   @override
   Widget build(BuildContext context) {
     return _showCategoryDetail
@@ -95,154 +109,181 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   Widget _buildCategoryBrowser(BuildContext context) {
     final categoriesAsync = ref.watch(categoryCountsProvider);
     final service = ref.read(quoteServiceProvider);
+    final layout = FlowLayoutInfo.of(context);
 
     return Scaffold(
       body: Stack(
         children: [
           const EditorialBackground(),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                        children: [
-                          GlassIconButton(
-                            icon: Icons.close_rounded,
-                            onTap: context.pop,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Browse by Category',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ],
-                      )
-                      .animate()
-                      .fadeIn(duration: 260.ms)
-                      .slideY(
-                        begin: -0.05,
-                        end: 0,
-                        duration: 320.ms,
-                        curve: Curves.easeOutCubic,
-                      ),
-                  const SizedBox(height: 16),
-                  PremiumSearchField(
-                        controller: _searchController,
-                        focusNode: _searchFocusNode,
-                        hintText: 'Search categories',
-                        onChanged: (value) =>
-                            setState(() => _query = value.trim().toLowerCase()),
-                        onClear: () {
-                          _searchController.clear();
-                          setState(() => _query = '');
-                        },
-                      )
-                      .animate(delay: 70.ms)
-                      .fadeIn(duration: 260.ms)
-                      .slideY(
-                        begin: 0.04,
-                        end: 0,
-                        duration: 300.ms,
-                        curve: Curves.easeOutCubic,
-                      ),
-                  const SizedBox(height: 14),
-                  Expanded(
-                    child: categoriesAsync.when(
-                      data: (categories) {
-                        final all =
-                            categories.entries
-                                .map(
-                                  (entry) => _TagCount(
-                                    tag: entry.key,
-                                    label: _categoryLabel(entry.key, service),
-                                    count: entry.value,
-                                  ),
-                                )
-                                .toList()
-                              ..sort((a, b) => a.label.compareTo(b.label));
-
-                        final filtered = all
-                            .where(
-                              (item) =>
-                                  item.label.toLowerCase().contains(_query),
-                            )
-                            .toList(growable: false);
-                        final quickLetters = _buildQuickLetters(filtered);
-
-                        if (filtered.isEmpty) {
-                          return const Center(
-                            child: Text('No categories found'),
-                          );
-                        }
-
-                        return LayoutBuilder(
-                              builder: (context, constraints) {
-                                return Row(
-                                  children: [
-                                    Expanded(
-                                      child: CustomScrollView(
-                                        controller: _scrollController,
-                                        physics: const BouncingScrollPhysics(),
-                                        slivers: [
-                                          SliverGrid(
-                                            delegate: SliverChildBuilderDelegate((
-                                              context,
-                                              index,
-                                            ) {
-                                              final item = filtered[index];
-                                              final routeTag =
-                                                  _categoryRouteTag(item.tag);
-                                              return ScaleTap(
-                                                onTap: () => context.push(
-                                                  '/categories/${Uri.encodeComponent(routeTag)}',
-                                                ),
-                                                child: _CategoryCard(
-                                                  item: item,
-                                                ),
-                                              );
-                                            }, childCount: filtered.length),
-                                            gridDelegate:
-                                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                                  crossAxisCount: 2,
-                                                  crossAxisSpacing: 14,
-                                                  mainAxisSpacing: 14,
-                                                  childAspectRatio: 1.08,
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    _LetterQuickBar(
-                                      letters: quickLetters,
-                                      onLetterTap: (letter) => _jumpToLetter(
-                                        letter: letter,
-                                        items: filtered,
-                                        availableWidth: constraints.maxWidth,
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            )
-                            .animate(delay: 120.ms)
-                            .fadeIn(duration: 280.ms)
-                            .slideY(
-                              begin: 0.03,
-                              end: 0,
-                              duration: 320.ms,
-                              curve: Curves.easeOutCubic,
-                            );
-                      },
-                      loading: () =>
-                          const Center(child: CircularProgressIndicator()),
-                      error: (error, stack) =>
-                          Center(child: Text('Failed to load: $error')),
-                    ),
+            bottom: false,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: layout.maxContentWidth),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    layout.horizontalPadding,
+                    layout.topPadding,
+                    layout.horizontalPadding,
+                    layout.isCompact ? FlowSpace.lg : FlowSpace.xl,
                   ),
-                ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Categories',
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              PremiumIconPillButton(
+                                icon: Icons.arrow_back_rounded,
+                                compact: true,
+                                onTap: context.pop,
+                              ),
+                            ],
+                          )
+                          .animate()
+                          .fadeIn(duration: 260.ms)
+                          .slideY(
+                            begin: -0.05,
+                            end: 0,
+                            duration: 320.ms,
+                            curve: Curves.easeOutCubic,
+                          ),
+                      const SizedBox(height: 14),
+                      PremiumSearchField(
+                            controller: _searchController,
+                            focusNode: _searchFocusNode,
+                            hintText: 'Search categories',
+                            onChanged: (value) => setState(
+                              () => _query = value.trim().toLowerCase(),
+                            ),
+                            onClear: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                          )
+                          .animate(delay: 70.ms)
+                          .fadeIn(duration: 260.ms)
+                          .slideY(
+                            begin: 0.04,
+                            end: 0,
+                            duration: 300.ms,
+                            curve: Curves.easeOutCubic,
+                          ),
+                      const SizedBox(height: 14),
+                      Expanded(
+                        child: categoriesAsync.when(
+                          data: (categories) {
+                            final all =
+                                categories.entries
+                                    .map(
+                                      (entry) => _TagCount(
+                                        tag: entry.key,
+                                        label: _categoryLabel(
+                                          entry.key,
+                                          service,
+                                        ),
+                                        count: entry.value,
+                                      ),
+                                    )
+                                    .toList()
+                                  ..sort((a, b) => a.label.compareTo(b.label));
+
+                            final filtered = all
+                                .where(
+                                  (item) =>
+                                      item.label.toLowerCase().contains(_query),
+                                )
+                                .toList(growable: false);
+                            final quickLetters = _buildQuickLetters(filtered);
+
+                            if (filtered.isEmpty) {
+                              return const Center(
+                                child: Text('No categories found'),
+                              );
+                            }
+
+                            return LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    return Row(
+                                      children: [
+                                        Expanded(
+                                          child: CustomScrollView(
+                                            controller: _scrollController,
+                                            physics:
+                                                const BouncingScrollPhysics(),
+                                            slivers: [
+                                              SliverGrid(
+                                                delegate: SliverChildBuilderDelegate((
+                                                  context,
+                                                  index,
+                                                ) {
+                                                  final item = filtered[index];
+                                                  final routeTag =
+                                                      _categoryRouteTag(
+                                                        item.tag,
+                                                      );
+                                                  return ScaleTap(
+                                                    onTap: () => context.push(
+                                                      '/categories/${Uri.encodeComponent(routeTag)}',
+                                                    ),
+                                                    child: _CategoryCard(
+                                                      item: item,
+                                                    ),
+                                                  );
+                                                }, childCount: filtered.length),
+                                                gridDelegate:
+                                                    SliverGridDelegateWithMaxCrossAxisExtent(
+                                                      maxCrossAxisExtent:
+                                                          _categoryTileMaxExtent(
+                                                            layout,
+                                                          ),
+                                                      crossAxisSpacing: 14,
+                                                      mainAxisSpacing: 14,
+                                                      childAspectRatio: 1.08,
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        _LetterQuickBar(
+                                          letters: quickLetters,
+                                          onLetterTap: (letter) =>
+                                              _jumpToLetter(
+                                                letter: letter,
+                                                items: filtered,
+                                                availableWidth:
+                                                    constraints.maxWidth,
+                                              ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                )
+                                .animate(delay: 120.ms)
+                                .fadeIn(duration: 280.ms)
+                                .slideY(
+                                  begin: 0.03,
+                                  end: 0,
+                                  duration: 320.ms,
+                                  curve: Curves.easeOutCubic,
+                                );
+                          },
+                          loading: () =>
+                              const Center(child: CircularProgressIndicator()),
+                          error: (error, stack) =>
+                              Center(child: Text('Failed to load: $error')),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -266,164 +307,153 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
       floatingActionButton: quotesAsync.maybeWhen(
         data: (quotes) => quotes.isEmpty
             ? null
-            : FloatingActionButton.extended(
+            : FloatingActionButton(
+                backgroundColor: Theme.of(
+                  context,
+                ).extension<FlowThemeTokens>()?.colors.accent,
+                foregroundColor: Theme.of(
+                  context,
+                ).extension<FlowThemeTokens>()?.colors.background,
                 onPressed: () => context.push(
                   '/viewer/category/${Uri.encodeComponent(routeTag)}',
                 ),
-                icon: const Icon(Icons.swipe_up_alt_rounded),
-                label: const Text('Scroll category'),
+                child: const Icon(Icons.menu_book_rounded),
               ),
         orElse: () => null,
       ),
       body: Stack(
         children: [
           const EditorialBackground(),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
-              child: quotesAsync.when(
-                data: (quotes) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                            children: [
-                              GlassIconButton(
-                                icon: Icons.arrow_back_rounded,
-                                onTap: context.pop,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      label,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleLarge,
-                                    ),
-                                    Text(
-                                      '${quotes.length} quotes',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.68,
-                                            ),
-                                          ),
-                                    ),
-                                  ],
+          quotesAsync.when(
+            data: (quotes) {
+              final colors = Theme.of(
+                context,
+              ).extension<FlowThemeTokens>()?.colors;
+              return SafeArea(
+                child: Scrollbar(
+                  controller: _scrollController,
+                  thumbVisibility: quotes.isNotEmpty,
+                  child: CustomScrollView(
+                    controller: _scrollController,
+                    physics: const BouncingScrollPhysics(),
+                    slivers: [
+                      SliverAppBar(
+                        pinned: true,
+                        backgroundColor: (colors?.surface ?? Colors.black)
+                            .withValues(alpha: 0.9),
+                        surfaceTintColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        elevation: 0,
+                        scrolledUnderElevation: 0,
+                        toolbarHeight: 78,
+                        leadingWidth: 74,
+                        titleSpacing: 0,
+                        flexibleSpace: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                (colors?.surface ?? Colors.black).withValues(
+                                  alpha: 0.96,
                                 ),
-                              ),
-                            ],
-                          )
-                          .animate()
-                          .fadeIn(duration: 260.ms)
-                          .slideY(
-                            begin: -0.05,
-                            end: 0,
-                            duration: 320.ms,
-                            curve: Curves.easeOutCubic,
-                          ),
-                      const SizedBox(height: 16),
-                      GlassCard(
-                            borderRadius: 24,
-                            blur: 24,
-                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Quote list',
-                                  style: Theme.of(context).textTheme.labelLarge
-                                      ?.copyWith(
-                                        letterSpacing: 0.42,
-                                        color: Colors.white.withValues(
-                                          alpha: 0.72,
-                                        ),
-                                      ),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  'Read through the strongest lines in $label, then jump into swipe mode whenever you want the full scroll experience.',
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.bodyLarge?.copyWith(height: 1.45),
-                                ),
-                                const SizedBox(height: 14),
-                                Wrap(
-                                  spacing: FlowSpace.xs,
-                                  runSpacing: FlowSpace.xs,
-                                  children: [
-                                    _CategoryInfoChip(
-                                      icon: Icons.menu_book_rounded,
-                                      label: '${quotes.length} entries',
-                                    ),
-                                    const _CategoryInfoChip(
-                                      icon: Icons.touch_app_rounded,
-                                      label: 'Tap a quote to open there',
-                                    ),
-                                    const _CategoryInfoChip(
-                                      icon: Icons.swipe_up_alt_rounded,
-                                      label: 'Scroll mode available',
-                                    ),
-                                  ],
-                                ),
+                                (colors?.elevatedSurface ?? Colors.black)
+                                    .withValues(alpha: 0.88),
                               ],
                             ),
-                          )
-                          .animate(delay: 60.ms)
-                          .fadeIn(duration: 260.ms)
-                          .slideY(
-                            begin: 0.04,
-                            end: 0,
-                            duration: 300.ms,
-                            curve: Curves.easeOutCubic,
-                          ),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: quotes.isEmpty
-                            ? Center(
-                                child: Text(
-                                  'No quotes found for $label',
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
-                                ),
-                              )
-                            : Scrollbar(
-                                controller: _scrollController,
-                                thumbVisibility: true,
-                                child: ListView.separated(
-                                  controller: _scrollController,
-                                  physics: const BouncingScrollPhysics(),
-                                  itemCount: quotes.length,
-                                  padding: const EdgeInsets.only(bottom: 112),
-                                  separatorBuilder: (_, _) =>
-                                      const SizedBox(height: 14),
-                                  itemBuilder: (context, index) {
-                                    final quote = quotes[index];
-                                    return _CategoryQuoteCard(
-                                      quote: quote,
-                                      service: service,
-                                      onTap: () => context.push(
-                                        '/viewer/category/${Uri.encodeComponent(routeTag)}?quoteId=${quote.id}',
-                                      ),
-                                    );
-                                  },
-                                ),
+                            border: Border(
+                              bottom: BorderSide(
+                                color: (colors?.divider ?? Colors.white24)
+                                    .withValues(alpha: 0.55),
                               ),
+                            ),
+                          ),
+                        ),
+                        leading: Padding(
+                          padding: const EdgeInsets.only(left: 20, top: 10),
+                          child: PremiumIconPillButton(
+                            icon: Icons.arrow_back_rounded,
+                            compact: true,
+                            onTap: context.pop,
+                          ),
+                        ),
+                        title: Padding(
+                          padding: const EdgeInsets.only(
+                            left: 6,
+                            right: 20,
+                            top: 12,
+                            bottom: 10,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                label,
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              Text(
+                                '${quotes.length} quotes',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.68,
+                                      ),
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+                          child: _CategoryDetailHero(
+                            label: label,
+                            entryCount: quotes.length,
+                            onScrollMode: () => context.push(
+                              '/viewer/category/${Uri.encodeComponent(routeTag)}',
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (quotes.isEmpty)
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Center(
+                            child: Text(
+                              'No quotes found for $label',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 132),
+                          sliver: SliverList.separated(
+                            itemCount: quotes.length,
+                            itemBuilder: (context, index) {
+                              final quote = quotes[index];
+                              return _CategoryQuoteCard(
+                                quote: quote,
+                                service: service,
+                                onTap: () => context.push(
+                                  '/viewer/category/${Uri.encodeComponent(routeTag)}?quoteId=${quote.id}',
+                                ),
+                              );
+                            },
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 14),
+                          ),
+                        ),
                     ],
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, stack) =>
-                    Center(child: Text('Failed to load: $error')),
-              ),
-            ),
+                  ),
+                ),
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stack) =>
+                Center(child: Text('Failed to load: $error')),
           ),
         ],
       ),
@@ -488,71 +518,139 @@ class _CategoryCardState extends State<_CategoryCard> {
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomCenter,
               colors: [
-                scheme.surface.withValues(alpha: _hovering ? 0.86 : 0.8),
-                scheme.surface.withValues(alpha: _hovering ? 0.68 : 0.6),
+                scheme.surface.withValues(alpha: _hovering ? 0.92 : 0.88),
+                scheme.surface.withValues(alpha: _hovering ? 0.72 : 0.66),
               ],
             ),
             border: Border.all(color: _hovering ? borderHover : borderIdle),
             boxShadow: [
               BoxShadow(
                 color: _hovering ? glow : Colors.black.withValues(alpha: 0.25),
-                blurRadius: _hovering ? 24 : 14,
-                offset: const Offset(0, 10),
+                blurRadius: _hovering ? 30 : 18,
+                offset: const Offset(0, 14),
               ),
             ],
           ),
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 widget.item.label,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  height: 1.18,
-                  fontWeight: FontWeight.w700,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  height: 1.02,
+                  fontWeight: FontWeight.w600,
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
               const Spacer(),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      color: Colors.white.withValues(alpha: 0.06),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.1),
-                      ),
-                    ),
-                    child: Text(
-                      '${widget.item.count} quotes',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.86),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    Icons.menu_book_rounded,
-                    size: 18,
-                    color: scheme.primary.withValues(alpha: 0.9),
-                  ),
-                ],
+              Text(
+                '${widget.item.count} quotes',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.64),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CategoryDetailHero extends StatelessWidget {
+  const _CategoryDetailHero({
+    required this.label,
+    required this.entryCount,
+    required this.onScrollMode,
+  });
+
+  final String label;
+  final int entryCount;
+  final VoidCallback onScrollMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+
+    return PremiumSurface(
+      radius: FlowRadii.xl,
+      elevation: 2,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$entryCount quotes',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colors?.textPrimary,
+            ),
+          ),
+          const SizedBox(height: FlowSpace.xs),
+          Text(
+            _categoryHeroCopy(label),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              height: 1.42,
+              color: colors?.textSecondary.withValues(alpha: 0.94),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _CategoryInfoChip(
+                icon: Icons.menu_book_rounded,
+                label: '$entryCount entries',
+              ),
+              const SizedBox(width: FlowSpace.xs),
+              GestureDetector(
+                onTap: onScrollMode,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: FlowSpace.sm,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    color: (colors?.accent ?? Colors.white).withValues(
+                      alpha: 0.14,
+                    ),
+                    border: Border.all(
+                      color: (colors?.accent ?? Colors.white).withValues(
+                        alpha: 0.44,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.swipe_up_alt_rounded,
+                        size: 15,
+                        color: colors?.accent ?? Colors.white,
+                      ),
+                      const SizedBox(width: FlowSpace.xs),
+                      Text(
+                        'Scroll mode',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: colors?.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -566,7 +664,7 @@ class _CategoryInfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PremiumPillChip(label: label, icon: icon);
+    return PremiumPillChip(label: label, icon: icon, compact: true);
   }
 }
 
@@ -583,97 +681,25 @@ class _CategoryQuoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    final tags = quote.revisedTags
-        .take(2)
-        .map(service.toTitleCase)
-        .toList(growable: false);
-
-    return PremiumSurface(
-      radius: FlowRadii.xl,
-      elevation: 2,
-      padding: const EdgeInsets.fromLTRB(
-        FlowSpace.md,
-        FlowSpace.md,
-        FlowSpace.md,
-        FlowSpace.md,
-      ),
-      child: InkWell(
-        borderRadius: FlowRadii.radiusXl,
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                AuthorPortraitCircle(author: quote.author, size: 38),
-                const SizedBox(width: FlowSpace.sm),
-                Expanded(
-                  child: Text(
-                    quote.author,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: colors?.textSecondary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Icon(
-                  Icons.swipe_up_alt_rounded,
-                  size: 18,
-                  color: colors?.accent,
-                ),
-              ],
-            ),
-            const SizedBox(height: FlowSpace.sm),
-            Text(
-              quote.quote,
-              maxLines: 6,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: colors?.textPrimary,
-                height: 1.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (tags.isNotEmpty) ...[
-              const SizedBox(height: FlowSpace.sm),
-              Wrap(
-                spacing: FlowSpace.xs,
-                runSpacing: FlowSpace.xs,
-                children: [
-                  for (final tag in tags)
-                    PremiumPillChip(
-                      label: tag,
-                      icon: Icons.sell_outlined,
-                      compact: true,
-                    ),
-                ],
-              ),
-            ],
-            const SizedBox(height: FlowSpace.sm),
-            Row(
-              children: [
-                Text(
-                  'Tap to open here',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: colors?.textSecondary.withValues(alpha: 0.88),
-                  ),
-                ),
-                const Spacer(),
-                Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 18,
-                  color: colors?.accent,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    final meta = quote.revisedTags.isEmpty
+        ? null
+        : service.toTitleCase(quote.revisedTags.first);
+    return QuotePriorityListTile(quote: quote, onTap: onTap, metaLabel: meta);
   }
+}
+
+String _categoryHeroCopy(String label) {
+  final lower = label.toLowerCase();
+  if (lower == 'love') {
+    return 'A collected reading of tenderness, longing, devotion, and loss.';
+  }
+  if (lower == 'death') {
+    return 'Reflections on mortality, grief, and what it means to be human.';
+  }
+  if (lower == 'philosophy') {
+    return 'Lines on thought, meaning, doubt, and the shape of a life.';
+  }
+  return 'A curated set of memorable lines gathered around $label.';
 }
 
 class _LetterQuickBar extends StatefulWidget {
@@ -730,8 +756,8 @@ class _LetterQuickBarState extends State<_LetterQuickBar> {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          color: scheme.surface.withValues(alpha: 0.36),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          color: scheme.surface.withValues(alpha: 0.52),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {

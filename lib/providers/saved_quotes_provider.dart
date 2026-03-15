@@ -59,7 +59,17 @@ class SavedQuotesNotifier extends StateNotifier<Set<String>> {
     final saved = await _ref
         .read(quoteRepositoryProvider)
         .getSavedQuoteIds(userId);
-    final merged = {...saved, ...local};
+    var merged = {...saved, ...local};
+    final availableQuotes = await _ref
+        .read(quoteRepositoryProvider)
+        .getAllQuotes();
+    final availableIds = availableQuotes.map((quote) => quote.id).toSet();
+    final staleIds = availableIds.isEmpty
+        ? <String>{}
+        : merged.difference(availableIds);
+    if (availableIds.isNotEmpty) {
+      merged = merged.intersection(availableIds);
+    }
     state = merged;
 
     if (local.difference(saved).isNotEmpty) {
@@ -69,10 +79,34 @@ class SavedQuotesNotifier extends StateNotifier<Set<String>> {
       }
     }
 
+    if (staleIds.isNotEmpty) {
+      final repo = _ref.read(quoteRepositoryProvider);
+      for (final quoteId in staleIds) {
+        await repo.unsaveQuote(userId: userId, quoteId: quoteId);
+      }
+    }
+
     await _persistLocal(merged);
   }
 
   Future<void> refresh() => _load();
+
+  Future<void> pruneUnavailable(Set<String> availableIds) async {
+    if (availableIds.isEmpty) return;
+    final staleIds = state.difference(availableIds);
+    if (staleIds.isEmpty) return;
+
+    final next = state.intersection(availableIds);
+    state = next;
+    await _persistLocal(next);
+
+    final userId = _userId;
+    if (userId == null) return;
+    final repo = _ref.read(quoteRepositoryProvider);
+    for (final quoteId in staleIds) {
+      await repo.unsaveQuote(userId: userId, quoteId: quoteId);
+    }
+  }
 
   Future<void> toggle(String quoteId) async {
     final next = {...state};
@@ -101,6 +135,11 @@ class SavedQuotesNotifier extends StateNotifier<Set<String>> {
           .read(quoteRepositoryProvider)
           .saveQuote(userId: userId, quoteId: quoteId);
     }
+  }
+
+  Future<void> save(String quoteId) async {
+    if (state.contains(quoteId)) return;
+    await toggle(quoteId);
   }
 
   Future<void> remove(String quoteId) async {

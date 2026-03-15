@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 
 class ScaleTap extends StatefulWidget {
-  const ScaleTap({super.key, required this.child, required this.onTap});
+  const ScaleTap({
+    super.key,
+    required this.child,
+    required this.onTap,
+    this.pressedScale = 0.95,
+  });
 
   final Widget child;
   final VoidCallback onTap;
+  final double pressedScale;
 
   @override
   State<ScaleTap> createState() => _ScaleTapState();
@@ -16,7 +22,7 @@ class _ScaleTapState extends State<ScaleTap> {
 
   @override
   Widget build(BuildContext context) {
-    final scale = _pressed ? 0.982 : (_hovered ? 1.01 : 1.0);
+    final scale = _pressed ? widget.pressedScale : (_hovered ? 1.01 : 1.0);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -29,7 +35,7 @@ class _ScaleTapState extends State<ScaleTap> {
         onTap: widget.onTap,
         child: AnimatedScale(
           scale: scale,
-          duration: const Duration(milliseconds: 150),
+          duration: const Duration(milliseconds: 160),
           curve: Curves.easeOutCubic,
           child: widget.child,
         ),

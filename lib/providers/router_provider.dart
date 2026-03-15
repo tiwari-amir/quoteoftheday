@@ -4,9 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../features/v3_settings/settings_screen.dart';
 import '../features/v3_notifications/in_app_notifications_screen.dart';
+import '../screens/author/authors_index_screen.dart';
+import '../screens/author/author_quotes_screen.dart';
 import '../screens/category/category_screen.dart';
 import '../screens/mood/mood_screen.dart';
 import '../screens/saved/saved_quotes_screen.dart';
+import '../screens/search/search_quotes_results_screen.dart';
 import '../screens/tabs/app_shell_scaffold.dart';
 import '../screens/tabs/explore_tab_screen.dart';
 import '../screens/tabs/library_tab_screen.dart';
@@ -83,6 +86,31 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/authors',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: AuthorsIndexScreen(
+            initialQuery: state.uri.queryParameters['q'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/authors/:authorKey',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: AuthorQuotesScreen(
+            authorKey: Uri.decodeComponent(
+              state.pathParameters['authorKey'] ?? '',
+            ),
+            authorName:
+                state.uri.queryParameters['label'] ??
+                Uri.decodeComponent(state.pathParameters['authorKey'] ?? ''),
+          ),
+        ),
+      ),
+      GoRoute(
         path: '/updates',
         parentNavigatorKey: _rootNavigatorKey,
         pageBuilder: (context, state) => _buildTransitionPage(
@@ -123,6 +151,28 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             _buildTransitionPage(key: state.pageKey, child: const MoodScreen()),
       ),
       GoRoute(
+        path: '/moods/:tag',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: MoodScreen(
+            selectedMood: Uri.decodeComponent(
+              state.pathParameters['tag'] ?? '',
+            ),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/search/quotes',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: SearchQuotesResultsScreen(
+            query: state.uri.queryParameters['q'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
         path: '/settings',
         parentNavigatorKey: _rootNavigatorKey,
         pageBuilder: (context, state) => _buildTransitionPage(
@@ -140,13 +190,27 @@ CustomTransitionPage<void> _buildTransitionPage({
 }) {
   return CustomTransitionPage<void>(
     key: key,
-    transitionDuration: const Duration(milliseconds: 250),
-    reverseTransitionDuration: const Duration(milliseconds: 220),
+    transitionDuration: const Duration(milliseconds: 360),
+    reverseTransitionDuration: const Duration(milliseconds: 280),
     child: child,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
       return FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-        child: child,
+        opacity: Tween<double>(begin: 0, end: 1).animate(curved),
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.035),
+            end: Offset.zero,
+          ).animate(curved),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
+            child: child,
+          ),
+        ),
       );
     },
   );

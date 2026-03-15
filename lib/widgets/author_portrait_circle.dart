@@ -15,10 +15,16 @@ final _authorPortraitProvider =
     });
 
 class AuthorPortraitCircle extends ConsumerWidget {
-  const AuthorPortraitCircle({super.key, required this.author, this.size = 56});
+  const AuthorPortraitCircle({
+    super.key,
+    required this.author,
+    this.size = 56,
+    this.interactive = true,
+  });
 
   final String author;
   final double size;
+  final bool interactive;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -62,6 +68,73 @@ class AuthorPortraitCircle extends ConsumerWidget {
       ),
     );
 
+    if (!interactive) {
+      return portrait;
+    }
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => showAuthorInfoSheetForAuthor(context, ref, author),
+        child: portrait,
+      ),
+    );
+  }
+}
+
+class AuthorPortraitFill extends ConsumerWidget {
+  const AuthorPortraitFill({
+    super.key,
+    required this.author,
+    this.borderRadius = 18,
+    this.interactive = true,
+  });
+
+  final String author;
+  final double borderRadius;
+  final bool interactive;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final profileAsync = ref.watch(_authorPortraitProvider(author));
+    final portrait = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(borderRadius),
+        color: (colors?.surface ?? Colors.black).withValues(alpha: 0.88),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: profileAsync.when(
+          data: (profile) {
+            final imageUrl = profile?.imageUrl?.trim();
+            if (imageUrl == null || imageUrl.isEmpty) {
+              return _AuthorPortraitRectFallback(colors: colors);
+            }
+            return AdaptiveAuthorImage(
+              imageUrl: imageUrl,
+              placeholder: _AuthorPortraitRectFallback(colors: colors),
+              error: _AuthorPortraitRectFallback(colors: colors),
+            );
+          },
+          loading: () => _AuthorPortraitRectFallback(colors: colors),
+          error: (_, _) => _AuthorPortraitRectFallback(colors: colors),
+        ),
+      ),
+    );
+
+    if (!interactive) {
+      return portrait;
+    }
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -95,6 +168,36 @@ class _AuthorPortraitFallback extends StatelessWidget {
         child: Icon(
           Icons.person_outline_rounded,
           size: 22,
+          color:
+              colors?.textSecondary.withValues(alpha: 0.94) ?? Colors.white70,
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthorPortraitRectFallback extends StatelessWidget {
+  const _AuthorPortraitRectFallback({required this.colors});
+
+  final FlowColorTokens? colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            (colors?.accent ?? Colors.white).withValues(alpha: 0.28),
+            (colors?.surface ?? Colors.black).withValues(alpha: 0.94),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.person_outline_rounded,
+          size: 26,
           color:
               colors?.textSecondary.withValues(alpha: 0.94) ?? Colors.white70,
         ),

@@ -47,9 +47,13 @@ app.*.map.json
 # Sensitive/local artifacts
 upload-keystore.jks
 *.jks
+*.pem
 upload_certificate*.pem
 android/key.properties
 android/build/
 releases/
+release/
+.dart-temp/
+keystore_backup/
 .tmp_story_bg/
 supabase/.temp/

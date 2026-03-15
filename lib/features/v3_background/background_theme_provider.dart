@@ -16,41 +16,43 @@ enum AppBackgroundTheme {
 
 extension AppBackgroundThemeX on AppBackgroundTheme {
   String get id => switch (this) {
-    AppBackgroundTheme.oceanFloor => 'ocean_floor',
-    AppBackgroundTheme.spaceGalaxies => 'space_galaxies',
-    AppBackgroundTheme.rainyCity => 'rainy_city',
-    AppBackgroundTheme.deepForest => 'deep_forest',
-    AppBackgroundTheme.sunsetCity => 'sunset_city',
-    AppBackgroundTheme.quoteflowGlow => 'quoteflow_glow',
+    AppBackgroundTheme.oceanFloor => 'ethereal',
+    AppBackgroundTheme.spaceGalaxies => 'midnight',
+    AppBackgroundTheme.rainyCity => 'classic',
+    AppBackgroundTheme.deepForest => 'zen',
+    AppBackgroundTheme.sunsetCity => 'solar',
+    AppBackgroundTheme.quoteflowGlow => 'cyber',
   };
 
   String get label => switch (this) {
-    AppBackgroundTheme.oceanFloor => 'Ocean Floor',
-    AppBackgroundTheme.spaceGalaxies => 'Space Galaxies',
-    AppBackgroundTheme.rainyCity => 'Rainy City',
-    AppBackgroundTheme.deepForest => 'Deep Forest',
-    AppBackgroundTheme.sunsetCity => 'Sunset City',
-    AppBackgroundTheme.quoteflowGlow => 'QuoteFlow Glow',
+    AppBackgroundTheme.oceanFloor => 'Ethereal',
+    AppBackgroundTheme.spaceGalaxies => 'Midnight',
+    AppBackgroundTheme.rainyCity => 'Classic',
+    AppBackgroundTheme.deepForest => 'Zen',
+    AppBackgroundTheme.sunsetCity => 'Solar',
+    AppBackgroundTheme.quoteflowGlow => 'Cyber',
   };
 
   String get subtitle => switch (this) {
     AppBackgroundTheme.oceanFloor =>
-      'Tap to send ripples through fish schools.',
+      'Pearled glass, silvery haze, and floating chrome light.',
     AppBackgroundTheme.spaceGalaxies =>
-      'Tap to open warp rings in the starfield.',
+      'Midnight noir with champagne-gold light and black glass depth.',
     AppBackgroundTheme.rainyCity =>
-      'Tap to trigger puddle ripples and light flash.',
-    AppBackgroundTheme.deepForest => 'Tap to gather fireflies around the glow.',
-    AppBackgroundTheme.sunsetCity => 'Tap to bloom cinematic lens flares.',
+      'Editorial noir with champagne highlights and restrained depth.',
+    AppBackgroundTheme.deepForest =>
+      'Soft sage diffusion with calm spacing and quieter motion.',
+    AppBackgroundTheme.sunsetCity =>
+      'Sun-warmed gradients with amber glass and radiant highlights.',
     AppBackgroundTheme.quoteflowGlow =>
-      'Tap to release warm light blooms in a sunrise palette.',
+      'Electric cyan glass with denser blur and futuristic contrast.',
   };
 }
 
 AppBackgroundTheme _themeFromId(String? id) {
   return AppBackgroundTheme.values.firstWhere(
     (theme) => theme.id == id,
-    orElse: () => AppBackgroundTheme.quoteflowGlow,
+    orElse: () => AppBackgroundTheme.spaceGalaxies,
   );
 }
 

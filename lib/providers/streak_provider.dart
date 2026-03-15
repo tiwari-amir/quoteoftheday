@@ -64,7 +64,7 @@ class StreakNotifier extends StateNotifier<int> {
   }
 
   // Optional helper for future hooks when a quote is consumed.
-  Future<void> recordQuoteRead() async {
+  Future<bool> recordQuoteRead() async {
     final prefs = _ref.read(sharedPreferencesProvider);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -80,6 +80,7 @@ class StreakNotifier extends StateNotifier<int> {
 
     await prefs.setString(_kStreakTodayProgressDate, today.toIso8601String());
     await prefs.setInt(_kStreakTodayProgressCount, next);
+    return next >= _kStreakDailyReadRequirement;
   }
 }
 

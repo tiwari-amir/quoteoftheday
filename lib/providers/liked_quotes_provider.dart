@@ -59,7 +59,17 @@ class LikedQuotesNotifier extends StateNotifier<Set<String>> {
     final liked = await _ref
         .read(quoteRepositoryProvider)
         .getLikedQuoteIds(userId);
-    final merged = {...liked, ...local};
+    var merged = {...liked, ...local};
+    final availableQuotes = await _ref
+        .read(quoteRepositoryProvider)
+        .getAllQuotes();
+    final availableIds = availableQuotes.map((quote) => quote.id).toSet();
+    final staleIds = availableIds.isEmpty
+        ? <String>{}
+        : merged.difference(availableIds);
+    if (availableIds.isNotEmpty) {
+      merged = merged.intersection(availableIds);
+    }
     state = merged;
 
     if (local.difference(liked).isNotEmpty) {
@@ -69,7 +79,31 @@ class LikedQuotesNotifier extends StateNotifier<Set<String>> {
       }
     }
 
+    if (staleIds.isNotEmpty) {
+      final repo = _ref.read(quoteRepositoryProvider);
+      for (final quoteId in staleIds) {
+        await repo.unlikeQuote(userId: userId, quoteId: quoteId);
+      }
+    }
+
     await _persistLocal(merged);
+  }
+
+  Future<void> pruneUnavailable(Set<String> availableIds) async {
+    if (availableIds.isEmpty) return;
+    final staleIds = state.difference(availableIds);
+    if (staleIds.isEmpty) return;
+
+    final next = state.intersection(availableIds);
+    state = next;
+    await _persistLocal(next);
+
+    final userId = _userId;
+    if (userId == null) return;
+    final repo = _ref.read(quoteRepositoryProvider);
+    for (final quoteId in staleIds) {
+      await repo.unlikeQuote(userId: userId, quoteId: quoteId);
+    }
   }
 
   Future<void> toggle(String quoteId) async {

@@ -36,11 +36,13 @@ class CollectionsState {
 
 class CollectionsNotifier extends StateNotifier<CollectionsState> {
   CollectionsNotifier(this._ref)
-      : super(const CollectionsState(
+    : super(
+        const CollectionsState(
           collections: [],
           memberships: {},
           selectedCollectionId: allSavedCollectionId,
-        )) {
+        ),
+      ) {
     _load();
   }
 
@@ -55,9 +57,9 @@ class CollectionsNotifier extends StateNotifier<CollectionsState> {
     );
   }
 
-  Future<void> createCollection(String name) async {
+  Future<String?> createCollection(String name) async {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty) return null;
 
     final item = QuoteCollection(
       id: _newId(),
@@ -68,6 +70,35 @@ class CollectionsNotifier extends StateNotifier<CollectionsState> {
     final next = [...state.collections, item];
     state = state.copyWith(collections: next, selectedCollectionId: item.id);
     await _repo.saveCollections(next);
+    return item.id;
+  }
+
+  Future<String?> createCollectionWithQuote({
+    required String name,
+    required String quoteId,
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+
+    final item = QuoteCollection(
+      id: _newId(),
+      name: trimmed,
+      createdAt: DateTime.now(),
+    );
+    final nextCollections = [...state.collections, item];
+    final nextMemberships = {
+      ...state.memberships,
+      item.id: <String>[quoteId],
+    };
+
+    state = state.copyWith(
+      collections: nextCollections,
+      memberships: nextMemberships,
+      selectedCollectionId: item.id,
+    );
+    await _repo.saveCollections(nextCollections);
+    await _repo.saveMemberships(nextMemberships);
+    return item.id;
   }
 
   Future<void> renameCollection(String id, String name) async {
@@ -122,9 +153,52 @@ class CollectionsNotifier extends StateNotifier<CollectionsState> {
     await _repo.saveMemberships(next);
   }
 
+  Future<void> addQuoteToCollection({
+    required String collectionId,
+    required String quoteId,
+  }) async {
+    if (collectionId == allSavedCollectionId) return;
+    if (containsQuote(collectionId, quoteId)) return;
+
+    final next = {...state.memberships};
+    final items = [...(next[collectionId] ?? <String>[])];
+    items.add(quoteId);
+    next[collectionId] = items;
+    state = state.copyWith(memberships: next);
+    await _repo.saveMemberships(next);
+  }
+
+  Future<void> removeQuoteFromAllCollections(String quoteId) async {
+    var changed = false;
+    final next = <String, List<String>>{};
+    for (final entry in state.memberships.entries) {
+      final filtered = entry.value.where((id) => id != quoteId).toList();
+      if (filtered.length != entry.value.length) {
+        changed = true;
+      }
+      if (filtered.isNotEmpty) {
+        next[entry.key] = filtered;
+      }
+    }
+    if (!changed) return;
+
+    state = state.copyWith(memberships: next);
+    await _repo.saveMemberships(next);
+  }
+
   bool containsQuote(String collectionId, String quoteId) {
     if (collectionId == allSavedCollectionId) return true;
     return state.memberships[collectionId]?.contains(quoteId) ?? false;
+  }
+
+  Set<String> collectionIdsForQuote(String quoteId) {
+    final matched = <String>{};
+    for (final entry in state.memberships.entries) {
+      if (entry.value.contains(quoteId)) {
+        matched.add(entry.key);
+      }
+    }
+    return matched;
   }
 
   void selectCollection(String id) {
@@ -136,13 +210,15 @@ class CollectionsNotifier extends StateNotifier<CollectionsState> {
   }
 
   String _newId() {
+    // Keep the random range comfortably inside the web-safe bound for nextInt.
     final random = Random();
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    return '$ts-${random.nextInt(1 << 32)}';
+    final ts = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    final entropy = random.nextInt(0x3fffffff).toRadixString(36);
+    return '$ts-$entropy';
   }
 }
 
 final collectionsProvider =
     StateNotifierProvider<CollectionsNotifier, CollectionsState>((ref) {
-  return CollectionsNotifier(ref);
-});
+      return CollectionsNotifier(ref);
+    });

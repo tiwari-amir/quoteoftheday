@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants.dart';
@@ -9,7 +11,44 @@ import '../services/author_wiki_service.dart';
 import '../services/free_media_quotes_service.dart';
 import '../services/internet_best_quote_service.dart';
 import '../services/quote_service.dart';
+import '../features/v3_search/search_service.dart';
 import 'supabase_provider.dart';
+
+class MonthlyAuthorSpotlight {
+  const MonthlyAuthorSpotlight({
+    required this.authorKey,
+    required this.authorName,
+    required this.rankScore,
+    required this.totalQuotes,
+    required this.topQuotes,
+  });
+
+  final String authorKey;
+  final String authorName;
+  final double rankScore;
+  final int totalQuotes;
+  final List<QuoteModel> topQuotes;
+}
+
+class AuthorCatalogEntry {
+  const AuthorCatalogEntry({
+    required this.authorKey,
+    required this.authorName,
+    required this.quoteCount,
+    required this.discoveryScore,
+    required this.monthlyMomentumScore,
+    required this.topQuotes,
+  });
+
+  final String authorKey;
+  final String authorName;
+  final int quoteCount;
+  final double discoveryScore;
+  final double monthlyMomentumScore;
+  final List<QuoteModel> topQuotes;
+
+  QuoteModel? get heroQuote => topQuotes.isEmpty ? null : topQuotes.first;
+}
 
 final quoteRepositoryProvider = Provider<QuoteRepository>((ref) {
   return QuoteRepository(client: ref.read(supabaseClientProvider));
@@ -92,6 +131,23 @@ final categoryCountsProvider = FutureProvider<Map<String, int>>((ref) async {
   return _mergeTagCounts(localCounts, mediaCounts);
 });
 
+final authorCatalogProvider = FutureProvider<List<AuthorCatalogEntry>>((
+  ref,
+) async {
+  final quotes = await ref.watch(allQuotesProvider.future);
+  return _buildAuthorCatalog(quotes, now: DateTime.now());
+});
+
+final authorCatalogEntryProvider =
+    FutureProvider.family<AuthorCatalogEntry?, String>((ref, authorKey) async {
+      final catalog = await ref.watch(authorCatalogProvider.future);
+      final target = normalizeAuthorKey(authorKey);
+      for (final entry in catalog) {
+        if (entry.authorKey == target) return entry;
+      }
+      return null;
+    });
+
 final moodTagsProvider = FutureProvider<List<String>>((ref) async {
   final allQuotes = await ref.watch(allQuotesProvider.future);
   return moodAllowlist
@@ -117,9 +173,26 @@ final quotesByFilterProvider =
       filter,
     ) async {
       final tag = filter.tag.trim().toLowerCase();
+      if (filter.isSearch) {
+        final searchQuotes = await ref.watch(allQuotesProvider.future);
+        return SearchService(searchQuotes).searchQuotes(tag, limit: 200);
+      }
       final allQuotes = await ref.watch(allQuotesWithMediaProvider.future);
       if (tag.isEmpty || tag == 'all') {
         return allQuotes;
+      }
+      if (filter.isAuthor) {
+        final filtered = allQuotes
+            .where((quote) => _matchesAuthor(quote, tag))
+            .toList(growable: false);
+        final monthKey = _monthKey(DateTime.now());
+        filtered.sort(
+          (a, b) => _authorQuoteSignal(
+            b,
+            monthKey: monthKey,
+          ).compareTo(_authorQuoteSignal(a, monthKey: monthKey)),
+        );
+        return filtered;
       }
       if (filter.isMood) {
         return _quotesForMood(allQuotes, tag);
@@ -179,6 +252,26 @@ final internetBestQuoteProvider = FutureProvider<QuoteModel>((ref) async {
 
 final bestQuoteOfAllTimeProvider = FutureProvider<QuoteModel>((ref) async {
   return ref.watch(internetBestQuoteProvider.future);
+});
+
+final topAuthorsOfMonthProvider = FutureProvider<List<MonthlyAuthorSpotlight>>((
+  ref,
+) async {
+  final catalog = await ref.watch(authorCatalogProvider.future);
+  final ordered = [...catalog]
+    ..sort((a, b) => b.monthlyMomentumScore.compareTo(a.monthlyMomentumScore));
+  return ordered
+      .take(5)
+      .map(
+        (entry) => MonthlyAuthorSpotlight(
+          authorKey: entry.authorKey,
+          authorName: entry.authorName,
+          rankScore: entry.monthlyMomentumScore,
+          totalQuotes: entry.quoteCount,
+          topQuotes: entry.topQuotes.take(10).toList(growable: false),
+        ),
+      )
+      .toList(growable: false);
 });
 
 List<QuoteModel> _webInspiredPopularFallback(List<QuoteModel> quotes) {
@@ -251,6 +344,10 @@ Map<String, int> _mergeTagCounts(
     );
   }
 
+  for (final category in curatedCategoryTags) {
+    merged.putIfAbsent(category, () => 0);
+  }
+
   for (final required in const ['movies', 'series']) {
     merged.putIfAbsent(required, () => 1);
   }
@@ -262,6 +359,92 @@ Map<String, int> _mergeTagCounts(
       return a.key.compareTo(b.key);
     });
   return {for (final entry in sorted) entry.key: entry.value};
+}
+
+List<AuthorCatalogEntry> _buildAuthorCatalog(
+  List<QuoteModel> quotes, {
+  DateTime? now,
+}) {
+  final monthKey = _monthKey(now ?? DateTime.now());
+  final grouped = <String, List<QuoteModel>>{};
+
+  for (final quote in quotes) {
+    final key = normalizeAuthorKey(
+      quote.canonicalAuthor.isNotEmpty ? quote.canonicalAuthor : quote.author,
+    );
+    if (key.isEmpty || key == 'unknown') continue;
+    grouped.putIfAbsent(key, () => <QuoteModel>[]).add(quote);
+  }
+
+  final catalog = <AuthorCatalogEntry>[];
+  for (final entry in grouped.entries) {
+    final authorQuotes = [...entry.value]
+      ..sort(
+        (a, b) => _authorQuoteSignal(
+          b,
+          monthKey: monthKey,
+        ).compareTo(_authorQuoteSignal(a, monthKey: monthKey)),
+      );
+    if (authorQuotes.isEmpty) continue;
+
+    final topQuotes = authorQuotes.take(24).toList(growable: false);
+    final displayAuthor = _displayAuthorForGroup(topQuotes);
+    final topSignals = topQuotes
+        .take(5)
+        .map((quote) => _authorQuoteSignal(quote, monthKey: monthKey))
+        .toList(growable: false);
+    final topAverage = topSignals.isEmpty
+        ? 0.0
+        : topSignals.reduce((a, b) => a + b) / topSignals.length;
+    final recentQuotes = authorQuotes
+        .where((quote) => _monthlyRecencySignal(quote.createdAt, monthKey) > 0)
+        .take(5)
+        .toList(growable: false);
+    final recentSignals = recentQuotes
+        .map((quote) => _authorQuoteSignal(quote, monthKey: monthKey))
+        .toList(growable: false);
+    final recentAverage = recentSignals.isEmpty
+        ? 0.0
+        : recentSignals.reduce((a, b) => a + b) / recentSignals.length;
+    final tagBreadth = topQuotes
+        .expand((quote) => quote.revisedTags)
+        .map((tag) => tag.trim().toLowerCase())
+        .where((tag) => tag.isNotEmpty)
+        .toSet()
+        .length;
+
+    final quoteVolumeBoost = math.log(authorQuotes.length + 1) * 18.0;
+    final breadthBoost = math.sqrt(tagBreadth.toDouble()) * 6.0;
+    final leadSignal = _authorQuoteSignal(topQuotes.first, monthKey: monthKey);
+    final discoveryScore =
+        (leadSignal * 0.74) +
+        (topAverage * 0.46) +
+        quoteVolumeBoost +
+        breadthBoost +
+        ((Object.hash(entry.key, authorQuotes.length) & 0x0F) / 100.0);
+    final monthlyMomentumScore =
+        (leadSignal * 0.3) +
+        (recentAverage * 0.92) +
+        (recentQuotes.length * 18.0) +
+        (math.log(recentQuotes.length + 1) * 12.0) +
+        (authorQuotes.length.clamp(0, 32) * 0.95) +
+        (tagBreadth * 0.9) +
+        ((Object.hash(entry.key, monthKey) & 0x0F) / 100.0);
+
+    catalog.add(
+      AuthorCatalogEntry(
+        authorKey: entry.key,
+        authorName: displayAuthor,
+        quoteCount: authorQuotes.length,
+        discoveryScore: discoveryScore,
+        monthlyMomentumScore: monthlyMomentumScore,
+        topQuotes: topQuotes,
+      ),
+    );
+  }
+
+  catalog.sort((a, b) => b.discoveryScore.compareTo(a.discoveryScore));
+  return catalog;
 }
 
 bool _matchesTag(List<String> quoteTags, String selectedTag) {
@@ -276,11 +459,84 @@ bool _matchesTag(List<String> quoteTags, String selectedTag) {
   return false;
 }
 
+bool _matchesAuthor(QuoteModel quote, String selectedAuthor) {
+  final target = normalizeAuthorKey(selectedAuthor);
+  if (target.isEmpty || target == 'all') return true;
+  final canonical = normalizeAuthorKey(quote.canonicalAuthor);
+  final author = normalizeAuthorKey(quote.author);
+  return canonical == target || author == target;
+}
+
 bool _matchesAnyTag(List<String> quoteTags, Set<String> selectedTags) {
   for (final selected in selectedTags) {
     if (_matchesTag(quoteTags, selected)) return true;
   }
   return false;
+}
+
+String normalizeAuthorKey(String raw) {
+  return raw
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+String _monthKey(DateTime value) {
+  final month = value.month.toString().padLeft(2, '0');
+  return '${value.year}-$month';
+}
+
+double _authorQuoteSignal(QuoteModel quote, {required String monthKey}) {
+  final basePopularity = quote.popularityScore.toDouble();
+  final socialSignal =
+      (quote.likesCount * 6) +
+      (quote.savesCount * 5) +
+      (quote.sharesCount * 7) +
+      (quote.viewsCount * 0.05);
+  final prestigeSignal = (quote.authorScore * 18) + (quote.viralityScore * 12);
+  final recencySignal = _monthlyRecencySignal(quote.createdAt, monthKey);
+  return basePopularity + socialSignal + prestigeSignal + recencySignal;
+}
+
+double _monthlyRecencySignal(DateTime? createdAt, String monthKey) {
+  if (createdAt == null) return 0;
+  final local = createdAt.toLocal();
+  final createdKey = _monthKey(local);
+  if (createdKey == monthKey) {
+    return 28;
+  }
+  return 0;
+}
+
+String _displayAuthorForGroup(List<QuoteModel> quotes) {
+  if (quotes.isEmpty) return 'Unknown';
+  final ranked = [...quotes]
+    ..sort((a, b) {
+      final quality = _displayAuthorQuality(
+        b.author,
+      ).compareTo(_displayAuthorQuality(a.author));
+      if (quality != 0) return quality;
+      return a.author.length.compareTo(b.author.length);
+    });
+  return ranked.first.author.trim().isEmpty ? 'Unknown' : ranked.first.author;
+}
+
+int _displayAuthorQuality(String author) {
+  final trimmed = author.trim();
+  if (trimmed.isEmpty) return -100;
+  final normalized = normalizeAuthorKey(trimmed);
+  if (normalized == 'unknown') return -100;
+  final tokenCount = normalized
+      .split(' ')
+      .where((part) => part.isNotEmpty)
+      .length;
+  var score = 0;
+  if (tokenCount >= 2 && tokenCount <= 4) score += 8;
+  if (RegExp(r'[A-Z]').hasMatch(trimmed)) score += 3;
+  score -= trimmed.length ~/ 18;
+  return score;
 }
 
 List<QuoteModel> _mergeUniqueQuotes(

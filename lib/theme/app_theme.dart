@@ -70,61 +70,85 @@ class AppTheme {
   static ThemeData darkThemeFor(AppBackgroundTheme backgroundTheme) {
     final flow = flowTokensFor(backgroundTheme);
     final colors = flow.colors;
+    final gradients = flow.gradients;
+    final glass = flow.glass;
 
-    final scheme =
-        ColorScheme.fromSeed(
-          seedColor: colors.accent,
-          brightness: Brightness.dark,
-        ).copyWith(
-          surface: colors.surface,
-          primary: colors.accent,
-          secondary: colors.accent.withValues(alpha: 0.88),
-          tertiary: colors.accent.withValues(alpha: 0.78),
-          onSurface: colors.textPrimary,
-          onPrimary: colors.background,
-          outline: colors.divider,
-          outlineVariant: colors.divider.withValues(alpha: 0.55),
-          shadow: Colors.black,
-          scrim: const Color(0xFF030406),
-        );
+    final scheme = ColorScheme(
+      brightness: Brightness.dark,
+      primary: colors.accent,
+      onPrimary: colors.background,
+      secondary: colors.accentSecondary,
+      onSecondary: colors.background,
+      error: const Color(0xFFFF6C6C),
+      onError: Colors.black,
+      surface: colors.surface,
+      onSurface: colors.textPrimary,
+      tertiary: gradients.accentEnd,
+      onTertiary: colors.background,
+      outline: colors.divider,
+      outlineVariant: colors.divider.withValues(alpha: 0.62),
+      shadow: Colors.black,
+      scrim: const Color(0xF2020306),
+      surfaceContainerHighest: colors.elevatedSurface,
+    );
 
     final legacyTokens = AppThemeTokens(
-      glassFill: colors.surface.withValues(alpha: 0.62),
-      glassBorder: colors.divider.withValues(alpha: 0.7),
-      glassShadow: Colors.black.withValues(alpha: 0.3),
-      chipBase: colors.elevatedSurface.withValues(alpha: 0.74),
+      glassFill: colors.surface.withValues(alpha: 0.72),
+      glassBorder: colors.divider.withValues(alpha: 0.92),
+      glassShadow: Colors.black.withValues(alpha: glass.outerShadowOpacity),
+      chipBase: colors.elevatedSurface.withValues(alpha: 0.86),
       chipSelected: colors.accent.withValues(alpha: 0.2),
-      chipBorder: colors.divider,
-      chipGlow: colors.accent.withValues(alpha: 0.26),
+      chipBorder: colors.divider.withValues(alpha: 0.86),
+      chipGlow: colors.accent.withValues(alpha: 0.24),
       viewerAccent: colors.accent,
     );
 
-    final textTheme = FlowTypography.buildTextTheme(colors);
+    final textTheme = FlowTypography.buildTextTheme(backgroundTheme, colors);
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       scaffoldBackgroundColor: colors.background,
+      canvasColor: colors.background,
       colorScheme: scheme,
       dividerColor: colors.divider,
       textTheme: textTheme,
       extensions: <ThemeExtension<dynamic>>[flow, legacyTokens],
+      splashColor: colors.accent.withValues(alpha: 0.08),
+      highlightColor: Colors.transparent,
+      disabledColor: colors.textSecondary.withValues(alpha: 0.42),
     );
 
     return base.copyWith(
       appBarTheme: AppBarTheme(
         elevation: 0,
         centerTitle: false,
-        backgroundColor: colors.surface.withValues(alpha: 0.7),
+        backgroundColor: Colors.transparent,
         foregroundColor: colors.textPrimary,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          color: colors.textPrimary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       cardTheme: CardThemeData(
-        color: colors.surface.withValues(alpha: 0.92),
+        color: colors.surface.withValues(alpha: 0.78),
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusLg),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: colors.surface.withValues(alpha: 0.9),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusXl),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: Colors.transparent,
+        modalBackgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: colors.elevatedSurface.withValues(alpha: 0.9),
+        fillColor: colors.elevatedSurface.withValues(alpha: 0.68),
         hintStyle: textTheme.bodyMedium?.copyWith(
           color: colors.textSecondary.withValues(alpha: 0.92),
         ),
@@ -135,16 +159,29 @@ class AppTheme {
           vertical: FlowSpace.md,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: FlowRadii.radiusMd,
-          borderSide: BorderSide(color: colors.divider),
+          borderRadius: FlowRadii.radiusLg,
+          borderSide: BorderSide(
+            color: colors.divider.withValues(alpha: 0.8),
+            width: glass.hairlineWidth,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: FlowRadii.radiusMd,
-          borderSide: BorderSide(color: colors.accent.withValues(alpha: 0.86)),
+          borderRadius: FlowRadii.radiusLg,
+          borderSide: BorderSide(
+            color: colors.accent.withValues(alpha: 0.96),
+            width: glass.hairlineWidth,
+          ),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: FlowRadii.radiusLg,
+          borderSide: BorderSide(
+            color: colors.divider.withValues(alpha: 0.68),
+            width: glass.hairlineWidth,
+          ),
         ),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: colors.surface.withValues(alpha: 0.92),
+        backgroundColor: Colors.transparent,
         selectedItemColor: colors.accent,
         unselectedItemColor: colors.textSecondary,
         type: BottomNavigationBarType.fixed,
@@ -152,15 +189,16 @@ class AppTheme {
         showUnselectedLabels: true,
       ),
       iconButtonTheme: IconButtonThemeData(
-        style: IconButton.styleFrom(
-          foregroundColor: colors.textPrimary,
-          hoverColor: colors.accent.withValues(alpha: 0.12),
-          highlightColor: colors.accent.withValues(alpha: 0.2),
+        style: ButtonStyle(
+          foregroundColor: WidgetStatePropertyAll(colors.textPrimary),
+          overlayColor: WidgetStatePropertyAll(
+            colors.accent.withValues(alpha: 0.08),
+          ),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusMd),
+        shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusLg),
         backgroundColor: colors.elevatedSurface.withValues(alpha: 0.96),
         contentTextStyle: textTheme.bodyMedium?.copyWith(
           color: colors.textPrimary,
@@ -169,14 +207,15 @@ class AppTheme {
       ),
       textSelectionTheme: TextSelectionThemeData(
         cursorColor: colors.accent,
-        selectionColor: colors.accent.withValues(alpha: 0.32),
+        selectionColor: colors.accent.withValues(alpha: 0.24),
         selectionHandleColor: colors.accent,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: colors.accent,
           foregroundColor: colors.background,
-          shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusMd),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusLg),
           padding: const EdgeInsets.symmetric(
             horizontal: FlowSpace.lg,
             vertical: FlowSpace.sm,
@@ -189,19 +228,33 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: colors.textPrimary,
-          side: BorderSide(color: colors.divider.withValues(alpha: 0.95)),
-          shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusMd),
+          side: BorderSide(
+            color: colors.divider.withValues(alpha: 0.92),
+            width: glass.hairlineWidth,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusLg),
           padding: const EdgeInsets.symmetric(
             horizontal: FlowSpace.lg,
             vertical: FlowSpace.sm,
           ),
         ),
       ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: colors.accent,
+          textStyle: textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
       chipTheme: ChipThemeData(
-        backgroundColor: colors.surface.withValues(alpha: 0.82),
-        selectedColor: colors.accent.withValues(alpha: 0.24),
-        disabledColor: colors.surface.withValues(alpha: 0.48),
-        side: BorderSide(color: colors.divider),
+        backgroundColor: colors.surface.withValues(alpha: 0.72),
+        selectedColor: colors.accent.withValues(alpha: 0.18),
+        disabledColor: colors.surface.withValues(alpha: 0.38),
+        side: BorderSide(
+          color: colors.divider.withValues(alpha: 0.8),
+          width: glass.hairlineWidth,
+        ),
         shape: RoundedRectangleBorder(borderRadius: FlowRadii.pill(999)),
         labelStyle: textTheme.labelLarge,
         padding: const EdgeInsets.symmetric(
@@ -209,7 +262,34 @@ class AppTheme {
           vertical: FlowSpace.xs,
         ),
       ),
-      dividerTheme: DividerThemeData(color: colors.divider, thickness: 1),
+      listTileTheme: ListTileThemeData(
+        iconColor: colors.textSecondary,
+        textColor: colors.textPrimary,
+        tileColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: FlowRadii.radiusLg),
+      ),
+      dividerTheme: DividerThemeData(
+        color: colors.divider.withValues(alpha: 0.72),
+        thickness: glass.hairlineWidth,
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: colors.accent,
+        linearTrackColor: colors.divider.withValues(alpha: 0.34),
+      ),
+      switchTheme: SwitchThemeData(
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return gradients.accentStart.withValues(alpha: 0.62);
+          }
+          return colors.divider.withValues(alpha: 0.56);
+        }),
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return colors.accentSecondary;
+          }
+          return colors.textPrimary.withValues(alpha: 0.92);
+        }),
+      ),
     );
   }
 }

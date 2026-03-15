@@ -12,10 +12,10 @@ import '../../features/v3_search/search_providers.dart';
 import '../../models/quote_model.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/flow_responsive.dart';
 import '../../widgets/author_portrait_circle.dart';
 import '../../widgets/editorial_background.dart';
-import '../../widgets/glass_card.dart';
-import '../../widgets/glass_icon_button.dart';
+import '../../widgets/premium/premium_components.dart';
 import '../../widgets/scale_tap.dart';
 
 enum _SavedLengthFilter { all, short, medium, long }
@@ -45,6 +45,7 @@ class _SavedQuotesScreenState extends ConsumerState<SavedQuotesScreen> {
     final savedIds = ref.watch(savedQuoteIdsProvider);
     final collections = ref.watch(collectionsProvider);
     final collectionsNotifier = ref.read(collectionsProvider.notifier);
+    final layout = FlowLayoutInfo.of(context);
 
     final selectedCollectionId = collections.selectedCollectionId;
     final scopedIds = selectedCollectionId == allSavedCollectionId
@@ -62,90 +63,101 @@ class _SavedQuotesScreenState extends ConsumerState<SavedQuotesScreen> {
         children: [
           const EditorialBackground(),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: layout.maxContentWidth),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    layout.horizontalPadding,
+                    layout.topPadding + 2,
+                    layout.horizontalPadding,
+                    layout.isCompact ? FlowSpace.md : FlowSpace.lg,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      GlassIconButton(
-                        icon: Icons.close_rounded,
-                        onTap: context.pop,
+                      Row(
+                        children: [
+                          PremiumIconPillButton(
+                            icon: Icons.arrow_back_rounded,
+                            compact: true,
+                            onTap: context.pop,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Saved',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Saved',
-                        style: Theme.of(context).textTheme.titleLarge,
+                      const SizedBox(height: 10),
+                      const CollectionChipsBar(),
+                      const SizedBox(height: 10),
+                      const V3SearchBarWidget(),
+                      const SizedBox(height: 10),
+                      _SavedControls(
+                        lengthFilter: _lengthFilter,
+                        sort: _sort,
+                        onLengthFilterChanged: (value) {
+                          setState(() => _lengthFilter = value);
+                        },
+                        onSortChanged: (value) {
+                          setState(() => _sort = value);
+                        },
+                        savedCount: scopedIds.length,
+                      ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: searchAsync.when(
+                          data: (searchResults) {
+                            final base = searchResults
+                                .where((q) => scopedIds.contains(q.id))
+                                .toList(growable: false);
+                            final finalQuotes = _applySortAndFilters(base);
+
+                            if (finalQuotes.isEmpty) {
+                              return Center(
+                                child: Text(
+                                  'No saved quotes found',
+                                  style: Theme.of(context).textTheme.bodyLarge,
+                                ),
+                              );
+                            }
+
+                            return Scrollbar(
+                              controller: _scrollController,
+                              thumbVisibility: true,
+                              child: ListView.separated(
+                                controller: _scrollController,
+                                itemCount: finalQuotes.length,
+                                separatorBuilder: (context, index) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) {
+                                  final quote = finalQuotes[index];
+                                  return _SavedCard(
+                                    quote: quote,
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => _SavedQuotePagerScreen(
+                                          quotes: finalQuotes,
+                                          initialIndex: index,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                          loading: () =>
+                              const Center(child: CircularProgressIndicator()),
+                          error: (error, stack) =>
+                              Center(child: Text('Search failed: $error')),
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  const CollectionChipsBar(),
-                  const SizedBox(height: 10),
-                  const V3SearchBarWidget(),
-                  const SizedBox(height: 10),
-                  _SavedControls(
-                    lengthFilter: _lengthFilter,
-                    sort: _sort,
-                    onLengthFilterChanged: (value) {
-                      setState(() => _lengthFilter = value);
-                    },
-                    onSortChanged: (value) {
-                      setState(() => _sort = value);
-                    },
-                    savedCount: scopedIds.length,
-                  ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: searchAsync.when(
-                      data: (searchResults) {
-                        final base = searchResults
-                            .where((q) => scopedIds.contains(q.id))
-                            .toList(growable: false);
-                        final finalQuotes = _applySortAndFilters(base);
-
-                        if (finalQuotes.isEmpty) {
-                          return Center(
-                            child: Text(
-                              'No saved quotes found',
-                              style: Theme.of(context).textTheme.bodyLarge,
-                            ),
-                          );
-                        }
-
-                        return Scrollbar(
-                          controller: _scrollController,
-                          thumbVisibility: true,
-                          child: ListView.separated(
-                            controller: _scrollController,
-                            itemCount: finalQuotes.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final quote = finalQuotes[index];
-                              return _SavedCard(
-                                quote: quote,
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => _SavedQuotePagerScreen(
-                                      quotes: finalQuotes,
-                                      initialIndex: index,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                      loading: () =>
-                          const Center(child: CircularProgressIndicator()),
-                      error: (error, stack) =>
-                          Center(child: Text('Search failed: $error')),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -210,9 +222,15 @@ class _SavedControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      borderRadius: 16,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+    return PremiumSurface(
+      radius: FlowRadii.lg,
+      elevation: 1,
+      padding: const EdgeInsets.fromLTRB(
+        FlowSpace.md,
+        FlowSpace.sm,
+        FlowSpace.md,
+        FlowSpace.sm,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -222,7 +240,7 @@ class _SavedControls extends StatelessWidget {
                 '$savedCount saved',
                 style: Theme.of(
                   context,
-                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const Spacer(),
               PopupMenuButton<_SavedSort>(
@@ -250,44 +268,42 @@ class _SavedControls extends StatelessWidget {
                     child: Text('Quote A-Z'),
                   ),
                 ],
-                child: Row(
-                  children: [
-                    const Icon(Icons.swap_vert_rounded, size: 18),
-                    const SizedBox(width: 6),
-                    Text(_sortLabel(sort)),
-                  ],
+                child: PremiumPillChip(
+                  label: _sortLabel(sort),
+                  icon: Icons.swap_vert_rounded,
+                  compact: true,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: FlowSpace.xs),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: FlowSpace.xs,
+            runSpacing: FlowSpace.xs,
             children: [
-              ChoiceChip(
-                label: const Text('All'),
+              PremiumPillChip(
+                label: 'All',
+                compact: true,
                 selected: lengthFilter == _SavedLengthFilter.all,
-                onSelected: (_) =>
-                    onLengthFilterChanged(_SavedLengthFilter.all),
+                onTap: () => onLengthFilterChanged(_SavedLengthFilter.all),
               ),
-              ChoiceChip(
-                label: const Text('Short'),
+              PremiumPillChip(
+                label: 'Short',
+                compact: true,
                 selected: lengthFilter == _SavedLengthFilter.short,
-                onSelected: (_) =>
-                    onLengthFilterChanged(_SavedLengthFilter.short),
+                onTap: () => onLengthFilterChanged(_SavedLengthFilter.short),
               ),
-              ChoiceChip(
-                label: const Text('Medium'),
+              PremiumPillChip(
+                label: 'Medium',
+                compact: true,
                 selected: lengthFilter == _SavedLengthFilter.medium,
-                onSelected: (_) =>
-                    onLengthFilterChanged(_SavedLengthFilter.medium),
+                onTap: () => onLengthFilterChanged(_SavedLengthFilter.medium),
               ),
-              ChoiceChip(
-                label: const Text('Long'),
+              PremiumPillChip(
+                label: 'Long',
+                compact: true,
                 selected: lengthFilter == _SavedLengthFilter.long,
-                onSelected: (_) =>
-                    onLengthFilterChanged(_SavedLengthFilter.long),
+                onTap: () => onLengthFilterChanged(_SavedLengthFilter.long),
               ),
             ],
           ),
@@ -315,15 +331,22 @@ class _SavedCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
     return ScaleTap(
       onTap: onTap,
-      child: GlassCard(
-        borderRadius: 18,
-        padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
+      child: PremiumSurface(
+        radius: FlowRadii.lg,
+        elevation: 1,
+        padding: const EdgeInsets.fromLTRB(
+          FlowSpace.md,
+          FlowSpace.sm,
+          FlowSpace.xs,
+          FlowSpace.sm,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AuthorPortraitCircle(author: quote.author, size: 56),
+            AuthorPortraitCircle(author: quote.author, size: 54),
             const SizedBox(width: FlowSpace.sm),
             Expanded(
               child: Column(
@@ -331,46 +354,45 @@ class _SavedCard extends ConsumerWidget {
                 children: [
                   Text(
                     quote.quote,
-                    maxLines: 4,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      height: 1.38,
-                    ),
+                    style: FlowTypography.quoteStyle(
+                      context: context,
+                      color: colors?.textPrimary ?? Colors.white,
+                      fontSize: 16.5,
+                    ).copyWith(height: 1.34),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: FlowSpace.xs),
                   Text(
                     quote.author,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.7),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors?.textSecondary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(left: FlowSpace.xs),
-              child: PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'remove') {
-                    ref.read(savedQuoteIdsProvider.notifier).remove(quote.id);
-                    return;
-                  }
-                  if (value == 'collections') {
-                    showAddToCollectionSheet(context, ref, quote.id);
-                  }
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: 'collections',
-                    child: Text('Add to collection'),
-                  ),
-                  PopupMenuItem(value: 'remove', child: Text('Remove saved')),
-                ],
-              ),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert_rounded, color: colors?.textSecondary),
+              onSelected: (value) {
+                if (value == 'remove') {
+                  ref.read(savedQuoteIdsProvider.notifier).remove(quote.id);
+                  return;
+                }
+                if (value == 'collections') {
+                  showAddToCollectionSheet(context, ref, quote.id);
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'collections',
+                  child: Text('Add to collection'),
+                ),
+                PopupMenuItem(value: 'remove', child: Text('Remove saved')),
+              ],
             ),
           ],
         ),
@@ -414,103 +436,132 @@ class _SavedQuotePagerScreenState
   @override
   Widget build(BuildContext context) {
     final savedIds = ref.watch(savedQuoteIdsProvider);
+    final layout = FlowLayoutInfo.of(context);
 
     return Scaffold(
       body: Stack(
         children: [
           const EditorialBackground(),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      GlassIconButton(
-                        icon: Icons.arrow_back_rounded,
-                        onTap: context.pop,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '${_index + 1} / ${widget.quotes.length}',
-                          style: Theme.of(context).textTheme.bodyLarge,
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(width: 46),
-                    ],
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: layout.textColumnWidth),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    layout.horizontalPadding,
+                    layout.topPadding + 4,
+                    layout.horizontalPadding,
+                    FlowSpace.md,
                   ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: PageView.builder(
-                      controller: _pageController,
-                      scrollDirection: Axis.vertical,
-                      itemCount: widget.quotes.length,
-                      onPageChanged: (index) => setState(() => _index = index),
-                      itemBuilder: (context, index) {
-                        final quote = widget.quotes[index];
-                        final isSaved = savedIds.contains(quote.id);
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(6, 8, 6, 10),
-                          child: GlassCard(
-                            borderRadius: 24,
-                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 18),
-                            child: Column(
-                              children: [
-                                Expanded(
-                                  child: SingleChildScrollView(
-                                    child: Text(
-                                      quote.quote,
-                                      textAlign: TextAlign.center,
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          PremiumIconPillButton(
+                            icon: Icons.arrow_back_rounded,
+                            compact: true,
+                            onTap: context.pop,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '${_index + 1} / ${widget.quotes.length}',
+                              style: Theme.of(context).textTheme.bodyLarge,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          const SizedBox(width: 46),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: PageView.builder(
+                          controller: _pageController,
+                          scrollDirection: Axis.vertical,
+                          itemCount: widget.quotes.length,
+                          onPageChanged: (index) =>
+                              setState(() => _index = index),
+                          itemBuilder: (context, index) {
+                            final quote = widget.quotes[index];
+                            final isSaved = savedIds.contains(quote.id);
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(6, 8, 6, 10),
+                              child: PremiumSurface(
+                                radius: FlowRadii.xl,
+                                elevation: 2,
+                                padding: const EdgeInsets.fromLTRB(
+                                  FlowSpace.lg,
+                                  FlowSpace.lg,
+                                  FlowSpace.lg,
+                                  FlowSpace.md,
+                                ),
+                                child: Column(
+                                  children: [
+                                    Expanded(
+                                      child: SingleChildScrollView(
+                                        child: Text(
+                                          quote.quote,
+                                          textAlign: TextAlign.center,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .headlineMedium
+                                              ?.copyWith(height: 1.3),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: FlowSpace.md),
+                                    Text(
+                                      '- ${quote.author}',
                                       style: Theme.of(context)
                                           .textTheme
-                                          .headlineSmall
-                                          ?.copyWith(height: 1.42),
+                                          .titleLarge
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .extension<FlowThemeTokens>()
+                                                ?.colors
+                                                .accent,
+                                          ),
+                                      textAlign: TextAlign.center,
                                     ),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  quote.author,
-                                  style: Theme.of(context).textTheme.bodyLarge,
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    FilledButton.tonalIcon(
-                                      onPressed: () => ref
-                                          .read(savedQuoteIdsProvider.notifier)
-                                          .toggle(quote.id),
-                                      icon: Icon(
-                                        isSaved
-                                            ? Icons.bookmark
-                                            : Icons.bookmark_outline_rounded,
-                                      ),
-                                      label: Text(isSaved ? 'Saved' : 'Save'),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    OutlinedButton.icon(
-                                      onPressed: () => showStoryShareSheet(
-                                        context: context,
-                                        quote: quote,
-                                        subject: 'Saved Quote',
-                                      ),
-                                      icon: const Icon(Icons.share_outlined),
-                                      label: const Text('Share'),
+                                    const SizedBox(height: FlowSpace.md),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        PremiumIconPillButton(
+                                          onTap: () => ref
+                                              .read(
+                                                savedQuoteIdsProvider.notifier,
+                                              )
+                                              .toggle(quote.id),
+                                          icon: isSaved
+                                              ? Icons.bookmark
+                                              : Icons.bookmark_outline_rounded,
+                                          label: isSaved ? 'Saved' : 'Save',
+                                          active: isSaved,
+                                        ),
+                                        const SizedBox(width: FlowSpace.sm),
+                                        PremiumIconPillButton(
+                                          onTap: () => showStoryShareSheet(
+                                            context: context,
+                                            quote: quote,
+                                            subject: 'Saved Quote',
+                                          ),
+                                          icon: Icons.share_outlined,
+                                          label: 'Share',
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

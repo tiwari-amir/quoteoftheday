@@ -8,29 +8,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../features/v3_audio/ambient_audio_controller.dart';
 import '../../features/v3_background/background_theme_provider.dart';
+import '../../features/v3_collections/collections_ui/add_to_collection_sheet.dart';
 import '../../features/v3_share/story_share_sheet.dart';
 import '../../models/quote_model.dart';
 import '../../models/quote_viewer_filter.dart';
 import '../../providers/liked_quotes_provider.dart';
+import '../../providers/streak_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
 import '../../providers/viewer_progress_provider.dart';
-import '../../services/author_wiki_service.dart';
-import '../../services/quote_service.dart';
 import '../../theme/design_tokens.dart';
-import '../../widgets/adaptive_author_image.dart';
+import '../../theme/flow_responsive.dart';
 import '../../widgets/author_info_sheet.dart';
 import '../../widgets/editorial_background.dart';
 import '../../widgets/premium/premium_components.dart';
-
-final _viewerAuthorProfileProvider =
-    FutureProvider.family<AuthorWikiProfile?, String>((ref, author) async {
-      final normalized = author.trim();
-      if (normalized.isEmpty) return null;
-      return ref.read(authorWikiServiceProvider).fetchAuthor(normalized);
-    });
+import '../../features/v3_notifications/notification_providers.dart';
 
 class QuoteViewerScreen extends ConsumerStatefulWidget {
   const QuoteViewerScreen({
@@ -49,9 +42,11 @@ class QuoteViewerScreen extends ConsumerStatefulWidget {
 }
 
 class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
+  static const int _kAnchorCycle = 1000;
+  static const int _kMaxCachedCycles = 5;
+
   late final QuoteViewerFilter _filter;
   late final PageController _pageController;
-  final Random _shuffleRandom = Random();
 
   Timer? _hintTimer;
   Timer? _controlsTimer;
@@ -68,7 +63,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
 
   String? _datasetSignature;
   List<QuoteModel> _sourceQuotes = const <QuoteModel>[];
-  List<QuoteModel> _displayQuotes = const <QuoteModel>[];
+  final Map<int, List<QuoteModel>> _cycleDeckCache = <int, List<QuoteModel>>{};
+  final Set<String> _sessionReadQuoteIds = <String>{};
 
   @override
   void initState() {
@@ -113,6 +109,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
 
     _datasetSignature = signature;
     _sourceQuotes = List<QuoteModel>.from(quotes, growable: false);
+    _sessionReadQuoteIds.clear();
     _rebuildDeck(preferredQuoteId: widget.quoteId, keepCurrentQuote: false);
   }
 
@@ -120,47 +117,102 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       _filter.normalizedType == 'category' && _filter.normalizedTag == 'all';
 
   bool get _shouldRandomizeDeck => _shuffleEnabled || _isPrimaryScrollFeed;
+  int get _cycleLength => _sourceQuotes.isEmpty ? 1 : _sourceQuotes.length;
+  int get _anchorPage => _kAnchorCycle * _cycleLength;
+  bool get _isAtDeckStart =>
+      _sourceQuotes.isNotEmpty && _currentIndex == _anchorPage;
 
-  List<QuoteModel> _buildDeckForCurrentMode() {
-    if (_shouldRandomizeDeck) {
-      return _nextShuffleCycle();
+  List<QuoteModel> _deckForCycle(int cycle) {
+    if (!_shouldRandomizeDeck) {
+      return _sourceQuotes;
     }
-    return List<QuoteModel>.from(_sourceQuotes, growable: false);
+
+    return _cycleDeckCache.putIfAbsent(cycle, () {
+      final deck = List<QuoteModel>.from(_sourceQuotes, growable: false);
+      deck.shuffle(
+        Random(
+          Object.hash(
+            _datasetSignature,
+            cycle,
+            _shuffleEnabled,
+            _isPrimaryScrollFeed,
+          ),
+        ),
+      );
+      return deck;
+    });
+  }
+
+  void _pruneCycleCache(int aroundCycle) {
+    if (_cycleDeckCache.length <= _kMaxCachedCycles) {
+      return;
+    }
+
+    final orderedCycles = _cycleDeckCache.keys.toList(growable: false)
+      ..sort(
+        (a, b) => (a - aroundCycle).abs().compareTo((b - aroundCycle).abs()),
+      );
+    final keep = orderedCycles.take(_kMaxCachedCycles).toSet();
+    _cycleDeckCache.removeWhere((cycle, _) => !keep.contains(cycle));
+  }
+
+  QuoteModel _quoteForPage(int page) {
+    final cycle = page ~/ _cycleLength;
+    final offset = page % _cycleLength;
+    final deck = _deckForCycle(cycle);
+    _pruneCycleCache(cycle);
+    return deck[offset];
+  }
+
+  int _pageForQuote(String quoteId, {int cycle = _kAnchorCycle}) {
+    final deck = _deckForCycle(cycle);
+    final match = deck.indexWhere((quote) => quote.id == quoteId);
+    if (match < 0) {
+      return _anchorPage;
+    }
+    return (cycle * _cycleLength) + match;
   }
 
   void _rebuildDeck({String? preferredQuoteId, bool keepCurrentQuote = true}) {
     if (_sourceQuotes.isEmpty) {
-      _displayQuotes = const <QuoteModel>[];
+      _cycleDeckCache.clear();
       _currentIndex = 0;
       return;
     }
 
-    _displayQuotes = _buildDeckForCurrentMode();
-
     String? targetQuoteId = preferredQuoteId;
-    if (keepCurrentQuote &&
-        _displayQuotes.isNotEmpty &&
-        _currentIndex < _displayQuotes.length) {
-      targetQuoteId ??= _displayQuotes[_currentIndex].id;
+    if (keepCurrentQuote && _currentIndex >= 0) {
+      targetQuoteId ??= _quoteForPage(_currentIndex).id;
     }
 
-    var nextIndex = 0;
+    _cycleDeckCache.clear();
+
+    var nextIndex = _anchorPage;
     if (targetQuoteId != null) {
-      final match = _displayQuotes.indexWhere((q) => q.id == targetQuoteId);
-      if (match >= 0) nextIndex = match;
+      nextIndex = _pageForQuote(targetQuoteId);
     }
 
     _currentIndex = nextIndex;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageController.hasClients) return;
       _pageController.jumpToPage(_currentIndex);
+      unawaited(_recordQuoteReadForPage(_currentIndex));
     });
   }
 
-  List<QuoteModel> _nextShuffleCycle() {
-    final cycle = List<QuoteModel>.from(_sourceQuotes);
-    cycle.shuffle(_shuffleRandom);
-    return cycle;
+  Future<void> _recordQuoteReadForPage(int pageIndex) async {
+    if (_sourceQuotes.isEmpty) return;
+    final quoteId = _quoteForPage(pageIndex).id;
+    if (!_sessionReadQuoteIds.add(quoteId)) return;
+
+    final metRequirement = await ref
+        .read(streakProvider.notifier)
+        .recordQuoteRead();
+    if (metRequirement) {
+      await ref
+          .read(notificationSettingsProvider.notifier)
+          .refreshForRuntimeStateChange();
+    }
   }
 
   Future<void> _recordScrollProgress() async {
@@ -222,14 +274,6 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     if (now.difference(_lastLongQuoteAdvance).inMilliseconds < 420) return;
     _lastLongQuoteAdvance = now;
 
-    final nextIndex = index + 1;
-    if (nextIndex >= _displayQuotes.length) {
-      final nextCycle = _buildDeckForCurrentMode();
-      setState(() {
-        _displayQuotes = [..._displayQuotes, ...nextCycle];
-      });
-    }
-
     if (!_pageController.hasClients) return;
     _pageController.nextPage(
       duration: const Duration(milliseconds: 260),
@@ -239,43 +283,13 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
 
   void _toggleShuffle() {
     if (_sourceQuotes.isEmpty) return;
-    if (_displayQuotes.isEmpty || _currentIndex >= _displayQuotes.length) {
-      return;
-    }
-    final currentQuoteId = _displayQuotes[_currentIndex].id;
+    final currentQuoteId = _quoteForPage(_currentIndex).id;
 
     setState(() {
-      final turningOn = !_shuffleEnabled;
-      _shuffleEnabled = turningOn;
-
-      if (turningOn) {
-        final seenIds = _displayQuotes
-            .take(_currentIndex + 1)
-            .map((q) => q.id)
-            .toSet();
-        final prefix = _displayQuotes.take(_currentIndex + 1).toList();
-        final remaining = _sourceQuotes
-            .where((q) => !seenIds.contains(q.id))
-            .toList();
-        remaining.shuffle(_shuffleRandom);
-        _displayQuotes = [...prefix, ...remaining];
-      } else {
-        final restored = _buildDeckForCurrentMode();
-        final currentInRestored = restored.indexWhere(
-          (q) => q.id == currentQuoteId,
-        );
-        _displayQuotes = restored;
-        if (currentInRestored >= 0) {
-          _currentIndex = currentInRestored;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted || !_pageController.hasClients) return;
-            _pageController.jumpToPage(_currentIndex);
-          });
-        }
-      }
-
+      _shuffleEnabled = !_shuffleEnabled;
       _showControls = true;
     });
+    _rebuildDeck(preferredQuoteId: currentQuoteId, keepCurrentQuote: false);
     _armControlsFade();
   }
 
@@ -283,7 +297,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     final previousIndex = _currentIndex;
     setState(() {
       _currentIndex = index;
-      if (_currentIndex > 0) {
+      if (_currentIndex > _anchorPage) {
         _showHint = false;
       }
       _showControls = true;
@@ -293,13 +307,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
 
     if (index != previousIndex) {
       unawaited(_recordScrollProgress());
-    }
-
-    if (index == _displayQuotes.length - 1) {
-      final nextCycle = _buildDeckForCurrentMode();
-      setState(() {
-        _displayQuotes = [..._displayQuotes, ...nextCycle];
-      });
+      unawaited(_recordQuoteReadForPage(index));
     }
   }
 
@@ -457,14 +465,14 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     final scheme = Theme.of(context).colorScheme;
     final flow = Theme.of(context).extension<FlowThemeTokens>();
     final viewerAccent = flow?.colors.accent ?? scheme.primary;
-    final ambientAudio = ref.watch(ambientAudioProvider);
+    final layout = FlowLayoutInfo.of(context);
 
     return Scaffold(
       body: quotesAsync.when(
         data: (quotes) {
           _syncQuotes(quotes);
 
-          if (_displayQuotes.isEmpty) {
+          if (_sourceQuotes.isEmpty) {
             final isAll =
                 widget.tag.trim().isEmpty ||
                 widget.tag.trim().toLowerCase() == 'all';
@@ -483,8 +491,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
             );
           }
 
-          final currentQuote =
-              _displayQuotes[_currentIndex.clamp(0, _displayQuotes.length - 1)];
+          final currentQuote = _quoteForPage(_currentIndex);
           final isSaved = savedIds.contains(currentQuote.id);
           final isLiked = likedIds.contains(currentQuote.id);
 
@@ -503,17 +510,23 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                   physics: const BouncingScrollPhysics(
                     parent: PageScrollPhysics(),
                   ),
-                  itemCount: _displayQuotes.length,
                   onPageChanged: _onPageChanged,
                   itemBuilder: (context, index) {
-                    final quote = _displayQuotes[index];
+                    final quote = _quoteForPage(index);
                     final cleanedNames = _authorSearchCandidates(quote.author);
                     final authorLabel = cleanedNames.isEmpty
                         ? quote.author
                         : cleanedNames.first;
                     final media = MediaQuery.of(context);
-                    final topInset = max(70.0, media.padding.top + 52);
-                    final bottomInset = max(82.0, media.padding.bottom + 72);
+                    final sideInset = layout.fluid(min: 18, max: 32);
+                    final topInset = max(
+                      layout.isTablet ? 100.0 : 88.0,
+                      media.padding.top + (layout.isTablet ? 72 : 62),
+                    );
+                    final bottomInset = max(
+                      layout.isTablet ? 128.0 : 108.0,
+                      media.padding.bottom + (layout.isTablet ? 112 : 98),
+                    );
                     return Stack(
                       children: [
                         EditorialBackground(
@@ -550,23 +563,58 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                             ),
                           ),
                         ),
+                        Positioned(
+                          left: -24,
+                          right: -24,
+                          bottom: -8,
+                          child: IgnorePointer(
+                            child: CustomPaint(
+                              size: const Size(double.infinity, 220),
+                              painter: _ViewerLandscapePainter(
+                                accent: viewerAccent,
+                              ),
+                            ),
+                          ),
+                        ),
                         SafeArea(
                           child: Padding(
                             padding: EdgeInsets.fromLTRB(
-                              24,
+                              sideInset,
                               topInset,
-                              24,
+                              sideInset,
                               bottomInset,
                             ),
                             child: Align(
                               alignment: Alignment.center,
-                              child: _QuotePanel(
-                                quote: quote,
-                                authorLabel: authorLabel,
-                                service: service,
-                                onAdvanceRequested: () =>
-                                    _advanceFromLongQuote(index),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: layout.isTablet
+                                      ? layout.textColumnWidth + 64
+                                      : layout.textColumnWidth,
+                                ),
+                                child: _QuotePanel(
+                                  quote: quote,
+                                  authorLabel: authorLabel,
+                                  tags: quote.revisedTags
+                                      .take(2)
+                                      .toList(growable: false),
+                                  onAdvanceRequested: () =>
+                                      _advanceFromLongQuote(index),
+                                ),
                               ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: sideInset,
+                          right: sideInset,
+                          bottom: layout.isTablet ? 24 : 18,
+                          child: SafeArea(
+                            top: false,
+                            child: _ReelInfoDock(
+                              onSource: () =>
+                                  _showSourceDetails(context, quote),
+                              onAuthor: () => _showAuthorInfo(context, quote),
                             ),
                           ),
                         ),
@@ -577,10 +625,10 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
               ),
               SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    FlowSpace.md,
+                  padding: EdgeInsets.fromLTRB(
+                    layout.horizontalPadding,
                     10,
-                    FlowSpace.md,
+                    layout.horizontalPadding,
                     12,
                   ),
                   child: Column(
@@ -592,6 +640,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                           children: [
                             PremiumIconPillButton(
                               icon: Icons.close_rounded,
+                              label: 'Close',
+                              compact: true,
                               onTap: () {
                                 if (context.canPop()) {
                                   context.pop();
@@ -602,19 +652,10 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                             ),
                             const Spacer(),
                             PremiumIconPillButton(
-                              icon: ambientAudio.muted
-                                  ? Icons.volume_off_rounded
-                                  : Icons.volume_up_rounded,
-                              compact: true,
-                              onTap: () => ref
-                                  .read(ambientAudioProvider.notifier)
-                                  .toggleMute(),
-                            ),
-                            const SizedBox(width: FlowSpace.xs),
-                            PremiumIconPillButton(
                               icon: _shuffleEnabled
                                   ? Icons.shuffle_on_rounded
                                   : Icons.shuffle_rounded,
+                              label: 'Shuffle',
                               active: _shuffleEnabled,
                               compact: true,
                               onTap: _toggleShuffle,
@@ -623,7 +664,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                         ),
                       ),
                       const Spacer(),
-                      if (_currentIndex == 0 && _showHint)
+                      if (_isAtDeckStart && _showHint)
                         Text(
                               'Swipe up or down',
                               style: Theme.of(context).textTheme.bodyMedium,
@@ -631,40 +672,55 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                             .animate()
                             .fadeIn(duration: FlowDurations.quick)
                             .fadeOut(delay: 1400.ms),
-                      AnimatedOpacity(
-                        opacity: _showControls ? 1 : 0,
-                        duration: FlowDurations.regular,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: FlowSpace.xs),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              PremiumIconPillButton(
-                                icon: Icons.library_books_outlined,
-                                label: 'Source',
-                                compact: true,
-                                onTap: () =>
-                                    _showSourceDetails(context, currentQuote),
-                              ),
-                              const SizedBox(width: FlowSpace.xs),
-                              PremiumIconPillButton(
-                                icon: Icons.person_search_outlined,
-                                compact: true,
-                                onTap: () =>
-                                    _showAuthorInfo(context, currentQuote),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      const SizedBox(height: 124),
                     ],
                   ),
                 ),
               ),
               Positioned(
+                right: layout.isTablet ? layout.horizontalPadding : 14,
+                bottom: layout.isTablet ? 124 : 112,
+                child: SafeArea(
+                  child: AnimatedOpacity(
+                    opacity: _showControls ? 1 : 0,
+                    duration: FlowDurations.regular,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ViewerEdgeIconButton(
+                          icon: isLiked
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          active: isLiked,
+                          activeColor: scheme.tertiary,
+                          onTap: () => ref
+                              .read(likedQuoteIdsProvider.notifier)
+                              .toggle(currentQuote.id),
+                        ),
+                        const SizedBox(height: FlowSpace.sm),
+                        _ViewerEdgeIconButton(
+                          icon: isSaved
+                              ? Icons.bookmark
+                              : Icons.bookmark_outline_rounded,
+                          active: isSaved,
+                          activeColor: scheme.primary,
+                          onTap: () =>
+                              showSaveQuoteSheet(context, ref, currentQuote.id),
+                        ),
+                        const SizedBox(height: FlowSpace.sm),
+                        _ViewerEdgeIconButton(
+                          icon: Icons.send_rounded,
+                          onTap: () => _shareQuote(currentQuote),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
                 top: 72,
-                left: 22,
-                right: 22,
+                left: layout.horizontalPadding,
+                right: layout.horizontalPadding,
                 child: IgnorePointer(
                   child: AnimatedSwitcher(
                     duration: FlowDurations.regular,
@@ -704,45 +760,6 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                   ),
                 ),
               ),
-              Positioned(
-                right: 10,
-                bottom: 22,
-                child: SafeArea(
-                  child: AnimatedOpacity(
-                    opacity: _showControls ? 1 : 0,
-                    duration: FlowDurations.regular,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _ViewerActionButton(
-                          icon: isLiked
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          tint: isLiked ? scheme.tertiary : null,
-                          onTap: () => ref
-                              .read(likedQuoteIdsProvider.notifier)
-                              .toggle(currentQuote.id),
-                        ),
-                        const SizedBox(height: FlowSpace.xs),
-                        _ViewerActionButton(
-                          icon: isSaved
-                              ? Icons.bookmark
-                              : Icons.bookmark_outline_rounded,
-                          tint: isSaved ? scheme.primary : null,
-                          onTap: () => ref
-                              .read(savedQuoteIdsProvider.notifier)
-                              .toggle(currentQuote.id),
-                        ),
-                        const SizedBox(height: FlowSpace.xs),
-                        _ViewerActionButton(
-                          icon: Icons.send_rounded,
-                          onTap: () => _shareQuote(currentQuote),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
             ],
           );
         },
@@ -767,13 +784,13 @@ class _QuotePanel extends StatelessWidget {
   const _QuotePanel({
     required this.quote,
     required this.authorLabel,
-    required this.service,
+    required this.tags,
     required this.onAdvanceRequested,
   });
 
   final QuoteModel quote;
   final String authorLabel;
-  final QuoteService service;
+  final List<String> tags;
   final VoidCallback onAdvanceRequested;
 
   @override
@@ -782,11 +799,7 @@ class _QuotePanel extends StatelessWidget {
         .split(RegExp(r'\s+'))
         .where((word) => word.trim().isNotEmpty)
         .length;
-    final showScrollableBody = words > 36;
-    final tagLabels = quote.revisedTags
-        .take(3)
-        .map(service.toTitleCase)
-        .toList(growable: false);
+    final showScrollableBody = words > 34;
 
     Widget quoteBody;
     if (showScrollableBody) {
@@ -798,17 +811,21 @@ class _QuotePanel extends StatelessWidget {
         child: _LongQuoteContent(
           quote: quote.quote,
           authorLabel: authorLabel,
-          tagLabels: tagLabels,
+          tags: tags,
+          quoteLength: words,
         ),
       );
     } else {
-      quoteBody = QuoteSurface(
-        quote: quote.quote,
-        author: authorLabel,
-        eyebrow: 'QUOTE',
-        footer: _QuoteAttributionFooter(
+      quoteBody = Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: FlowSpace.lg,
+          vertical: FlowSpace.md,
+        ),
+        child: _LongQuoteContent(
+          quote: quote.quote,
           authorLabel: authorLabel,
-          tagLabels: tagLabels,
+          tags: tags,
+          quoteLength: words,
         ),
       );
     }
@@ -820,30 +837,154 @@ class _QuotePanel extends StatelessWidget {
   }
 }
 
+class _ReelInfoDock extends StatelessWidget {
+  const _ReelInfoDock({required this.onSource, required this.onAuthor});
+
+  final VoidCallback onSource;
+  final VoidCallback onAuthor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: FlowSpace.sm,
+      runSpacing: FlowSpace.xs,
+      children: [
+        _ReelInlineAction(
+          icon: Icons.person_search_outlined,
+          label: 'Author',
+          onTap: onAuthor,
+        ),
+        _ReelInlineAction(
+          icon: Icons.library_books_outlined,
+          label: 'Source',
+          onTap: onSource,
+        ),
+      ],
+    );
+  }
+}
+
+class _ViewerEdgeIconButton extends StatelessWidget {
+  const _ViewerEdgeIconButton({
+    required this.icon,
+    required this.onTap,
+    this.active = false,
+    this.activeColor,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool active;
+  final Color? activeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final foreground = active
+        ? activeColor ?? colors?.accent ?? Colors.white
+        : colors?.textPrimary.withValues(alpha: 0.92) ?? Colors.white;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 24,
+        highlightShape: BoxShape.circle,
+        splashColor: foreground.withValues(alpha: 0.12),
+        highlightColor: foreground.withValues(alpha: 0.06),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(
+            icon,
+            size: 21,
+            color: foreground,
+            shadows: [
+              Shadow(
+                color: Colors.black.withValues(alpha: active ? 0.3 : 0.18),
+                blurRadius: active ? 14 : 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReelInlineAction extends StatelessWidget {
+  const _ReelInlineAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final foreground =
+        colors?.textSecondary.withValues(alpha: 0.86) ?? Colors.white70;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: FlowSpace.xs,
+            vertical: 4,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: foreground),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.18,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LongQuoteContent extends StatelessWidget {
   const _LongQuoteContent({
     required this.quote,
     required this.authorLabel,
-    required this.tagLabels,
+    required this.tags,
+    required this.quoteLength,
   });
 
   final String quote;
   final String authorLabel;
-  final List<String> tagLabels;
+  final List<String> tags;
+  final int quoteLength;
 
   @override
   Widget build(BuildContext context) {
     final flow = Theme.of(context).extension<FlowThemeTokens>();
     final colors = flow?.colors;
-    final words = quote
-        .split(RegExp(r'\s+'))
-        .where((token) => token.trim().isNotEmpty)
-        .length;
-    final quoteSize = words > 96
-        ? 19.0
-        : words > 72
-        ? 20.0
-        : 22.0;
+    final quoteSize = quoteLength > 96
+        ? 19.5
+        : quoteLength > 72
+        ? 21.0
+        : quoteLength > 42
+        ? 22.5
+        : 26.0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -854,132 +995,121 @@ class _LongQuoteContent extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            'QUOTE',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: colors?.textSecondary.withValues(alpha: 0.92),
-              letterSpacing: 0.46,
-            ),
-          ),
-          const SizedBox(height: FlowSpace.xs),
-          Text(
-            '"',
-            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-              color: colors?.textSecondary.withValues(alpha: 0.34),
-              height: 0.68,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
           Text(
             quote,
             textAlign: TextAlign.center,
             style:
                 FlowTypography.quoteStyle(
+                  context: context,
                   color: colors?.textPrimary ?? Colors.white,
                   fontSize: quoteSize,
                 ).copyWith(
-                  height: 1.5,
+                  height: quoteLength > 48 ? 1.52 : 1.46,
                   shadows: [
                     Shadow(
-                      blurRadius: 20,
+                      blurRadius: 28,
                       color: Colors.black.withValues(alpha: 0.2),
-                      offset: const Offset(0, 10),
+                      offset: const Offset(0, 12),
                     ),
                   ],
                 ),
           ),
           const SizedBox(height: FlowSpace.lg),
-          Container(
-            height: 1,
-            width: 170,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.transparent,
-                  colors?.divider.withValues(alpha: 0.9) ??
-                      Colors.white.withValues(alpha: 0.22),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: FlowSpace.sm),
-          _InlineAuthorPortrait(
-            author: authorLabel,
-            size: 58,
-            bottomSpacing: FlowSpace.sm,
-          ),
           Text(
             authorLabel,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: colors?.textSecondary ?? Colors.white70,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.24,
-            ),
             textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: colors?.accentSecondary.withValues(alpha: 0.94),
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.08,
+            ),
           ),
-          if (tagLabels.isNotEmpty) ...[
-            const SizedBox(height: FlowSpace.sm),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: FlowSpace.xs,
-              runSpacing: FlowSpace.xs,
-              children: [
-                for (final tag in tagLabels)
-                  _ViewerMetaChip(
-                    label: tag,
-                    icon: Icons.sell_outlined,
-                    compact: true,
-                  ),
-              ],
+          if (tags.isNotEmpty) ...[
+            const SizedBox(height: FlowSpace.xxs),
+            Text(
+              tags.map((tag) => tag.toUpperCase()).join('  |  '),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colors?.textSecondary.withValues(alpha: 0.66),
+                fontSize: 10.5,
+                letterSpacing: 0.48,
+              ),
             ),
           ],
-          const SizedBox(height: FlowSpace.md),
         ],
       ),
     );
   }
 }
 
-class _QuoteAttributionFooter extends StatelessWidget {
-  const _QuoteAttributionFooter({
-    required this.authorLabel,
-    required this.tagLabels,
-  });
+class _ViewerLandscapePainter extends CustomPainter {
+  const _ViewerLandscapePainter({required this.accent});
 
-  final String authorLabel;
-  final List<String> tagLabels;
+  final Color accent;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _InlineAuthorPortrait(
-          author: authorLabel,
-          size: 46,
-          bottomSpacing: tagLabels.isNotEmpty ? FlowSpace.sm : 0,
-        ),
-        if (tagLabels.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: FlowSpace.xxs),
-            child: Wrap(
-              alignment: WrapAlignment.center,
-              spacing: FlowSpace.xs,
-              runSpacing: FlowSpace.xs,
-              children: [
-                for (final tag in tagLabels)
-                  _ViewerMetaChip(
-                    label: tag,
-                    icon: Icons.sell_outlined,
-                    compact: true,
-                  ),
-              ],
-            ),
-          ),
-      ],
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            const Color(0xFF08111A).withValues(alpha: 0.64),
+            const Color(0xFF04070B),
+          ],
+          stops: const [0.0, 0.38, 1.0],
+        ).createShader(rect),
     );
+
+    final ridge = Path()
+      ..moveTo(0, size.height * 0.8)
+      ..quadraticBezierTo(
+        size.width * 0.18,
+        size.height * 0.62,
+        size.width * 0.34,
+        size.height * 0.76,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.52,
+        size.height * 0.5,
+        size.width * 0.7,
+        size.height * 0.8,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.88,
+        size.height * 0.66,
+        size.width,
+        size.height * 0.8,
+      )
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(
+      ridge,
+      Paint()..color = const Color(0xFF071018).withValues(alpha: 0.96),
+    );
+
+    canvas.drawLine(
+      Offset(size.width * 0.42, size.height * 0.74),
+      Offset(size.width * 0.56, size.height * 0.74),
+      Paint()
+        ..color = accent.withValues(alpha: 0.14)
+        ..strokeWidth = 1.2
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ViewerLandscapePainter oldDelegate) {
+    return oldDelegate.accent != accent;
   }
 }
 
@@ -992,7 +1122,10 @@ class _SourceLicenseSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final layout = FlowLayoutInfo.of(context);
     final hasSourceLink = attribution.sourceUrl.isNotEmpty;
+    final mutedText =
+        colors?.textSecondary.withValues(alpha: 0.82) ?? Colors.white70;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -1001,181 +1134,118 @@ class _SourceLicenseSheet extends StatelessWidget {
         FlowSpace.md,
         FlowSpace.lg,
       ),
-      child: PremiumSurface(
-        radius: FlowRadii.xl,
-        elevation: 3,
-        blurSigma: 18,
-        padding: EdgeInsets.zero,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: FlowRadii.radiusXl,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                (colors?.surface ?? Colors.black).withValues(alpha: 0.98),
-                (colors?.elevatedSurface ?? Colors.black).withValues(
-                  alpha: 0.94,
-                ),
-              ],
-            ),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: layout.isTablet ? 560 : double.infinity,
           ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              FlowSpace.lg,
-              FlowSpace.sm,
-              FlowSpace.lg,
-              FlowSpace.lg,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      color: (colors?.divider ?? Colors.white24).withValues(
-                        alpha: 0.85,
-                      ),
+          child: PremiumSurface(
+            radius: FlowRadii.xl,
+            elevation: 3,
+            blurSigma: 18,
+            padding: EdgeInsets.zero,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: FlowRadii.radiusXl,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    (colors?.surface ?? Colors.black).withValues(alpha: 0.985),
+                    (colors?.elevatedSurface ?? Colors.black).withValues(
+                      alpha: 0.96,
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: FlowSpace.md),
-                Row(
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  FlowSpace.lg,
+                  FlowSpace.sm,
+                  FlowSpace.lg,
+                  FlowSpace.lg,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: (colors?.accent ?? Colors.white).withValues(
-                          alpha: 0.16,
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          color: (colors?.divider ?? Colors.white24).withValues(
+                            alpha: 0.7,
+                          ),
                         ),
-                      ),
-                      child: Icon(
-                        Icons.library_books_outlined,
-                        color: colors?.accent,
                       ),
                     ),
-                    const SizedBox(width: FlowSpace.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Source & license',
-                            style: Theme.of(context).textTheme.titleLarge,
+                    const SizedBox(height: FlowSpace.sm),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Source',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
-                          const SizedBox(height: FlowSpace.xxs),
-                          Text(
-                            'Review where this quote came from and the reuse terms attached to the imported record.',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: colors?.textSecondary.withValues(
-                                    alpha: 0.94,
-                                  ),
-                                  height: 1.45,
-                                ),
-                          ),
-                        ],
+                        ),
+                        IconButton(
+                          tooltip: 'Close',
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: Icon(Icons.close_rounded, color: mutedText),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: FlowSpace.xs),
+                    Text(
+                      quote.author,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: mutedText,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.18,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: FlowSpace.md),
-                PremiumSurface(
-                  radius: FlowRadii.lg,
-                  elevation: 1,
-                  padding: const EdgeInsets.fromLTRB(
-                    FlowSpace.md,
-                    FlowSpace.md,
-                    FlowSpace.md,
-                    FlowSpace.sm,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        quote.quote,
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          height: 1.42,
-                        ),
-                      ),
-                      const SizedBox(height: FlowSpace.sm),
-                      Text(
-                        quote.author,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colors?.textSecondary.withValues(alpha: 0.88),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: FlowSpace.md),
-                _SourceDetailCard(
-                  icon: Icons.library_books_outlined,
-                  title: attribution.sourceLabel,
-                  eyebrow: 'Origin',
-                  description: hasSourceLink
-                      ? 'This record points back to the original Wikiquote page so the wording and surrounding context can be verified.'
-                      : 'This quote was imported from Wikiquote, but this record does not currently include a direct page URL.',
-                  detailLabel: hasSourceLink
-                      ? _sourceHostLabel(attribution.sourceUrl)
-                      : 'Direct source link unavailable',
-                  actionLabel: hasSourceLink ? 'Open source page' : null,
-                  onAction: hasSourceLink
-                      ? () => unawaited(_openExternalUrl(attribution.sourceUrl))
-                      : null,
-                ),
-                const SizedBox(height: FlowSpace.sm),
-                _SourceDetailCard(
-                  icon: Icons.verified_outlined,
-                  title: attribution.licenseLabel,
-                  eyebrow: 'Reuse terms',
-                  description:
-                      'This material is distributed under the Creative Commons Attribution-ShareAlike 4.0 license. Sharing and adaptation generally require attribution, and remixed versions should stay under the same license family.',
-                  detailLabel:
-                      'Review the full license terms for exact requirements',
-                  actionLabel: 'Open license details',
-                  onAction: () =>
-                      unawaited(_openExternalUrl(attribution.licenseUrl)),
-                ),
-                const SizedBox(height: FlowSpace.md),
-                Wrap(
-                  spacing: FlowSpace.xs,
-                  runSpacing: FlowSpace.xs,
-                  children: [
-                    if (hasSourceLink)
-                      PremiumIconPillButton(
-                        icon: Icons.open_in_new_rounded,
-                        label: 'Source page',
-                        compact: true,
-                        onTap: () =>
-                            unawaited(_openExternalUrl(attribution.sourceUrl)),
-                      ),
-                    PremiumIconPillButton(
-                      icon: Icons.gavel_rounded,
+                    const SizedBox(height: FlowSpace.md),
+                    _MinimalSourceRow(
+                      label: 'Origin',
+                      value: attribution.sourceLabel,
+                      detail: hasSourceLink
+                          ? _sourceHostLabel(attribution.sourceUrl)
+                          : 'Link unavailable',
+                    ),
+                    const SizedBox(height: FlowSpace.sm),
+                    _MinimalSourceRow(
                       label: 'License',
-                      compact: true,
-                      onTap: () =>
-                          unawaited(_openExternalUrl(attribution.licenseUrl)),
+                      value: attribution.licenseLabel,
                     ),
-                    PremiumIconPillButton(
-                      icon: Icons.close_rounded,
-                      label: 'Close',
-                      compact: true,
-                      onTap: () => Navigator.of(context).pop(),
+                    const SizedBox(height: FlowSpace.md),
+                    Wrap(
+                      spacing: FlowSpace.md,
+                      runSpacing: FlowSpace.xs,
+                      children: [
+                        if (hasSourceLink)
+                          _MinimalSheetAction(
+                            icon: Icons.open_in_new_rounded,
+                            label: 'Open source',
+                            onTap: () => unawaited(
+                              _openExternalUrl(attribution.sourceUrl),
+                            ),
+                          ),
+                        _MinimalSheetAction(
+                          icon: Icons.gavel_rounded,
+                          label: 'View license',
+                          onTap: () => unawaited(
+                            _openExternalUrl(attribution.licenseUrl),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1184,281 +1254,92 @@ class _SourceLicenseSheet extends StatelessWidget {
   }
 }
 
-class _SourceDetailCard extends StatelessWidget {
-  const _SourceDetailCard({
-    required this.icon,
-    required this.title,
-    required this.eyebrow,
-    required this.description,
-    required this.detailLabel,
-    this.actionLabel,
-    this.onAction,
+class _MinimalSourceRow extends StatelessWidget {
+  const _MinimalSourceRow({
+    required this.label,
+    required this.value,
+    this.detail,
   });
 
-  final IconData icon;
-  final String title;
-  final String eyebrow;
-  final String description;
-  final String detailLabel;
-  final String? actionLabel;
-  final VoidCallback? onAction;
+  final String label;
+  final String value;
+  final String? detail;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
 
-    return PremiumSurface(
-      radius: FlowRadii.lg,
-      elevation: 1,
-      padding: const EdgeInsets.fromLTRB(
-        FlowSpace.md,
-        FlowSpace.md,
-        FlowSpace.md,
-        FlowSpace.md,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: colors?.textSecondary.withValues(alpha: 0.74),
+            letterSpacing: 0.18,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        if (detail != null && detail!.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            detail!,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colors?.textSecondary.withValues(alpha: 0.82),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MinimalSheetAction extends StatelessWidget {
+  const _MinimalSheetAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: (colors?.accent ?? Colors.white).withValues(
-                    alpha: 0.14,
-                  ),
-                ),
-                child: Icon(icon, size: 18, color: colors?.accent),
-              ),
-              const SizedBox(width: FlowSpace.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      eyebrow,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: colors?.textSecondary.withValues(alpha: 0.82),
-                      ),
-                    ),
-                    Text(title, style: Theme.of(context).textTheme.titleMedium),
-                  ],
+              Icon(icon, size: 15, color: colors?.accent),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color:
+                      colors?.textSecondary.withValues(alpha: 0.9) ??
+                      Colors.white70,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.14,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: FlowSpace.sm),
-          Text(
-            description,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colors?.textSecondary.withValues(alpha: 0.94),
-              height: 1.48,
-            ),
-          ),
-          const SizedBox(height: FlowSpace.sm),
-          _ViewerMetaChip(
-            label: detailLabel,
-            icon: Icons.info_outline_rounded,
-            compact: true,
-          ),
-          if (actionLabel != null && onAction != null) ...[
-            const SizedBox(height: FlowSpace.sm),
-            PremiumIconPillButton(
-              icon: Icons.open_in_new_rounded,
-              label: actionLabel,
-              compact: true,
-              onTap: onAction!,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _InlineAuthorPortrait extends ConsumerWidget {
-  const _InlineAuthorPortrait({
-    required this.author,
-    required this.size,
-    this.bottomSpacing = 0,
-  });
-
-  final String author;
-  final double size;
-  final double bottomSpacing;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final normalizedAuthor = author.trim();
-    if (normalizedAuthor.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    final profileAsync = ref.watch(
-      _viewerAuthorProfileProvider(normalizedAuthor),
-    );
-
-    return profileAsync.when(
-      data: (profile) {
-        final imageUrl = profile?.imageUrl?.trim();
-        final hasImage = imageUrl != null && imageUrl.isNotEmpty;
-        if (!hasImage) {
-          return const SizedBox.shrink();
-        }
-
-        final outerSize = size + 12;
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () =>
-                showAuthorInfoSheetForAuthor(context, ref, normalizedAuthor),
-            child: Padding(
-              padding: EdgeInsets.only(bottom: bottomSpacing),
-              child: SizedBox(
-                width: outerSize,
-                height: outerSize,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      width: outerSize,
-                      height: outerSize,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            (colors?.accent ?? Colors.white).withValues(
-                              alpha: 0.18,
-                            ),
-                            (colors?.accent ?? Colors.white).withValues(
-                              alpha: 0.08,
-                            ),
-                            Colors.transparent,
-                          ],
-                          stops: const [0.12, 0.52, 1.0],
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: (colors?.accent ?? Colors.white).withValues(
-                              alpha: 0.2,
-                            ),
-                            blurRadius: 22,
-                            spreadRadius: 1,
-                          ),
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.18),
-                            blurRadius: 16,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: ClipOval(
-                        child: AdaptiveAuthorImage(
-                          imageUrl: imageUrl,
-                          placeholder: _PortraitFallback(colors: colors),
-                          error: _PortraitFallback(colors: colors),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-      loading: () => const SizedBox.shrink(),
-      error: (error, stackTrace) => const SizedBox.shrink(),
-    );
-  }
-}
-
-class _PortraitFallback extends StatelessWidget {
-  const _PortraitFallback({required this.colors});
-
-  final FlowColorTokens? colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors?.surface.withValues(alpha: 0.92) ?? Colors.black54,
-      ),
-      child: Center(
-        child: Icon(
-          Icons.person_outline_rounded,
-          size: 22,
-          color: colors?.textSecondary.withValues(alpha: 0.92),
         ),
-      ),
-    );
-  }
-}
-
-class _ViewerMetaChip extends StatelessWidget {
-  const _ViewerMetaChip({
-    required this.label,
-    required this.icon,
-    this.compact = false,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    final content = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          size: compact ? 11.5 : 13,
-          color:
-              colors?.textSecondary.withValues(alpha: 0.84) ?? Colors.white70,
-        ),
-        SizedBox(width: compact ? 5 : 6),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color:
-                colors?.textSecondary.withValues(alpha: 0.84) ?? Colors.white70,
-            fontWeight: FontWeight.w600,
-            fontSize: compact ? 10.2 : null,
-            letterSpacing: compact ? 0.12 : 0.18,
-          ),
-        ),
-      ],
-    );
-
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(999),
-      child: Ink(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? FlowSpace.xs + 2 : FlowSpace.sm,
-          vertical: compact ? 5.5 : 7,
-        ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: (colors?.surface ?? Colors.black).withValues(alpha: 0.38),
-          border: Border.all(
-            color: (colors?.divider ?? Colors.white24).withValues(alpha: 0.55),
-          ),
-        ),
-        child: content,
       ),
     );
   }
@@ -1609,167 +1490,40 @@ class _LongQuoteBodyState extends State<_LongQuoteBody> {
 
   @override
   Widget build(BuildContext context) {
-    final flow = Theme.of(context).extension<FlowThemeTokens>();
-    final colors = flow?.colors;
     return SizedBox(
       height: widget.maxHeight,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: FlowRadii.radiusXl,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              colors?.quoteFrame.withValues(alpha: 0.95) ??
-                  Colors.white.withValues(alpha: 0.08),
-              colors?.surface.withValues(alpha: 0.78) ??
-                  Colors.black.withValues(alpha: 0.24),
-            ],
-          ),
-          border: Border.all(
-            color:
-                colors?.quoteFrameBorder.withValues(alpha: 0.88) ??
-                Colors.white.withValues(alpha: 0.22),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color:
-                  colors?.quoteFrameGlow.withValues(alpha: 0.24) ??
-                  Colors.black.withValues(alpha: 0.22),
-              blurRadius: 30,
-              offset: const Offset(0, 14),
-            ),
-            ...?flow?.shadows.level2,
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: FlowRadii.radiusXl,
-          child: Stack(
-            children: [
-              NotificationListener<ScrollNotification>(
-                onNotification: _onScrollNotification,
-                child: SingleChildScrollView(
-                  controller: _controller,
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: FlowSpace.lg),
-                  child: widget.child,
-                ),
-              ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: IgnorePointer(
-                  child: Container(
-                    height: 28,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          (colors?.surface ?? Colors.black).withValues(
-                            alpha: 0.24,
-                          ),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: IgnorePointer(
-                  child: Container(
-                    height: 36,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          (colors?.surface ?? Colors.black).withValues(
-                            alpha: 0.3,
-                          ),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: FlowSpace.md,
-                right: FlowSpace.md,
-                bottom: FlowSpace.sm,
-                child: IgnorePointer(
-                  child: AnimatedOpacity(
-                    opacity: _showNextSwipeHint ? 1 : 0,
-                    duration: FlowDurations.quick,
-                    child: Center(
-                      child: PremiumSurface(
-                        radius: 999,
-                        elevation: 1,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: FlowSpace.sm,
-                          vertical: FlowSpace.xs,
-                        ),
-                        child: Text(
-                          'Drag up once more for next quote',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.labelMedium,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ViewerActionButton extends StatelessWidget {
-  const _ViewerActionButton({
-    required this.icon,
-    required this.onTap,
-    this.tint,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color? tint;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Ink(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: colors?.surface.withValues(alpha: 0.85),
-            border: Border.all(
-              color:
-                  colors?.divider.withValues(alpha: 0.95) ??
-                  Colors.white.withValues(alpha: 0.12),
+      child: Stack(
+        children: [
+          NotificationListener<ScrollNotification>(
+            onNotification: _onScrollNotification,
+            child: SingleChildScrollView(
+              controller: _controller,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: FlowSpace.lg),
+              child: widget.child,
             ),
           ),
-          child: Icon(
-            icon,
-            color: tint ?? colors?.textPrimary ?? Colors.white,
-            size: 19,
+          Positioned(
+            left: FlowSpace.md,
+            right: FlowSpace.md,
+            bottom: FlowSpace.sm,
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _showNextSwipeHint ? 1 : 0,
+                duration: FlowDurations.quick,
+                child: Center(
+                  child: Text(
+                    'Drag up once more for next quote',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.74),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../providers/quote_providers.dart';
 import '../../providers/storage_provider.dart';
 import '../../providers/supabase_provider.dart';
 import 'in_app_notification_model.dart';
@@ -14,6 +15,7 @@ const _kInAppNotificationsLastSeenId = 'in_app_notifications.last_seen_id';
 const _kInAppNotificationsLastAlertedId =
     'in_app_notifications.last_alerted_id';
 const _kMaxStartupAlertAge = Duration(hours: 36);
+const _kNotificationsPollInterval = Duration(seconds: 6);
 
 class InAppNotificationPreferences {
   const InAppNotificationPreferences({
@@ -141,23 +143,59 @@ class InAppNotificationsRealtimeBridge {
 
   final Ref _ref;
   RealtimeChannel? _channel;
+  Timer? _pollTimer;
   bool _started = false;
+  int _latestObservedId = 0;
 
   Future<void> start() async {
     if (_started) return;
     _started = true;
 
+    await syncNow();
+
     final repo = _ref.read(inAppNotificationsRepositoryProvider);
-    final latest = await repo.fetchLatest();
-    if (latest != null) {
-      _ref.invalidate(inAppNotificationsProvider);
-      await _handleIncoming(latest);
+    _channel = repo.subscribeToInserts((notification) {
+      unawaited(_consumeNotification(notification));
+    });
+    _pollTimer = Timer.periodic(_kNotificationsPollInterval, (_) {
+      unawaited(syncNow());
+    });
+  }
+
+  Future<void> syncNow() async {
+    final latest = await _ref
+        .read(inAppNotificationsRepositoryProvider)
+        .fetchLatest();
+    if (latest == null) return;
+    await _consumeNotification(latest);
+  }
+
+  Future<void> _consumeNotification(InAppNotificationModel notification) async {
+    if (notification.id <= _latestObservedId) return;
+    _latestObservedId = notification.id;
+    _ref.invalidate(inAppNotificationsProvider);
+    await _refreshQuotesForNotification(notification);
+    await _handleIncoming(notification);
+  }
+
+  Future<void> _refreshQuotesForNotification(
+    InAppNotificationModel notification,
+  ) async {
+    if (notification.quotesAdded <= 0 && notification.prunedQuotes <= 0) {
+      return;
     }
 
-    _channel = repo.subscribeToInserts((notification) {
-      _ref.invalidate(inAppNotificationsProvider);
-      unawaited(_handleIncoming(notification));
-    });
+    try {
+      await _ref.read(quoteRepositoryProvider).refreshNow();
+      _ref.invalidate(allQuotesProvider);
+      _ref.invalidate(allQuotesWithMediaProvider);
+      _ref.invalidate(categoryCountsProvider);
+      _ref.invalidate(moodCountsProvider);
+      _ref.invalidate(topLikedQuotesProvider);
+      _ref.invalidate(dailyQuoteProvider);
+    } catch (_) {
+      // Notification delivery should continue even if the quote cache refresh fails.
+    }
   }
 
   Future<void> _handleIncoming(InAppNotificationModel notification) async {
@@ -190,6 +228,7 @@ class InAppNotificationsRealtimeBridge {
   }
 
   Future<void> dispose() async {
+    _pollTimer?.cancel();
     final channel = _channel;
     _channel = null;
     if (channel == null) return;

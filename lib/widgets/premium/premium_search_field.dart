@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/design_tokens.dart';
+import '../../theme/flow_responsive.dart';
 
 class PremiumSearchField extends StatelessWidget {
   const PremiumSearchField({
@@ -34,16 +35,19 @@ class PremiumSearchField extends StatelessWidget {
         final colors = flow?.colors;
         final focused = focusNode?.hasFocus ?? false;
         final hasText = controller.text.trim().isNotEmpty;
+        final layout = FlowLayoutInfo.of(context);
+        final compact = layout.isCompact;
+        final searchRadius = BorderRadius.circular(compact ? 10 : 12);
 
         return Container(
           decoration: BoxDecoration(
-            borderRadius: FlowRadii.radiusXl,
+            borderRadius: searchRadius,
             boxShadow: [
               BoxShadow(
                 color: (colors?.accent ?? Colors.white).withValues(
-                  alpha: focused ? 0.22 : 0.12,
+                  alpha: focused ? 0.16 : 0.08,
                 ),
-                blurRadius: focused ? 30 : 22,
+                blurRadius: focused ? 34 : 24,
                 spreadRadius: focused ? 1 : 0,
               ),
               ...?flow?.shadows.level1,
@@ -51,53 +55,55 @@ class PremiumSearchField extends StatelessWidget {
           ),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: FlowRadii.radiusXl,
+              borderRadius: searchRadius,
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
                   (colors?.elevatedSurface ?? Colors.black).withValues(
-                    alpha: 0.9,
+                    alpha: 0.94,
                   ),
-                  (colors?.surface ?? Colors.black).withValues(alpha: 0.82),
+                  (colors?.surface ?? Colors.black).withValues(alpha: 0.86),
                 ],
               ),
               border: Border.all(
                 color:
                     (focused
-                        ? colors?.accent.withValues(alpha: 0.65)
-                        : colors?.divider.withValues(alpha: 0.82)) ??
+                        ? colors?.accent.withValues(alpha: 0.52)
+                        : colors?.divider.withValues(alpha: 0.72)) ??
                     Colors.white24,
                 width: focused ? 1.15 : 1,
               ),
             ),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 58),
+              constraints: BoxConstraints(minHeight: compact ? 46 : 50),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  FlowSpace.sm,
-                  7,
+                padding: EdgeInsets.fromLTRB(
+                  compact ? FlowSpace.xs : FlowSpace.sm,
+                  compact ? 5 : 6,
                   FlowSpace.xs,
-                  7,
+                  compact ? 5 : 6,
                 ),
                 child: Row(
                   children: [
                     Container(
-                      width: 36,
-                      height: 36,
+                      width: compact ? 28 : 30,
+                      height: compact ? 28 : 30,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: (colors?.accent ?? Colors.white).withValues(
-                          alpha: 0.15,
+                          alpha: focused ? 0.14 : 0.1,
                         ),
                       ),
                       child: Icon(
                         Icons.search_rounded,
-                        size: 18,
-                        color: colors?.textPrimary.withValues(alpha: 0.94),
+                        size: compact ? 14 : 16,
+                        color: focused
+                            ? colors?.accent
+                            : colors?.textSecondary.withValues(alpha: 0.94),
                       ),
                     ),
-                    const SizedBox(width: FlowSpace.sm),
+                    SizedBox(width: compact ? FlowSpace.xs : FlowSpace.sm),
                     Expanded(
                       child: TextField(
                         controller: controller,
@@ -107,6 +113,7 @@ class PremiumSearchField extends StatelessWidget {
                         textInputAction: TextInputAction.search,
                         textAlignVertical: TextAlignVertical.center,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontSize: compact ? 14.5 : 15,
                           color: colors?.textPrimary,
                         ),
                         cursorColor: colors?.accent,
@@ -114,6 +121,7 @@ class PremiumSearchField extends StatelessWidget {
                           hintText: hintText,
                           hintStyle: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(
+                                fontSize: compact ? 13.5 : 14,
                                 color: colors?.textSecondary.withValues(
                                   alpha: 0.88,
                                 ),

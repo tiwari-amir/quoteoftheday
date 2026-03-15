@@ -1,9 +1,13 @@
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../theme/design_tokens.dart';
+import '../../theme/flow_responsive.dart';
+import '../../widgets/scale_tap.dart';
 
 class AppShellScaffold extends StatefulWidget {
   const AppShellScaffold({super.key, required this.navigationShell});
@@ -23,7 +27,6 @@ class _AppShellScaffoldState extends State<AppShellScaffold> {
   }
 
   void _handleBackPress() {
-    // First back from Explore/Library returns to Today.
     if (widget.navigationShell.currentIndex != 0) {
       _lastBackPressedAt = null;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -53,16 +56,67 @@ class _AppShellScaffoldState extends State<AppShellScaffold> {
       );
   }
 
+  void _goToBranch(int branchIndex) {
+    HapticFeedback.selectionClick();
+    widget.navigationShell.goBranch(
+      branchIndex,
+      initialLocation: branchIndex == widget.navigationShell.currentIndex,
+    );
+  }
+
+  void _openScrollViewer() {
+    HapticFeedback.lightImpact();
+    context.push('/viewer/category/all');
+  }
+
   @override
   Widget build(BuildContext context) {
     final flow = Theme.of(context).extension<FlowThemeTokens>();
     final colors = flow?.colors;
+    final layout = FlowLayoutInfo.of(context);
+
     final selectedIndex = switch (widget.navigationShell.currentIndex) {
       0 => 0,
       1 => 2,
       2 => 3,
       _ => 0,
     };
+
+    final items = <_DockItemData>[
+      _DockItemData(
+        id: 'home',
+        label: 'Home',
+        icon: Icons.home_outlined,
+        activeIcon: Icons.home_rounded,
+        selected: selectedIndex == 0,
+        onTap: () => _goToBranch(0),
+      ),
+      _DockItemData(
+        id: 'scroll',
+        label: 'Scroll',
+        icon: Icons.auto_stories_outlined,
+        activeIcon: Icons.auto_stories_rounded,
+        selected: false,
+        onTap: _openScrollViewer,
+        prominent: true,
+      ),
+      _DockItemData(
+        id: 'explore',
+        label: 'Explore',
+        icon: Icons.grid_view_outlined,
+        activeIcon: Icons.grid_view_rounded,
+        selected: selectedIndex == 2,
+        onTap: () => _goToBranch(1),
+      ),
+      _DockItemData(
+        id: 'library',
+        label: 'Library',
+        icon: Icons.bookmark_outline_rounded,
+        activeIcon: Icons.bookmark_rounded,
+        selected: selectedIndex == 3,
+        onTap: () => _goToBranch(2),
+      ),
+    ];
 
     return PopScope(
       canPop: false,
@@ -71,104 +125,242 @@ class _AppShellScaffoldState extends State<AppShellScaffold> {
         _handleBackPress();
       },
       child: Scaffold(
-        body: widget.navigationShell,
         extendBody: true,
-        bottomNavigationBar: SafeArea(
-          minimum: const EdgeInsets.fromLTRB(
-            FlowSpace.md,
-            0,
-            FlowSpace.md,
-            FlowSpace.md,
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: FlowRadii.radiusXl,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  (colors?.surface ?? Colors.black).withValues(alpha: 0.94),
-                  (colors?.elevatedSurface ?? Colors.black).withValues(
-                    alpha: 0.88,
-                  ),
-                ],
-              ),
-              border: Border.all(
-                color: (colors?.divider ?? Colors.white24).withValues(
-                  alpha: 0.85,
-                ),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.28),
-                  blurRadius: 34,
-                  offset: const Offset(0, 16),
-                ),
-                ...?flow?.shadows.level2,
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: FlowRadii.radiusXl,
-              child: BottomNavigationBar(
-                backgroundColor: Colors.transparent,
-                currentIndex: selectedIndex,
-                onTap: (index) {
-                  if (index == 1) {
-                    context.push('/viewer/category/all');
-                    return;
-                  }
-
-                  final branchIndex = switch (index) {
-                    0 => 0,
-                    2 => 1,
-                    3 => 2,
-                    _ => 0,
-                  };
-                  widget.navigationShell.goBranch(
-                    branchIndex,
-                    initialLocation:
-                        branchIndex == widget.navigationShell.currentIndex,
-                  );
-                },
-                selectedFontSize: 11,
-                unselectedFontSize: 11,
-                selectedLabelStyle: Theme.of(context).textTheme.labelMedium
-                    ?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.18,
-                    ),
-                unselectedLabelStyle: Theme.of(context).textTheme.labelMedium
-                    ?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.14,
-                    ),
-                items: const [
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.today_outlined),
-                    activeIcon: Icon(Icons.today_rounded),
-                    label: 'Today',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.auto_stories_outlined),
-                    activeIcon: Icon(Icons.auto_stories_rounded),
-                    label: 'Scroll',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.explore_outlined),
-                    activeIcon: Icon(Icons.explore_rounded),
-                    label: 'Explore',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.collections_bookmark_outlined),
-                    activeIcon: Icon(Icons.collections_bookmark_rounded),
-                    label: 'Library',
-                  ),
-                ],
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: layout.dockBodyInset),
+                child: widget.navigationShell,
               ),
             ),
-          ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: flow?.glass.blurSigma ?? 26,
+                    sigmaY: flow?.glass.blurSigma ?? 26,
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          (colors?.background ?? Colors.black).withValues(
+                            alpha: 0.0,
+                          ),
+                          (colors?.elevatedSurface ?? Colors.black).withValues(
+                            alpha: 0.86,
+                          ),
+                          (colors?.background ?? Colors.black).withValues(
+                            alpha: 0.98,
+                          ),
+                        ],
+                        stops: const [0.0, 0.18, 1.0],
+                      ),
+                      border: Border(
+                        top: BorderSide(
+                          color: (colors?.textPrimary ?? Colors.white)
+                              .withValues(alpha: 0.08),
+                        ),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (colors?.background ?? Colors.black)
+                              .withValues(alpha: 0.32),
+                          blurRadius: 28,
+                          offset: const Offset(0, -10),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      minimum: EdgeInsets.fromLTRB(
+                        layout.horizontalPadding,
+                        2,
+                        layout.horizontalPadding,
+                        layout.isCompact ? 2 : 4,
+                      ),
+                      child: Row(
+                        children: [
+                          for (
+                            var index = 0;
+                            index < items.length;
+                            index++
+                          ) ...[
+                            Expanded(
+                              child: _DockAction(
+                                item: items[index],
+                                compactLayout: layout.isCompact,
+                              ),
+                            ),
+                            if (index != items.length - 1)
+                              const SizedBox(width: FlowSpace.xxs),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _DockItemData {
+  const _DockItemData({
+    required this.id,
+    required this.label,
+    required this.icon,
+    required this.activeIcon,
+    required this.selected,
+    required this.onTap,
+    this.prominent = false,
+  });
+
+  final String id;
+  final String label;
+  final IconData icon;
+  final IconData activeIcon;
+  final bool selected;
+  final VoidCallback onTap;
+  final bool prominent;
+}
+
+class _DockAction extends StatelessWidget {
+  const _DockAction({required this.item, required this.compactLayout});
+
+  final _DockItemData item;
+  final bool compactLayout;
+
+  @override
+  Widget build(BuildContext context) {
+    final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final colors = flow?.colors;
+    final gradients = flow?.gradients;
+    final selected = item.selected;
+    final emphasized = item.prominent || selected;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ScaleTap(
+          key: ValueKey('dock-${item.id}'),
+          onTap: item.onTap,
+          child: AnimatedContainer(
+            duration: FlowDurations.regular,
+            curve: FlowDurations.curve,
+            constraints: BoxConstraints(minHeight: compactLayout ? 46 : 50),
+            padding: EdgeInsets.symmetric(
+              vertical: compactLayout ? 5 : 6,
+              horizontal: 2,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: LinearGradient(
+                begin: const Alignment(-1, -1),
+                end: const Alignment(1, 1),
+                colors: selected
+                    ? <Color>[
+                        (gradients?.accentStart ?? Colors.white).withValues(
+                          alpha: 0.16,
+                        ),
+                        (gradients?.accentEnd ?? Colors.white).withValues(
+                          alpha: 0.08,
+                        ),
+                      ]
+                    : <Color>[Colors.transparent, Colors.transparent],
+              ),
+              boxShadow: selected
+                  ? <BoxShadow>[
+                      ...?flow?.shadows.level1,
+                      BoxShadow(
+                        color: (colors?.accent ?? Colors.white).withValues(
+                          alpha: 0.16,
+                        ),
+                        blurRadius: 24,
+                        spreadRadius: -10,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: AnimatedDefaultTextStyle(
+              duration: FlowDurations.regular,
+              curve: FlowDurations.curve,
+              style:
+                  Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: selected
+                        ? colors?.textPrimary
+                        : emphasized
+                        ? colors?.textPrimary.withValues(alpha: 0.9)
+                        : colors?.textSecondary.withValues(alpha: 0.9),
+                    fontWeight: FontWeight.w700,
+                  ) ??
+                  const TextStyle(),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedContainer(
+                      duration: FlowDurations.regular,
+                      curve: FlowDurations.curve,
+                      width: selected ? 18 : 0,
+                      height: selected ? 2 : 0,
+                      margin: EdgeInsets.only(bottom: selected ? 5 : 0),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        gradient: LinearGradient(
+                          colors: [
+                            gradients?.accentStart ?? Colors.white,
+                            gradients?.accentEnd ?? Colors.white,
+                          ],
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      selected ? item.activeIcon : item.icon,
+                      size: compactLayout ? 17 : 18,
+                      color: selected
+                          ? colors?.accentSecondary
+                          : emphasized
+                          ? colors?.textPrimary.withValues(alpha: 0.92)
+                          : colors?.textSecondary.withValues(alpha: 0.9),
+                    ),
+                    const SizedBox(height: 2),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: constraints.maxWidth,
+                      ),
+                      child: Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: selected
+                              ? colors?.textPrimary
+                              : emphasized
+                              ? colors?.textPrimary.withValues(alpha: 0.88)
+                              : colors?.textSecondary.withValues(alpha: 0.86),
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.18,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

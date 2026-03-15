@@ -1,11 +1,11 @@
 import 'dart:async';
 
+import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/v3_audio/ambient_audio_controller.dart';
 import '../../features/v3_notifications/in_app_notifications_providers.dart';
 import '../../features/v3_notifications/in_app_notifications_screen.dart';
 import '../../features/v3_share/story_share_sheet.dart';
@@ -14,14 +14,20 @@ import '../../providers/saved_quotes_provider.dart';
 import '../../providers/streak_provider.dart';
 import '../../services/author_wiki_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/flow_responsive.dart';
 import '../../widgets/adaptive_author_image.dart';
 import '../../widgets/author_info_sheet.dart';
 import '../../widgets/editorial_background.dart';
 import '../../widgets/premium/premium_components.dart';
+import '../../widgets/scale_tap.dart';
 
 final _todayAuthorProfileProvider =
     FutureProvider.family<AuthorWikiProfile?, String>((ref, author) async {
-      return ref.read(authorWikiServiceProvider).fetchAuthor(author);
+      final normalized = author.trim();
+      if (normalized.isEmpty || normalized.toLowerCase() == 'unknown') {
+        return null;
+      }
+      return ref.read(authorWikiServiceProvider).fetchAuthor(normalized);
     });
 
 class TodayTabScreen extends ConsumerWidget {
@@ -35,13 +41,12 @@ class TodayTabScreen extends ConsumerWidget {
       hasUnreadInAppNotificationsProvider,
     );
     final latestNotification = ref.watch(latestInAppNotificationProvider);
-    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    final ambientAudio = ref.watch(ambientAudioProvider);
+    final layout = FlowLayoutInfo.of(context);
 
     return Scaffold(
       body: Stack(
         children: [
-          const EditorialBackground(),
+          const EditorialBackground(seed: 91),
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -50,79 +55,41 @@ class TodayTabScreen extends ConsumerWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: 0.1),
+                      Colors.black.withValues(alpha: 0.12),
                       Colors.transparent,
                       Colors.black.withValues(alpha: 0.28),
                     ],
-                    stops: const [0.0, 0.36, 1.0],
+                    stops: const [0.0, 0.48, 1.0],
                   ),
                 ),
               ),
             ),
           ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                FlowSpace.lg,
-                FlowSpace.md,
-                FlowSpace.lg,
-                FlowSpace.lg,
-              ),
-              child: dailyAsync.when(
-                data: (quote) {
-                  final isSaved = ref
-                      .watch(savedQuoteIdsProvider)
-                      .contains(quote.id);
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _lockscreenDateLabel(DateTime.now()),
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(
-                              color: colors?.textSecondary.withValues(
-                                alpha: 0.94,
-                              ),
-                              letterSpacing: 0.42,
-                            ),
-                      ).animate().fadeIn(duration: FlowDurations.quick),
-                      const SizedBox(height: FlowSpace.xxs),
-                      Row(
+          dailyAsync.when(
+            data: (quote) {
+              final isSaved = ref
+                  .watch(savedQuoteIdsProvider)
+                  .contains(quote.id);
+              return SafeArea(
+                bottom: false,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: layout.maxContentWidth,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        layout.horizontalPadding,
+                        layout.topPadding,
+                        layout.horizontalPadding,
+                        layout.isCompact ? FlowSpace.lg : FlowSpace.xl,
+                      ),
+                      child: Column(
                         children: [
-                          Text(
-                            'Today',
-                            style: Theme.of(context).textTheme.headlineMedium,
-                          ),
-                          const Spacer(),
-                          PremiumSurface(
-                            radius: 999,
-                            elevation: 1,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: FlowSpace.sm,
-                              vertical: FlowSpace.xs,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.local_fire_department_rounded,
-                                  size: 14,
-                                  color: colors?.accent,
-                                ),
-                                const SizedBox(width: FlowSpace.xs),
-                                Text(
-                                  '$streak',
-                                  style: Theme.of(context).textTheme.labelLarge
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: FlowSpace.xs),
-                          _TodayNotificationsButton(
-                            hasUnread: hasUnreadNotifications,
-                            onTap: () async {
+                          _TodayTopBar(
+                            streak: streak,
+                            hasUnreadNotifications: hasUnreadNotifications,
+                            onNotificationsTap: () async {
                               final latestId = latestNotification?.id ?? 0;
                               if (latestId > 0) {
                                 unawaited(
@@ -136,119 +103,96 @@ class TodayTabScreen extends ConsumerWidget {
                               }
                               await showInAppNotificationsSheet(context);
                             },
+                            onSettingsTap: () => context.push('/settings'),
                           ),
-                          const SizedBox(width: FlowSpace.xs),
-                          PremiumIconPillButton(
-                            icon: ambientAudio.muted
-                                ? Icons.volume_off_rounded
-                                : Icons.volume_up_rounded,
-                            compact: true,
-                            onTap: () => ref
-                                .read(ambientAudioProvider.notifier)
-                                .toggleMute(),
-                          ),
-                          const SizedBox(width: FlowSpace.xs),
-                          PremiumIconPillButton(
-                            icon: Icons.tune_rounded,
-                            compact: true,
-                            onTap: () => context.push('/settings'),
-                          ),
-                        ],
-                      ).animate().fadeIn(duration: FlowDurations.regular),
-                      const SizedBox(height: FlowSpace.md),
-                      Expanded(
-                        child: AnimatedSwitcher(
-                          duration: FlowDurations.emphasized,
-                          switchInCurve: FlowDurations.curve,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, animation) {
-                            final floatIn =
-                                Tween<Offset>(
-                                  begin: const Offset(0, 0.025),
-                                  end: Offset.zero,
-                                ).animate(
-                                  CurvedAnimation(
-                                    parent: animation,
-                                    curve: FlowDurations.curve,
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final availableHeight = constraints.maxHeight;
+                                final denseHero =
+                                    layout.isCompactHeight ||
+                                    availableHeight < 620;
+                                final verticalInset = denseHero
+                                    ? FlowSpace.xs
+                                    : FlowSpace.sm;
+
+                                return SingleChildScrollView(
+                                  physics: const BouncingScrollPhysics(),
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: verticalInset,
                                   ),
-                                );
-                            return FadeTransition(
-                              opacity: animation,
-                              child: SlideTransition(
-                                position: floatIn,
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: LayoutBuilder(
-                            key: ValueKey(quote.id),
-                            builder: (context, constraints) {
-                              return SingleChildScrollView(
-                                physics: const BouncingScrollPhysics(),
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    minHeight: constraints.maxHeight,
-                                  ),
-                                  child: Center(
-                                    child: _LockscreenQuoteContent(
-                                      quote: quote.quote,
-                                      author: quote.author,
-                                      onAuthorDetails: () {
-                                        showModalBottomSheet<void>(
-                                          context: context,
-                                          isScrollControlled: true,
-                                          useSafeArea: true,
-                                          backgroundColor: Colors.transparent,
-                                          builder: (context) => AuthorInfoSheet(
-                                            author: quote.author,
-                                            loader: () => ref
-                                                .read(authorWikiServiceProvider)
-                                                .fetchAuthor(quote.author),
-                                          ),
-                                        );
-                                      },
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minHeight:
+                                          availableHeight > verticalInset * 2
+                                          ? availableHeight -
+                                                (verticalInset * 2)
+                                          : 0,
+                                    ),
+                                    child: Center(
+                                      child:
+                                          _MinimalDailyHero(
+                                                quote: quote.quote,
+                                                author: quote.author,
+                                                isSaved: isSaved,
+                                                availableHeight:
+                                                    availableHeight,
+                                                dense: denseHero,
+                                                onToggleSaved: () => ref
+                                                    .read(
+                                                      savedQuoteIdsProvider
+                                                          .notifier,
+                                                    )
+                                                    .toggle(quote.id),
+                                                onShare: () => showStoryShareSheet(
+                                                  context: context,
+                                                  quote: quote,
+                                                  subject:
+                                                      'QuoteFlow: Daily Scroll Quotes',
+                                                ),
+                                                onAuthorDetails: () =>
+                                                    showAuthorInfoSheetForAuthor(
+                                                      context,
+                                                      ref,
+                                                      quote.author,
+                                                    ),
+                                              )
+                                              .animate()
+                                              .fadeIn(
+                                                duration: FlowDurations.regular,
+                                              )
+                                              .moveY(
+                                                begin: 18,
+                                                end: 0,
+                                                duration:
+                                                    FlowDurations.emphasized,
+                                                curve: FlowDurations.curve,
+                                              ),
                                     ),
                                   ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: FlowSpace.md),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          PremiumIconPillButton(
-                            icon: isSaved
-                                ? Icons.bookmark_rounded
-                                : Icons.bookmark_outline_rounded,
-                            label: isSaved ? 'Saved' : 'Save',
-                            compact: true,
-                            active: isSaved,
-                            onTap: () => ref
-                                .read(savedQuoteIdsProvider.notifier)
-                                .toggle(quote.id),
-                          ),
-                          const SizedBox(width: FlowSpace.sm),
-                          PremiumIconPillButton(
-                            icon: Icons.share_outlined,
-                            label: 'Share',
-                            compact: true,
-                            onTap: () => showStoryShareSheet(
-                              context: context,
-                              quote: quote,
-                              subject: 'QuoteFlow: Daily Scroll Quotes',
+                                );
+                              },
                             ),
                           ),
                         ],
-                      ).animate().fadeIn(duration: FlowDurations.regular),
-                    ],
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, stack) =>
-                    Center(child: Text('Failed to load: $error')),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stack) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(FlowSpace.lg),
+                child: PremiumSurface(
+                  blurSigma: 16,
+                  child: Text(
+                    'Failed to load the daily quote: $error',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ),
             ),
           ),
@@ -256,203 +200,486 @@ class TodayTabScreen extends ConsumerWidget {
       ),
     );
   }
+}
 
-  String _lockscreenDateLabel(DateTime date) {
-    const weekdays = <String>[
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    const months = <String>[
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    return '${weekdays[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}';
+class _TodayTopBar extends StatelessWidget {
+  const _TodayTopBar({
+    required this.streak,
+    required this.hasUnreadNotifications,
+    required this.onNotificationsTap,
+    required this.onSettingsTap,
+  });
+
+  final int streak;
+  final bool hasUnreadNotifications;
+  final VoidCallback onNotificationsTap;
+  final VoidCallback onSettingsTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final layout = FlowLayoutInfo.of(context);
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Today',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: colors?.textPrimary,
+                  fontSize: layout.isCompact ? 22 : null,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _streakLabel(streak),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors?.textSecondary.withValues(alpha: 0.86),
+                ),
+              ),
+            ],
+          ),
+        ),
+        _TodayNotificationsButton(
+          hasUnread: hasUnreadNotifications,
+          onTap: onNotificationsTap,
+        ),
+        const SizedBox(width: FlowSpace.xs),
+        PremiumIconPillButton(
+          icon: Icons.tune_rounded,
+          compact: true,
+          onTap: onSettingsTap,
+        ),
+      ],
+    );
   }
 }
 
-class _LockscreenQuoteContent extends StatelessWidget {
-  const _LockscreenQuoteContent({
+class _MinimalDailyHero extends StatelessWidget {
+  const _MinimalDailyHero({
     required this.quote,
     required this.author,
+    required this.isSaved,
+    required this.availableHeight,
+    required this.dense,
+    required this.onToggleSaved,
+    required this.onShare,
     required this.onAuthorDetails,
   });
 
   final String quote;
   final String author;
+  final bool isSaved;
+  final double availableHeight;
+  final bool dense;
+  final VoidCallback onToggleSaved;
+  final VoidCallback onShare;
   final VoidCallback onAuthorDetails;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final colors = flow?.colors;
+    final gradients = flow?.gradients;
+    final layout = FlowLayoutInfo.of(context);
     final words = quote
         .split(RegExp(r'\s+'))
         .where((token) => token.trim().isNotEmpty)
         .length;
+    final isShortViewport =
+        dense || layout.isCompactHeight || availableHeight < 620;
 
-    final quoteSize = switch (words) {
-      <= 12 => 40.0,
-      <= 22 => 35.0,
-      <= 34 => 30.0,
-      <= 48 => 26.0,
-      _ => 22.0,
+    final baseQuoteSize = switch (words) {
+      <= 12 => layout.isCompact ? 42.0 : 52.0,
+      <= 22 => layout.isCompact ? 34.0 : 42.0,
+      <= 36 => layout.isCompact ? 30.0 : 36.0,
+      <= 48 => layout.isCompact ? 27.0 : 32.0,
+      _ => layout.isCompact ? 23.0 : 28.0,
     };
+    final quoteSize = isShortViewport
+        ? (baseQuoteSize - 4).clamp(21.0, 46.0)
+        : baseQuoteSize;
+    final minQuoteSize = isShortViewport ? 17.0 : 19.0;
+    final quoteLineLimit = switch (availableHeight) {
+      < 520 => 7,
+      < 620 => 8,
+      < 760 => 9,
+      _ => 10,
+    };
+    final haloSize = layout.fluid(
+      min: isShortViewport ? 220 : 260,
+      max: isShortViewport ? 300 : 340,
+    );
+    final portraitSize = layout.fluid(
+      min: isShortViewport ? 70 : 78,
+      max: isShortViewport ? 86 : 98,
+    );
+    final eyebrowGap = isShortViewport
+        ? FlowSpace.sm
+        : (layout.isCompact ? FlowSpace.md : FlowSpace.lg);
+    final authorGap = isShortViewport
+        ? FlowSpace.md
+        : (layout.isCompact ? FlowSpace.lg : FlowSpace.xl);
+    final actionGap = isShortViewport ? FlowSpace.sm : FlowSpace.md;
+    final authorFontSize = isShortViewport
+        ? (layout.isCompact ? 18.0 : 19.0)
+        : (layout.isCompact ? 20.0 : null);
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 760, minWidth: 220),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: FlowSpace.sm,
-          vertical: FlowSpace.md,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _TodayAuthorPortrait(author: author),
-            Text(
-              '"',
-              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                color: colors?.textSecondary.withValues(alpha: 0.36),
-                height: 0.66,
-                fontWeight: FontWeight.w600,
+      constraints: BoxConstraints(maxWidth: layout.textColumnWidth),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          IgnorePointer(
+            child: Container(
+              width: haloSize,
+              height: haloSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    (gradients?.accentStart ?? Colors.white).withValues(
+                      alpha: 0.18,
+                    ),
+                    (gradients?.accentEnd ?? Colors.white).withValues(
+                      alpha: 0.08,
+                    ),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.42, 1.0],
+                ),
               ),
             ),
-            Text(
-              quote,
-              textAlign: TextAlign.center,
-              style:
-                  FlowTypography.quoteStyle(
-                    color: colors?.textPrimary ?? Colors.white,
-                    fontSize: quoteSize,
-                  ).copyWith(
-                    height: words > 42 ? 1.45 : 1.38,
-                    shadows: [
-                      Shadow(
-                        blurRadius: 24,
-                        color: Colors.black.withValues(alpha: 0.28),
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: layout.isCompact ? FlowSpace.xs : FlowSpace.md,
             ),
-            const SizedBox(height: FlowSpace.lg),
-            Container(
-              height: 1,
-              width: 172,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.transparent,
-                    colors?.divider.withValues(alpha: 0.9) ??
-                        Colors.white.withValues(alpha: 0.2),
-                    Colors.transparent,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Quote of the day',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colors?.accentSecondary.withValues(alpha: 0.88),
+                    letterSpacing: isShortViewport ? 0.9 : 1.1,
+                  ),
+                ),
+                SizedBox(height: eyebrowGap),
+                AutoSizeText(
+                  quote,
+                  textAlign: TextAlign.center,
+                  maxLines: quoteLineLimit,
+                  minFontSize: minQuoteSize,
+                  stepGranularity: 1,
+                  style:
+                      FlowTypography.quoteStyle(
+                        context: context,
+                        color: colors?.textPrimary ?? Colors.white,
+                        fontSize: quoteSize,
+                        weight: FontWeight.w500,
+                      ).copyWith(
+                        height: words > 38 ? 1.4 : 1.32,
+                        shadows: [
+                          Shadow(
+                            blurRadius: 28,
+                            color: Colors.black.withValues(alpha: 0.28),
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                ),
+                SizedBox(height: authorGap),
+                _TodayAuthorPortrait(
+                  author: author,
+                  size: portraitSize,
+                  onTap: onAuthorDetails,
+                ),
+                SizedBox(height: isShortViewport ? FlowSpace.sm : FlowSpace.md),
+                ScaleTap(
+                  onTap: onAuthorDetails,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: FlowSpace.xs,
+                      vertical: 2,
+                    ),
+                    child: Text(
+                      author,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: colors?.accentSecondary.withValues(alpha: 0.98),
+                        fontWeight: FontWeight.w600,
+                        fontSize: authorFontSize,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: actionGap),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: layout.isCompact ? FlowSpace.sm : FlowSpace.md,
+                  runSpacing: FlowSpace.xs,
+                  children: [
+                    _HeroInlineAction(
+                      icon: Icons.person_outline_rounded,
+                      label: 'Details',
+                      onTap: onAuthorDetails,
+                    ),
+                    _HeroInlineAction(
+                      icon: isSaved
+                          ? Icons.bookmark_rounded
+                          : Icons.bookmark_outline_rounded,
+                      label: isSaved ? 'Saved' : 'Save',
+                      active: isSaved,
+                      onTap: onToggleSaved,
+                    ),
+                    _HeroInlineAction(
+                      icon: Icons.ios_share_rounded,
+                      label: 'Share',
+                      onTap: onShare,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodayAuthorPortrait extends ConsumerWidget {
+  const _TodayAuthorPortrait({
+    required this.author,
+    required this.size,
+    required this.onTap,
+  });
+
+  final String author;
+  final double size;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final colors = flow?.colors;
+    final gradients = flow?.gradients;
+    final normalized = author.trim();
+    final profileAsync = ref.watch(_todayAuthorProfileProvider(normalized));
+    final outerSize = size + 10;
+
+    return Semantics(
+      button: true,
+      label: 'Open details for $author',
+      child: ScaleTap(
+        onTap: onTap,
+        child: Container(
+          width: outerSize,
+          height: outerSize,
+          padding: const EdgeInsets.all(1.6),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: SweepGradient(
+              colors: [
+                (gradients?.accentStart ?? Colors.white).withValues(
+                  alpha: 0.78,
+                ),
+                Colors.white.withValues(alpha: 0.2),
+                (gradients?.accentEnd ?? Colors.white).withValues(alpha: 0.72),
+                (gradients?.accentStart ?? Colors.white).withValues(
+                  alpha: 0.78,
+                ),
+              ],
+              stops: const [0.0, 0.34, 0.72, 1.0],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: (gradients?.accentStart ?? Colors.white).withValues(
+                  alpha: 0.16,
+                ),
+                blurRadius: 24,
+                spreadRadius: 1,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: (colors?.surface ?? Colors.black).withValues(alpha: 0.92),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(3),
+              child: ClipOval(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    profileAsync.when(
+                      data: (profile) {
+                        final imageUrl = profile?.imageUrl?.trim();
+                        if (imageUrl == null || imageUrl.isEmpty) {
+                          return _TodayAuthorFallback(size: size);
+                        }
+                        return AdaptiveAuthorImage(
+                          imageUrl: imageUrl,
+                          placeholder: _TodayAuthorFallback(size: size),
+                          error: _TodayAuthorFallback(size: size),
+                        );
+                      },
+                      loading: () => _TodayAuthorFallback(size: size),
+                      error: (_, _) => _TodayAuthorFallback(size: size),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.14),
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.12),
+                          ],
+                          stops: const [0.0, 0.34, 1.0],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: FlowSpace.sm),
-            _GoldBlueFadeName(
-              text: '- $author',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                letterSpacing: 0.24,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: FlowSpace.xs),
-            TextButton.icon(
-              onPressed: onAuthorDetails,
-              icon: const Icon(Icons.open_in_new_rounded, size: 14),
-              label: const Text('Author details'),
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                foregroundColor: colors?.textSecondary.withValues(alpha: 0.95),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _GoldBlueFadeName extends StatelessWidget {
-  const _GoldBlueFadeName({
-    required this.text,
-    required this.style,
-    this.textAlign = TextAlign.start,
-  });
+class _TodayAuthorFallback extends StatelessWidget {
+  const _TodayAuthorFallback({required this.size});
 
-  final String text;
-  final TextStyle? style;
-  final TextAlign textAlign;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    final fillStyle =
-        style?.copyWith(color: Colors.white) ??
-        const TextStyle(color: Colors.white);
-    final edgeStyle = fillStyle.copyWith(
-      foreground: (Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0
-        ..color = const Color(0xFF53340F).withValues(alpha: 0.88)),
-    );
+    final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final colors = flow?.colors;
+    final gradients = flow?.gradients;
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Text(text, textAlign: textAlign, style: edgeStyle),
-        ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback: (bounds) {
-            return const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF6B4512),
-                Color(0xFFB57A22),
-                Color(0xFFF9DC8E),
-                Color(0xFFC98A2F),
-                Color(0xFF7A5117),
-              ],
-              stops: [0.0, 0.25, 0.5, 0.74, 1.0],
-            ).createShader(bounds);
-          },
-          child: Text(text, textAlign: textAlign, style: fillStyle),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            (gradients?.accentStart ?? Colors.white).withValues(alpha: 0.72),
+            (colors?.surface ?? Colors.black).withValues(alpha: 0.96),
+          ],
         ),
-        ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback: (bounds) {
-            return const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0x00FFFFFF),
-                Color(0x99FFF4CD),
-                Color(0x11FFFFFF),
-                Color(0x00FFFFFF),
-              ],
-              stops: [0.0, 0.28, 0.46, 1.0],
-            ).createShader(bounds);
-          },
-          child: Text(text, textAlign: textAlign, style: fillStyle),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.person_outline_rounded,
+          size: size * 0.36,
+          color: colors?.textPrimary.withValues(alpha: 0.9) ?? Colors.white,
         ),
-      ],
+      ),
+    );
+  }
+}
+
+class _HeroInlineAction extends StatelessWidget {
+  const _HeroInlineAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final colors = flow?.colors;
+    final gradients = flow?.gradients;
+    final layout = FlowLayoutInfo.of(context);
+    final accentColor = active
+        ? colors?.accentSecondary ?? Colors.white
+        : colors?.textSecondary.withValues(alpha: 0.84) ?? Colors.white70;
+
+    return ScaleTap(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: layout.isCompact ? 6 : 8,
+          vertical: 4,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: layout.isCompact ? 16 : 18,
+                  color: accentColor,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: active
+                        ? colors?.textPrimary ?? Colors.white
+                        : colors?.textSecondary.withValues(alpha: 0.82),
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    letterSpacing: 0.18,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            AnimatedContainer(
+              duration: FlowDurations.regular,
+              curve: FlowDurations.curve,
+              width: active ? 28 : 16,
+              height: 1.6,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                gradient: LinearGradient(
+                  colors: active
+                      ? [
+                          (gradients?.accentStart ?? Colors.white).withValues(
+                            alpha: 0.95,
+                          ),
+                          (gradients?.accentEnd ?? Colors.white).withValues(
+                            alpha: 0.84,
+                          ),
+                        ]
+                      : [
+                          (colors?.divider ?? Colors.white24).withValues(
+                            alpha: 0.28,
+                          ),
+                          Colors.transparent,
+                        ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -508,125 +735,8 @@ class _TodayNotificationsButton extends StatelessWidget {
   }
 }
 
-class _TodayAuthorPortrait extends ConsumerWidget {
-  const _TodayAuthorPortrait({required this.author});
-
-  final String author;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    final profileAsync = ref.watch(_todayAuthorProfileProvider(author));
-
-    return profileAsync.when(
-      data: (profile) {
-        final imageUrl = profile?.imageUrl?.trim();
-        final hasImage = imageUrl != null && imageUrl.isNotEmpty;
-        if (!hasImage) {
-          return const SizedBox.shrink();
-        }
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 132,
-              height: 132,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    width: 132,
-                    height: 132,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          (colors?.accent ?? Colors.white).withValues(
-                            alpha: 0.18,
-                          ),
-                          (colors?.accent ?? Colors.white).withValues(
-                            alpha: 0.08,
-                          ),
-                          Colors.transparent,
-                        ],
-                        stops: const [0.12, 0.52, 1.0],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (colors?.accent ?? Colors.white).withValues(
-                            alpha: 0.22,
-                          ),
-                          blurRadius: 42,
-                          spreadRadius: 4,
-                        ),
-                        BoxShadow(
-                          color: (colors?.textPrimary ?? Colors.white)
-                              .withValues(alpha: 0.1),
-                          blurRadius: 24,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 108,
-                    height: 108,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: (colors?.accent ?? Colors.white).withValues(
-                            alpha: 0.22,
-                          ),
-                          blurRadius: 26,
-                          spreadRadius: 1,
-                        ),
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.18),
-                          blurRadius: 14,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: AdaptiveAuthorImage(
-                        imageUrl: imageUrl,
-                        placeholder: _TodayAvatarFallback(colors: colors),
-                        error: _TodayAvatarFallback(colors: colors),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: FlowSpace.md),
-          ],
-        );
-      },
-      loading: () => const SizedBox.shrink(),
-      error: (error, stackTrace) => const SizedBox.shrink(),
-    );
-  }
-}
-
-class _TodayAvatarFallback extends StatelessWidget {
-  const _TodayAvatarFallback({required this.colors});
-
-  final FlowColorTokens? colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors?.surface.withValues(alpha: 0.9) ?? Colors.black54,
-      ),
-      child: Center(
-        child: Icon(
-          Icons.person_outline_rounded,
-          size: 34,
-          color: colors?.textSecondary.withValues(alpha: 0.92),
-        ),
-      ),
-    );
-  }
+String _streakLabel(int streak) {
+  if (streak <= 0) return 'Fresh start';
+  if (streak == 1) return '1 day streak';
+  return '$streak day streak';
 }

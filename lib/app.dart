@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'features/v3_audio/ambient_audio_controller.dart';
 import 'features/v3_background/background_theme_provider.dart';
 import 'features/v3_notifications/in_app_notifications_providers.dart';
 import 'features/v3_notifications/notification_providers.dart';
 import 'providers/auth_bootstrap_provider.dart';
+import 'providers/quote_providers.dart';
 import 'providers/router_provider.dart';
 import 'providers/streak_provider.dart';
 import 'theme/app_theme.dart';
@@ -21,14 +21,39 @@ class QuoteOfTheDayApp extends ConsumerStatefulWidget {
   ConsumerState<QuoteOfTheDayApp> createState() => _QuoteOfTheDayAppState();
 }
 
-class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
+class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp>
+    with WidgetsBindingObserver {
   bool _showSplash = true;
   bool _didStartBootstrap = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _startNotificationBootstrap();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    Future<void>(() async {
+      try {
+        await ref
+            .read(notificationSettingsProvider.notifier)
+            .refreshForRuntimeStateChange();
+        await ref.read(inAppNotificationsBootstrapProvider).syncNow();
+        await ref.read(quoteRepositoryProvider).refreshNow();
+        ref.invalidate(allQuotesProvider);
+      } catch (error) {
+        debugPrint('[App] Resume refresh failed: $error');
+      }
+    });
   }
 
   void _startNotificationBootstrap() {
@@ -54,13 +79,6 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
-    ref.watch(ambientAudioProvider);
-    ref.listen<AppBackgroundTheme>(appBackgroundThemeProvider, (
-      previous,
-      next,
-    ) {
-      ref.read(ambientAudioProvider.notifier).applyTheme(next);
-    });
     ref.watch(authBootstrapProvider);
     ref.watch(streakProvider);
     ref.watch(inAppNotificationsBootstrapProvider);
@@ -85,9 +103,6 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp> {
                 onPointerDown: (event) {
                   AnimatedGradientBackground.emitGlobalPointerDown(
                     event.position,
-                  );
-                  unawaited(
-                    ref.read(ambientAudioProvider.notifier).onUserInteraction(),
                   );
                 },
                 onPointerMove: (event) {

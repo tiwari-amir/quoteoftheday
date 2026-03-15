@@ -110,47 +110,47 @@ class _SplashScreenState extends State<SplashScreen>
             child: DecoratedBox(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                   colors: <Color>[
-                    Color(0xFF0E0C1A),
-                    Color(0xFF19162A),
-                    Color(0xFF3A273A),
-                    Color(0xFF724942),
+                    Color(0xFF03070B),
+                    Color(0xFF071018),
+                    Color(0xFF0B1721),
+                    Color(0xFF0A0F14),
                   ],
-                  stops: <double>[0.0, 0.35, 0.74, 1.0],
+                  stops: <double>[0.0, 0.28, 0.72, 1.0],
                 ),
               ),
               child: Stack(
                 children: <Widget>[
                   Positioned(
-                    left: -84,
-                    top: -70,
+                    left: -110,
+                    top: -84,
                     child: IgnorePointer(
                       child: Container(
-                        width: 230,
-                        height: 230,
+                        width: 280,
+                        height: 280,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: const Color(
-                            0xFFFFD4AB,
-                          ).withValues(alpha: 0.07),
+                            0xFFD6A55C,
+                          ).withValues(alpha: 0.06),
                         ),
                       ),
                     ),
                   ),
                   Positioned(
-                    right: -90,
-                    bottom: -76,
+                    right: -110,
+                    bottom: -90,
                     child: IgnorePointer(
                       child: Container(
-                        width: 250,
-                        height: 250,
+                        width: 310,
+                        height: 310,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: const Color(
-                            0xFFEEA175,
-                          ).withValues(alpha: 0.06),
+                            0xFF153247,
+                          ).withValues(alpha: 0.12),
                         ),
                       ),
                     ),
@@ -159,14 +159,48 @@ class _SplashScreenState extends State<SplashScreen>
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: RadialGradient(
-                          center: const Alignment(0.0, -0.1),
-                          radius: 1.0,
+                          center: const Alignment(0.0, -0.18),
+                          radius: 1.12,
                           colors: <Color>[
-                            const Color(0xFFF6BB86).withValues(alpha: 0.12),
-                            const Color(0xFFFFDAB8).withValues(alpha: 0.04),
+                            const Color(0xFFD6A55C).withValues(alpha: 0.12),
+                            const Color(0xFF1B3B53).withValues(alpha: 0.08),
                             Colors.transparent,
                           ],
-                          stops: const <double>[0.0, 0.36, 1.0],
+                          stops: const <double>[0.0, 0.32, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: Container(
+                        height: 220,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              const Color(0xFF091119).withValues(alpha: 0.84),
+                              const Color(0xFF05080C),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: -20,
+                    right: -20,
+                    bottom: -8,
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        size: const Size(double.infinity, 180),
+                        painter: _SplashLandscapePainter(
+                          opacity: compositeOpacity,
                         ),
                       ),
                     ),
@@ -229,31 +263,31 @@ class _SplashScreenState extends State<SplashScreen>
                               alignment: Alignment.center,
                               children: <Widget>[
                                 Opacity(
-                                  opacity: _bloom.value * 0.24,
+                                  opacity: _bloom.value * 0.18,
                                   child: Container(
-                                    width: 192,
-                                    height: 192,
+                                    width: 184,
+                                    height: 184,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       border: Border.all(
                                         color: const Color(
-                                          0xFFFFD8B2,
-                                        ).withValues(alpha: 0.28),
+                                          0xFFD6A55C,
+                                        ).withValues(alpha: 0.24),
                                         width: 1.0,
                                       ),
                                     ),
                                   ),
                                 ),
                                 Opacity(
-                                  opacity: _bloom.value * 0.15,
+                                  opacity: _bloom.value * 0.12,
                                   child: Container(
-                                    width: 228,
-                                    height: 228,
-                                    decoration: const BoxDecoration(
+                                    width: 256,
+                                    height: 256,
+                                    decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       gradient: RadialGradient(
                                         colors: <Color>[
-                                          Color(0xFFF5AE72),
+                                          Color(0xFFD6A55C),
                                           Colors.transparent,
                                         ],
                                       ),
@@ -263,60 +297,58 @@ class _SplashScreenState extends State<SplashScreen>
                                 ScaleTransition(
                                   scale: _iconScale,
                                   child: Container(
-                                    width: 124,
-                                    height: 124,
+                                    width: 118,
+                                    height: 118,
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(34),
+                                      shape: BoxShape.circle,
                                       border: Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.24,
-                                        ),
+                                        color: const Color(
+                                          0xFFE8C98B,
+                                        ).withValues(alpha: 0.38),
                                       ),
                                       gradient: LinearGradient(
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                         colors: <Color>[
                                           const Color(
-                                            0xFF3A2A3B,
-                                          ).withValues(alpha: 0.52),
+                                            0xFF1A242D,
+                                          ).withValues(alpha: 0.98),
                                           const Color(
-                                            0xFF1C162A,
-                                          ).withValues(alpha: 0.38),
+                                            0xFF0D141C,
+                                          ).withValues(alpha: 0.92),
                                         ],
                                       ),
                                       boxShadow: <BoxShadow>[
                                         BoxShadow(
                                           color: Colors.black.withValues(
-                                            alpha: 0.36,
+                                            alpha: 0.42,
                                           ),
-                                          blurRadius: 26,
-                                          offset: const Offset(0, 12),
+                                          blurRadius: 30,
+                                          offset: const Offset(0, 18),
                                         ),
                                         BoxShadow(
                                           color: const Color(
-                                            0xFFF5AE72,
-                                          ).withValues(alpha: 0.1),
-                                          blurRadius: 22,
+                                            0xFFD6A55C,
+                                          ).withValues(alpha: 0.12),
+                                          blurRadius: 26,
                                           spreadRadius: 1,
                                         ),
                                       ],
                                     ),
                                     child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(34),
+                                      borderRadius: BorderRadius.circular(999),
                                       child: Image.asset(
                                         'assets/branding/app_icon.png',
                                         fit: BoxFit.cover,
                                         filterQuality: FilterQuality.medium,
                                         errorBuilder: (context, error, stack) {
                                           return Container(
-                                            color: const Color(0xFF1A1325),
+                                            color: const Color(0xFF0E151C),
                                             alignment: Alignment.center,
                                             child: Icon(
                                               Icons.format_quote_rounded,
                                               size: 54,
-                                              color: Colors.white.withValues(
-                                                alpha: 0.85,
-                                              ),
+                                              color: const Color(0xFFD6A55C),
                                             ),
                                           );
                                         },
@@ -335,13 +367,26 @@ class _SplashScreenState extends State<SplashScreen>
                               child: Column(
                                 children: <Widget>[
                                   Text(
+                                    'A line can shift the day.',
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(
+                                        0xFFD6A55C,
+                                      ).withValues(alpha: 0.88),
+                                      letterSpacing: 0.58,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Text(
                                     'QuoteFlow',
                                     style: GoogleFonts.playfairDisplay(
-                                      fontSize: 45,
+                                      fontSize: 44,
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.white.withValues(
-                                        alpha: 0.96,
-                                      ),
+                                      color: const Color(
+                                        0xFFF4E9D8,
+                                      ).withValues(alpha: 0.98),
                                       letterSpacing: 0.32,
                                       height: 1.02,
                                       decoration: TextDecoration.none,
@@ -349,15 +394,44 @@ class _SplashScreenState extends State<SplashScreen>
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Scroll daily quotes.',
+                                    'An immersive daily reading ritual.',
                                     style: GoogleFonts.dmSans(
-                                      fontSize: 13.6,
+                                      fontSize: 13.4,
                                       fontWeight: FontWeight.w500,
-                                      color: Colors.white.withValues(
-                                        alpha: 0.74,
-                                      ),
+                                      color: const Color(
+                                        0xFFC5B59A,
+                                      ).withValues(alpha: 0.82),
                                       letterSpacing: 0.32,
                                       decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 42),
+                                  Container(
+                                    width: 116,
+                                    height: 3,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(999),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: FractionallySizedBox(
+                                        widthFactor: (_controller.value * 1.08)
+                                            .clamp(0.0, 1.0),
+                                        child: Container(
+                                          decoration: const BoxDecoration(
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                Color(0xFFD6A55C),
+                                                Color(0xFFE8C98B),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -375,6 +449,81 @@ class _SplashScreenState extends State<SplashScreen>
         },
       ),
     );
+  }
+}
+
+class _SplashLandscapePainter extends CustomPainter {
+  const _SplashLandscapePainter({required this.opacity});
+
+  final double opacity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (opacity <= 0) return;
+
+    final back = Path()
+      ..moveTo(0, size.height * 0.72)
+      ..quadraticBezierTo(
+        size.width * 0.16,
+        size.height * 0.52,
+        size.width * 0.34,
+        size.height * 0.68,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.5,
+        size.height * 0.46,
+        size.width * 0.7,
+        size.height * 0.72,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.84,
+        size.height * 0.6,
+        size.width,
+        size.height * 0.74,
+      )
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    final front = Path()
+      ..moveTo(0, size.height * 0.82)
+      ..quadraticBezierTo(
+        size.width * 0.12,
+        size.height * 0.7,
+        size.width * 0.26,
+        size.height * 0.8,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.42,
+        size.height * 0.58,
+        size.width * 0.6,
+        size.height * 0.86,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.82,
+        size.height * 0.7,
+        size.width,
+        size.height * 0.84,
+      )
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(
+      back,
+      Paint()
+        ..color = const Color(0xFF12202B).withValues(alpha: 0.76 * opacity),
+    );
+    canvas.drawPath(
+      front,
+      Paint()
+        ..color = const Color(0xFF091119).withValues(alpha: 0.98 * opacity),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SplashLandscapePainter oldDelegate) {
+    return oldDelegate.opacity != opacity;
   }
 }
 

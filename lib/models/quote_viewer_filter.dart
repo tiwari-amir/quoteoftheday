@@ -8,6 +8,8 @@ class QuoteViewerFilter {
   String get normalizedTag => tag.trim().toLowerCase();
 
   bool get isMood => normalizedType == 'mood';
+  bool get isAuthor => normalizedType == 'author';
+  bool get isSearch => normalizedType == 'search';
 
   @override
   bool operator ==(Object other) {
