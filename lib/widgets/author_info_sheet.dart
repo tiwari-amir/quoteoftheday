@@ -23,6 +23,7 @@ void showAuthorInfoSheetForAuthor(
 
   showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     enableDrag: true,
     isDismissible: true,
