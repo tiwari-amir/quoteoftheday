@@ -27,6 +27,9 @@ class PremiumAuthorDiscoveryCard extends ConsumerWidget {
     required this.onTap,
     this.variant = PremiumAuthorDiscoveryCardVariant.rail,
     this.animationIndex = 0,
+    this.descriptorOverride,
+    this.roleLabelOverride,
+    this.fetchProfile = true,
   });
 
   final String authorName;
@@ -35,14 +38,23 @@ class PremiumAuthorDiscoveryCard extends ConsumerWidget {
   final VoidCallback onTap;
   final PremiumAuthorDiscoveryCardVariant variant;
   final int animationIndex;
+  final String? descriptorOverride;
+  final String? roleLabelOverride;
+  final bool fetchProfile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    final profileAsync = ref.watch(_authorDiscoveryProfileProvider(authorName));
-    final profile = profileAsync.valueOrNull;
-    final descriptor = _buildDescriptor(profile);
-    final roleLabel = _shortRoleLabel(profile);
+    final profileAsync = fetchProfile
+        ? ref.watch(_authorDiscoveryProfileProvider(authorName))
+        : null;
+    final profile = profileAsync?.valueOrNull;
+    final descriptor = descriptorOverride?.trim().isNotEmpty == true
+        ? descriptorOverride!.trim()
+        : _buildDescriptor(profile);
+    final roleLabel = roleLabelOverride?.trim().isNotEmpty == true
+        ? roleLabelOverride!.trim().toUpperCase()
+        : _shortRoleLabel(profile);
     final visuals = _AuthorRankVisuals.forRank(rank, colors);
     final isRail = variant == PremiumAuthorDiscoveryCardVariant.rail;
     final compact = !isRail;

@@ -10,16 +10,18 @@ import '../../widgets/premium/premium_author_discovery_card.dart';
 import '../../widgets/premium/premium_components.dart';
 import '../../widgets/premium/premium_search_field.dart';
 
-class AuthorsIndexScreen extends ConsumerStatefulWidget {
-  const AuthorsIndexScreen({super.key, this.initialQuery = ''});
+class AttributionSourcesIndexScreen extends ConsumerStatefulWidget {
+  const AttributionSourcesIndexScreen({super.key, this.initialQuery = ''});
 
   final String initialQuery;
 
   @override
-  ConsumerState<AuthorsIndexScreen> createState() => _AuthorsIndexScreenState();
+  ConsumerState<AttributionSourcesIndexScreen> createState() =>
+      _AttributionSourcesIndexScreenState();
 }
 
-class _AuthorsIndexScreenState extends ConsumerState<AuthorsIndexScreen> {
+class _AttributionSourcesIndexScreenState
+    extends ConsumerState<AttributionSourcesIndexScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _query = '';
@@ -43,7 +45,7 @@ class _AuthorsIndexScreenState extends ConsumerState<AuthorsIndexScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final authorsAsync = ref.watch(authorCatalogProvider);
+    final sourcesAsync = ref.watch(attributionSourceCatalogProvider);
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
     final layout = FlowLayoutInfo.of(context);
 
@@ -51,7 +53,7 @@ class _AuthorsIndexScreenState extends ConsumerState<AuthorsIndexScreen> {
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          const EditorialBackground(),
+          const EditorialBackground(seed: 79),
           SafeArea(
             bottom: false,
             child: Center(
@@ -80,12 +82,12 @@ class _AuthorsIndexScreenState extends ConsumerState<AuthorsIndexScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Authors',
+                                  'Sources',
                                   style: Theme.of(context).textTheme.titleLarge,
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Browse every voice in your library.',
+                                  'Proverbs, sayings, slogans, and anonymous voices.',
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(
                                         color: colors?.textSecondary.withValues(
@@ -102,7 +104,7 @@ class _AuthorsIndexScreenState extends ConsumerState<AuthorsIndexScreen> {
                       PremiumSearchField(
                         controller: _searchController,
                         focusNode: _searchFocusNode,
-                        hintText: 'Search authors',
+                        hintText: 'Search proverb or source',
                         onChanged: (value) =>
                             setState(() => _query = value.trim().toLowerCase()),
                         onClear: () {
@@ -112,27 +114,27 @@ class _AuthorsIndexScreenState extends ConsumerState<AuthorsIndexScreen> {
                       ),
                       const SizedBox(height: FlowSpace.md),
                       Expanded(
-                        child: authorsAsync.when(
-                          data: (authors) {
+                        child: sourcesAsync.when(
+                          data: (sources) {
                             final normalizedQuery = _query.trim().toLowerCase();
                             final filtered = normalizedQuery.isEmpty
-                                ? authors
-                                : authors
+                                ? sources
+                                : sources
                                       .where(
-                                        (author) =>
-                                            author.authorName
+                                        (entry) =>
+                                            entry.sourceName
                                                 .toLowerCase()
                                                 .contains(normalizedQuery) ||
-                                            author.authorKey.contains(
-                                              normalizedQuery,
-                                            ),
+                                            entry.kindLabel
+                                                .toLowerCase()
+                                                .contains(normalizedQuery),
                                       )
                                       .toList(growable: false);
 
                             if (filtered.isEmpty) {
                               return Center(
                                 child: Text(
-                                  'No authors found.',
+                                  'No sources found.',
                                   style: Theme.of(context).textTheme.bodyLarge,
                                 ),
                               );
@@ -156,18 +158,25 @@ class _AuthorsIndexScreenState extends ConsumerState<AuthorsIndexScreen> {
                                         : 0.68,
                                   ),
                               itemCount: filtered.length,
-                              itemBuilder: (context, index) =>
-                                  PremiumAuthorDiscoveryCard(
-                                    authorName: filtered[index].authorName,
-                                    rank: index + 1,
-                                    quoteCount: filtered[index].quoteCount,
-                                    variant:
-                                        PremiumAuthorDiscoveryCardVariant.grid,
-                                    animationIndex: index,
-                                    onTap: () => context.push(
-                                      '/authors/${Uri.encodeComponent(filtered[index].authorKey)}?label=${Uri.encodeComponent(filtered[index].authorName)}',
-                                    ),
+                              itemBuilder: (context, index) {
+                                final source = filtered[index];
+                                return PremiumAuthorDiscoveryCard(
+                                  authorName: source.sourceName,
+                                  rank: index + 1,
+                                  quoteCount: source.quoteCount,
+                                  descriptorOverride: sourceStyleDescriptor(
+                                    source.sourceName,
                                   ),
+                                  roleLabelOverride: source.kindLabel,
+                                  fetchProfile: false,
+                                  variant:
+                                      PremiumAuthorDiscoveryCardVariant.grid,
+                                  animationIndex: index,
+                                  onTap: () => context.push(
+                                    '/sources/${Uri.encodeComponent(source.sourceKey)}?label=${Uri.encodeComponent(source.sourceName)}',
+                                  ),
+                                );
+                              },
                             );
                           },
                           loading: () =>

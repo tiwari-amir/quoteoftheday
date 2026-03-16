@@ -110,6 +110,7 @@ class PremiumSearchField extends StatelessWidget {
                         focusNode: focusNode,
                         onChanged: onChanged,
                         onSubmitted: onSubmitted,
+                        scrollPadding: EdgeInsets.zero,
                         textInputAction: TextInputAction.search,
                         textAlignVertical: TextAlignVertical.center,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(

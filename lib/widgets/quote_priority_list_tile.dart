@@ -17,12 +17,14 @@ class QuotePriorityListTile extends ConsumerWidget {
     required this.onTap,
     this.metaLabel,
     this.showAuthorName = true,
+    this.showPortrait = true,
   });
 
   final QuoteModel quote;
   final VoidCallback onTap;
   final String? metaLabel;
   final bool showAuthorName;
+  final bool showPortrait;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -65,11 +67,13 @@ class QuotePriorityListTile extends ConsumerWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: AuthorPortraitCircle(
-                  author: quote.author,
-                  size: layout.isCompact ? 36 : 40,
-                  interactive: false,
-                ),
+                child: showPortrait
+                    ? AuthorPortraitCircle(
+                        author: quote.author,
+                        size: layout.isCompact ? 36 : 40,
+                        interactive: false,
+                      )
+                    : _QuoteGlyphBadge(size: layout.isCompact ? 36 : 40),
               ),
               const SizedBox(width: FlowSpace.sm),
               Expanded(
@@ -177,6 +181,38 @@ class _QuoteRowActionButton extends StatelessWidget {
         tooltip: tooltip,
         onPressed: onPressed,
         icon: Icon(icon, size: 17, color: color),
+      ),
+    );
+  }
+}
+
+class _QuoteGlyphBadge extends StatelessWidget {
+  const _QuoteGlyphBadge({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            (colors?.accent ?? Colors.white).withValues(alpha: 0.2),
+            (colors?.surface ?? Colors.black).withValues(alpha: 0.9),
+          ],
+        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Icon(
+        Icons.format_quote_rounded,
+        size: size * 0.42,
+        color: colors?.accent ?? Colors.white70,
       ),
     );
   }

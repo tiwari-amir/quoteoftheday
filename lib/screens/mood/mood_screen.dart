@@ -47,6 +47,7 @@ class _MoodScreenState extends ConsumerState<MoodScreen> {
     final layout = FlowLayoutInfo.of(context);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           const EditorialBackground(),
@@ -267,6 +268,7 @@ class _MoodDetailView extends ConsumerWidget {
     );
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       floatingActionButton: quotesAsync.maybeWhen(
         data: (quotes) => quotes.isEmpty
             ? null

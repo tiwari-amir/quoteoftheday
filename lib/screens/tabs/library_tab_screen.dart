@@ -120,6 +120,7 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
     final previousMilestone = _previousMilestone(scrolledCount);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           const EditorialBackground(),

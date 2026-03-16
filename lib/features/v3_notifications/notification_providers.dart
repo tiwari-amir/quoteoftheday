@@ -215,7 +215,9 @@ class NotificationSettingsNotifier
     String? authorImageUrl;
     bool showReadFullAction = false;
     try {
-      final quote = await _ref.read(dailyQuoteProvider.future);
+      final quote = await _ref
+          .read(dailyQuoteProvider.future)
+          .timeout(const Duration(seconds: 5));
       quoteBody = _trimQuoteBody(quote.quote);
       authorName = quote.author;
       authorImageUrl = await _loadAuthorImageUrl(quote.author);
@@ -246,10 +248,18 @@ class NotificationSettingsNotifier
 
   Future<void> _scheduleOptionalExtra() async {
     final service = _ref.read(notificationsServiceProvider);
-    final planned = await _buildExtraNotification();
-    if (planned == null) {
-      return;
+    _PlannedExtraNotification? planned;
+    try {
+      planned = await _buildExtraNotification().timeout(
+        const Duration(seconds: 5),
+      );
+    } catch (error) {
+      debugPrint(
+        '[Notifications] Extra quote content lookup failed, using fallback copy: $error',
+      );
     }
+
+    planned ??= _fallbackExtraNotification();
 
     final schedule = _nextInstanceOfTime(state.extraHour, state.extraMinute);
     debugPrint(
@@ -269,6 +279,26 @@ class NotificationSettingsNotifier
       payload: planned.payload,
       showReadFullAction: showReadFullAction,
       repeatDaily: true,
+    );
+  }
+
+  _PlannedExtraNotification _fallbackExtraNotification() {
+    final route = state.extraSource == 'saved' ? '/library' : '/explore';
+    final title = state.extraSource == 'saved'
+        ? 'From Your Collection'
+        : 'QuoteFlow';
+    return _PlannedExtraNotification(
+      title: title,
+      quote: const QuoteModel(
+        id: '__notification_fallback__',
+        quote: 'Open QuoteFlow for another quote to keep your day moving.',
+        author: 'QuoteFlow',
+        revisedTags: <String>['all'],
+        categories: <String>['all'],
+        createdAt: null,
+      ),
+      authorImageUrl: null,
+      payload: route,
     );
   }
 

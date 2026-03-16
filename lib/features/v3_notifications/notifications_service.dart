@@ -11,6 +11,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 bool _timezoneInitialized = false;
 Future<void>? _timezoneInitializationFuture;
+const String _androidNotificationIcon = 'ic_launcher_foreground';
 const AndroidNotificationChannel _quoteReminderChannel =
     AndroidNotificationChannel(
       'quote_reminder_channel',
@@ -82,9 +83,8 @@ class V3NotificationsService {
 
   bool get isSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
   bool get notificationsGranted => _notificationsGranted;
-  AndroidScheduleMode get androidScheduleMode => _canUseExactAlarms
-      ? AndroidScheduleMode.exactAllowWhileIdle
-      : AndroidScheduleMode.inexactAllowWhileIdle;
+  AndroidScheduleMode get androidScheduleMode =>
+      AndroidScheduleMode.inexactAllowWhileIdle;
   Stream<String> get tapStream => _tapController.stream;
 
   Future<void> initialize() async {
@@ -93,7 +93,8 @@ class V3NotificationsService {
     await initializeNotificationTimezone();
 
     const settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      // flutter_local_notifications expects a drawable resource name here.
+      android: AndroidInitializationSettings(_androidNotificationIcon),
       iOS: DarwinInitializationSettings(
         requestAlertPermission: false,
         requestBadgePermission: false,
@@ -167,16 +168,13 @@ class V3NotificationsService {
         }
       }
 
-      if (requestIfNeeded) {
-        await _requestAndroidExactAlarmPermission(android);
-      }
       final canExact = await _canAndroidScheduleExactNotifications(android);
       if (canExact != null) {
         _canUseExactAlarms = canExact;
       }
 
       debugPrint(
-        '[Notifications] Android permission check: requestIfNeeded=$requestIfNeeded, notificationsGranted=$_notificationsGranted, canUseExactAlarms=$_canUseExactAlarms',
+        '[Notifications] Android permission check: requestIfNeeded=$requestIfNeeded, notificationsGranted=$_notificationsGranted, canUseExactAlarms=$_canUseExactAlarms, dailyScheduleMode=${androidScheduleMode.name}',
       );
     }
 
@@ -240,24 +238,6 @@ class V3NotificationsService {
           '[Notifications] Failed to read Android notification enabled state: $error',
         );
         return null;
-      }
-    }
-  }
-
-  Future<void> _requestAndroidExactAlarmPermission(
-    AndroidFlutterLocalNotificationsPlugin? implementation,
-  ) async {
-    if (implementation == null) return;
-    try {
-      await implementation.requestExactAlarmsPermission();
-    } catch (_) {
-      try {
-        final dynamic dynamicImplementation = implementation;
-        await dynamicImplementation.requestExactAlarmsPermission();
-      } catch (error) {
-        debugPrint(
-          '[Notifications] Android exact alarm permission request failed: $error',
-        );
       }
     }
   }
@@ -347,6 +327,7 @@ class V3NotificationsService {
       _quoteReminderChannel.id,
       _quoteReminderChannel.name,
       channelDescription: _quoteReminderChannel.description,
+      icon: _androidNotificationIcon,
       importance: Importance.high,
       priority: Priority.high,
       subText: authorName,
@@ -420,6 +401,7 @@ class V3NotificationsService {
       androidChannel.id,
       androidChannel.name,
       channelDescription: androidChannel.description,
+      icon: _androidNotificationIcon,
       importance: Importance.high,
       priority: Priority.high,
       subText: authorName,

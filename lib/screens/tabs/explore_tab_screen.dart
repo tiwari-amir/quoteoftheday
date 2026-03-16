@@ -182,15 +182,21 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final quotesAsync = ref.watch(allQuotesProvider);
+    final inSearchMode =
+        _searchFocusNode.hasFocus || _query.isNotEmpty || _searchPanelPinned;
+    final quotesAsync = ref.watch(
+      inSearchMode ? allQuotesProvider : exploreDiscoveryQuotesProvider,
+    );
     final categoryCountsAsync = ref.watch(categoryCountsProvider);
     final moodsAsync = ref.watch(moodCountsProvider);
     final topAuthorsAsync = ref.watch(topAuthorsOfMonthProvider);
+    final topSourcesAsync = ref.watch(topAttributionSourcesProvider);
     final authorCatalogAsync = ref.watch(authorCatalogProvider);
     final service = ref.read(quoteServiceProvider);
     final layout = FlowLayoutInfo.of(context);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           const EditorialBackground(seed: 63),
@@ -235,11 +241,6 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                               tagFilter: _tagFilter,
                               limit: 80,
                             );
-                      final inSearchMode =
-                          _searchFocusNode.hasFocus ||
-                          _query.isNotEmpty ||
-                          _searchPanelPinned;
-
                       return ListView(
                         physics: const BouncingScrollPhysics(),
                         children: [
@@ -326,21 +327,33 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                             categoryCountsAsync.when(
                               data: (categoryCounts) => moodsAsync.when(
                                 data: (moods) => topAuthorsAsync.when(
-                                  data: (authors) => _ExploreBentoBoard(
-                                    categories: categoryCounts,
-                                    quotes: quotes,
-                                    moods: moods,
-                                    topAuthors: authors,
-                                    service: service,
-                                    onOpenAuthors: () =>
-                                        context.push('/authors'),
-                                    onOpenAuthor: (author) => context.push(
-                                      '/authors/${Uri.encodeComponent(author.authorKey)}?label=${Uri.encodeQueryComponent(author.authorName)}',
+                                  data: (authors) => topSourcesAsync.when(
+                                    data: (sources) => _ExploreBentoBoard(
+                                      categories: categoryCounts,
+                                      quotes: quotes,
+                                      moods: moods,
+                                      topAuthors: authors,
+                                      topSources: sources,
+                                      service: service,
+                                      onOpenAuthors: () =>
+                                          context.push('/authors'),
+                                      onOpenSources: () =>
+                                          context.push('/sources'),
+                                      onOpenAuthor: (author) => context.push(
+                                        '/authors/${Uri.encodeComponent(author.authorKey)}?label=${Uri.encodeQueryComponent(author.authorName)}',
+                                      ),
+                                      onOpenSource: (source) => context.push(
+                                        '/sources/${Uri.encodeComponent(source.sourceKey)}?label=${Uri.encodeQueryComponent(source.sourceName)}',
+                                      ),
+                                      onOpenCategory: (tag) => unawaited(
+                                        _showCategoryModeSheet(tag),
+                                      ),
+                                      onOpenMood: (tag) =>
+                                          unawaited(_showMoodModeSheet(tag)),
                                     ),
-                                    onOpenCategory: (tag) =>
-                                        unawaited(_showCategoryModeSheet(tag)),
-                                    onOpenMood: (tag) =>
-                                        unawaited(_showMoodModeSheet(tag)),
+                                    loading: () => const _ExploreLoader(),
+                                    error: (error, stack) =>
+                                        _ExploreErrorCard(error: error),
                                   ),
                                   loading: () => const _ExploreLoader(),
                                   error: (error, stack) =>
@@ -430,9 +443,12 @@ class _ExploreBentoBoard extends StatelessWidget {
     required this.quotes,
     required this.moods,
     required this.topAuthors,
+    required this.topSources,
     required this.service,
     required this.onOpenAuthors,
+    required this.onOpenSources,
     required this.onOpenAuthor,
+    required this.onOpenSource,
     required this.onOpenCategory,
     required this.onOpenMood,
   });
@@ -441,9 +457,12 @@ class _ExploreBentoBoard extends StatelessWidget {
   final List<QuoteModel> quotes;
   final Map<String, int> moods;
   final List<MonthlyAuthorSpotlight> topAuthors;
+  final List<AttributionSourceEntry> topSources;
   final QuoteService service;
   final VoidCallback onOpenAuthors;
+  final VoidCallback onOpenSources;
   final ValueChanged<MonthlyAuthorSpotlight> onOpenAuthor;
+  final ValueChanged<AttributionSourceEntry> onOpenSource;
   final ValueChanged<String> onOpenCategory;
   final ValueChanged<String> onOpenMood;
 
@@ -571,6 +590,53 @@ class _ExploreBentoBoard extends StatelessWidget {
                 },
               ),
             ),
+            if (topSources.isNotEmpty) ...[
+              const SizedBox(height: FlowSpace.xl),
+              EditorialSectionHeader(
+                title: 'Proverbs & Sources',
+                eyebrow: 'COLLECTIVE',
+                actionLabel: 'All',
+                onActionTap: onOpenSources,
+              ),
+              const SizedBox(height: FlowSpace.xs),
+              SizedBox(
+                height: featuredRailHeight,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: topSources
+                      .take(
+                        layout.isDesktop
+                            ? 12
+                            : layout.isTablet
+                            ? 10
+                            : 8,
+                      )
+                      .length,
+                  separatorBuilder: (_, _) =>
+                      SizedBox(width: layout.fluid(min: 10, max: 14)),
+                  itemBuilder: (context, index) {
+                    final source = topSources[index];
+                    return SizedBox(
+                      width: featuredRailCardWidth,
+                      child: PremiumAuthorDiscoveryCard(
+                        authorName: source.sourceName,
+                        rank: index + 1,
+                        quoteCount: source.quoteCount,
+                        descriptorOverride: sourceStyleDescriptor(
+                          source.sourceName,
+                        ),
+                        roleLabelOverride: source.kindLabel,
+                        fetchProfile: false,
+                        variant: PremiumAuthorDiscoveryCardVariant.rail,
+                        animationIndex: index,
+                        onTap: () => onOpenSource(source),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
             const SizedBox(height: FlowSpace.xl),
             EditorialSectionHeader(title: 'Top Categories', eyebrow: 'POPULAR'),
             const SizedBox(height: FlowSpace.xs),

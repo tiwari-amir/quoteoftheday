@@ -57,3 +57,4 @@ release/
 keystore_backup/
 .tmp_story_bg/
 supabase/.temp/
+.canonical_wikimedia/

@@ -112,6 +112,7 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
     final layout = FlowLayoutInfo.of(context);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           const EditorialBackground(),
@@ -304,6 +305,7 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
     );
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       floatingActionButton: quotesAsync.maybeWhen(
         data: (quotes) => quotes.isEmpty
             ? null

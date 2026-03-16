@@ -44,6 +44,9 @@ _TRAILING_ATTR_RE = re.compile(
 _LEADING_ATTR_RE = re.compile(
     r"^(?P<author>[A-Z][A-Za-z .\-]{1,40})\s*:\s*(?P<quote>.+)$"
 )
+_SOURCE_LINE_AUTHOR_RE = re.compile(
+    r"^(?P<author>[A-Z\u00C0-\u024F][A-Za-z\u00C0-\u024F .'\-]{1,80})(?:,|\s+\(|\s+in\b|\s+as\b|$)"
+)
 _DATE_RE = re.compile(
     r"\b(?:\d{1,2}\s+)?(?:january|february|march|april|may|june|july|august|"
     r"september|october|november|december)\s+\d{4}\b",
@@ -67,7 +70,8 @@ _COMMENTARY_RE = re.compile(
 )
 _EXPLANATORY_START_RE = re.compile(
     r"^(?:in philosophy|in literature|in religion|the term|this quote|one of the|"
-    r"according to|from the book|as quoted in)\b",
+    r"according to|from the book|as quoted in|english equivalent|english equivalents|"
+    r"meaning|literal meaning|literal translation|equivalent|equivalents)\b",
     re.IGNORECASE,
 )
 _LEADING_VARIANT_INTRO_RE = re.compile(
@@ -335,6 +339,64 @@ _AUTHOR_ALIAS_MAP = {
     "a einstein": "albert einstein",
     "albert einstein": "albert einstein",
 }
+_NONHUMAN_AUTHOR_SINGLETONS = {"anonymous", "unknown"}
+_NONHUMAN_AUTHOR_MODIFIERS = {
+    "ancient",
+    "old",
+    "traditional",
+    "folk",
+    "popular",
+    "common",
+    "biblical",
+    "chinese",
+    "japanese",
+    "african",
+    "arab",
+    "persian",
+    "greek",
+    "roman",
+    "latin",
+    "irish",
+    "scottish",
+    "welsh",
+    "english",
+    "american",
+    "british",
+    "russian",
+    "indian",
+    "hindu",
+    "buddhist",
+    "sufi",
+    "maori",
+    "māori",
+    "yoruba",
+    "gaelic",
+    "native",
+    "cherokee",
+    "hebrew",
+    "yiddish",
+    "tibetan",
+    "zen",
+    "taoist",
+    "wartime",
+}
+_NONHUMAN_AUTHOR_BASES = {
+    "proverb",
+    "proverbs",
+    "saying",
+    "sayings",
+    "adage",
+    "adages",
+    "maxim",
+    "maxims",
+    "motto",
+    "mottos",
+    "wisdom",
+    "teachings",
+    "teaching",
+    "slogan",
+    "slogans",
+}
 _AUTHOR_INVALID_VERB_RE = re.compile(
     r"\b(?:learn(?:ed|t)?|know(?:s|n)?|think(?:s|ing|thought)?|"
     r"believe(?:s|d|ing)?|say(?:s|ing|said)?|remember(?:s|ed|ing)?|"
@@ -380,9 +442,13 @@ def extract_quote_candidates(wikitext: str, max_candidates: int = 60) -> list[Qu
     lines = cleaned.splitlines()
     in_quote_section = False
     ignored_section = False
+    line_count = len(lines)
+    index = 0
 
-    for raw_line in lines:
+    while index < line_count:
+        raw_line = lines[index]
         line = raw_line.strip()
+        index += 1
         if not line:
             continue
 
@@ -403,6 +469,17 @@ def extract_quote_candidates(wikitext: str, max_candidates: int = 60) -> list[Qu
         candidate = _build_bullet_candidate(raw_line, in_quote_section=in_quote_section)
         if candidate is None:
             continue
+        if candidate.extracted_author is None:
+            nested_author = _extract_nested_source_author(lines, index=index, parent_line=raw_line)
+            if nested_author:
+                candidate = QuoteCandidate(
+                    text=candidate.text,
+                    extracted_author=nested_author,
+                    raw_line=candidate.raw_line,
+                    attribution_style="nested_source",
+                    from_template=candidate.from_template,
+                    in_quote_section=candidate.in_quote_section,
+                )
         normalized = normalize_text_for_hash(candidate.text)
         if not normalized or normalized in seen:
             continue
@@ -423,6 +500,47 @@ def extract_quote_candidates(wikitext: str, max_candidates: int = 60) -> list[Qu
         reverse=True,
     )
     return [candidate for _, candidate in output[:max_candidates]]
+
+
+def _bullet_depth(raw_line: str) -> int:
+    match = re.match(r"^([*#:;]+)", raw_line.lstrip())
+    if not match:
+        return 0
+    return len(match.group(1))
+
+
+def _extract_nested_source_author(
+    lines: list[str],
+    *,
+    index: int,
+    parent_line: str,
+) -> str | None:
+    parent_depth = _bullet_depth(parent_line)
+    if parent_depth <= 0:
+        return None
+
+    probe = index
+    while probe < len(lines):
+        raw_line = lines[probe]
+        stripped = raw_line.strip()
+        if not stripped:
+            probe += 1
+            continue
+        if _HEADING_RE.match(stripped):
+            return None
+        if not stripped.startswith(("*", "#", ":*", ":#", ";")):
+            return None
+
+        depth = _bullet_depth(raw_line)
+        if depth <= parent_depth:
+            return None
+
+        author = _extract_author_from_source_line(raw_line)
+        if author:
+            return author
+        probe += 1
+
+    return None
 
 
 def extract_quote_lines(wikitext: str, max_quotes: int = 60) -> list[str]:
@@ -544,6 +662,20 @@ def canonicalize_author(value: str | None) -> str:
     if not normalized:
         return ""
     return _AUTHOR_ALIAS_MAP.get(normalized, normalized)
+
+
+def is_nonhuman_author_label(value: str | None) -> bool:
+    normalized = normalize_author_text(value)
+    if not normalized:
+        return False
+    if normalized in _NONHUMAN_AUTHOR_SINGLETONS:
+        return True
+    words = [word for word in normalized.split() if word]
+    if not words:
+        return False
+    if words[-1] not in _NONHUMAN_AUTHOR_BASES:
+        return False
+    return all(word in _NONHUMAN_AUTHOR_MODIFIERS for word in words[:-1])
 
 
 def classify_length_tier(text: str) -> str:
@@ -819,6 +951,9 @@ def validate_author_name(author: str | None, quote_text: str | None = None) -> b
         return False
     if len(value) > 40:
         return False
+    normalized_value = normalize_author_text(value)
+    if is_nonhuman_author_label(normalized_value):
+        return True
     if _AUTHOR_DISALLOWED_CHARS_RE.search(value):
         return False
     if _AUTHOR_INVALID_VERB_RE.search(value):
@@ -958,6 +1093,23 @@ def _extract_attribution(line: str) -> tuple[str | None, str, str]:
     return (None, value, "none")
 
 
+def _extract_author_from_source_line(raw_line: str) -> str | None:
+    value = _clean_bullet_line(raw_line)
+    if not value:
+        return None
+    if _is_mostly_metadata_line(value):
+        return None
+
+    match = _SOURCE_LINE_AUTHOR_RE.match(value)
+    if not match:
+        return None
+
+    author = _clean_author_candidate(match.group("author"))
+    if not validate_author_name(author):
+        return None
+    return author
+
+
 def _preclean_wikitext(source: str) -> str:
     text = _COMMENT_RE.sub(" ", source)
     text = _REF_RE.sub(" ", text)
@@ -1095,6 +1247,8 @@ def _candidate_extraction_score(candidate: QuoteCandidate) -> int:
         score += 2
     elif candidate.attribution_style == "template":
         score += 2
+    elif candidate.attribution_style == "nested_source":
+        score += 2
     elif candidate.attribution_style == "leading_label":
         score += 1
     if _has_quote_marks(candidate.text):
@@ -1138,11 +1292,15 @@ def _author_confidence_score(
         return 4
     if attribution_style == "trailing_dash":
         return 4
+    if attribution_style == "nested_source":
+        return 3
     if attribution_style == "leading_label":
         return 3
     if attribution_style == "stored_explicit":
         return 2
     if attribution_style == "page_author" and page_type == "author":
+        return 2
+    if attribution_style == "page_source":
         return 2
     return 0
 
