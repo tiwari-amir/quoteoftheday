@@ -9,6 +9,8 @@ class QuoteViewerFilter {
 
   bool get isMood => normalizedType == 'mood';
   bool get isAuthor => normalizedType == 'author';
+  bool get isSource => normalizedType == 'source';
+  bool get isCrawl => normalizedType == 'crawl';
   bool get isSearch => normalizedType == 'search';
 
   @override

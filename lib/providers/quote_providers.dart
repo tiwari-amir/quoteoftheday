@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants.dart';
 import '../models/quote_model.dart';
 import '../models/quote_viewer_filter.dart';
-import '../providers/storage_provider.dart';
 import '../repository/quote_repository.dart';
 import '../services/author_wiki_service.dart';
 import '../services/free_media_quotes_service.dart';
@@ -50,6 +49,40 @@ class AuthorCatalogEntry {
   QuoteModel? get heroQuote => topQuotes.isEmpty ? null : topQuotes.first;
 }
 
+class AttributionSourceEntry {
+  const AttributionSourceEntry({
+    required this.sourceKey,
+    required this.sourceName,
+    required this.quoteCount,
+    required this.discoveryScore,
+    required this.kindLabel,
+    required this.topQuotes,
+  });
+
+  final String sourceKey;
+  final String sourceName;
+  final int quoteCount;
+  final double discoveryScore;
+  final String kindLabel;
+  final List<QuoteModel> topQuotes;
+
+  QuoteModel? get heroQuote => topQuotes.isEmpty ? null : topQuotes.first;
+}
+
+class CrawlRunQuoteBatch {
+  const CrawlRunQuoteBatch({
+    required this.runId,
+    required this.completedAt,
+    required this.quotesAdded,
+    required this.quotes,
+  });
+
+  final int runId;
+  final DateTime? completedAt;
+  final int quotesAdded;
+  final List<QuoteModel> quotes;
+}
+
 final quoteRepositoryProvider = Provider<QuoteRepository>((ref) {
   return QuoteRepository(client: ref.read(supabaseClientProvider));
 });
@@ -82,6 +115,15 @@ final allQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
 });
 
+final exploreDiscoveryQuotesProvider = FutureProvider<List<QuoteModel>>((
+  ref,
+) async {
+  final quotes = await ref
+      .read(quoteRepositoryProvider)
+      .getQuotesPage(offset: 0, limit: 180);
+  return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
+});
+
 final mediaQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   try {
     final quotes = await ref
@@ -105,38 +147,62 @@ final allQuotesWithMediaProvider = FutureProvider<List<QuoteModel>>((
 });
 
 final dailyQuoteProvider = FutureProvider<QuoteModel>((ref) async {
-  final quotes = await ref.watch(allQuotesProvider.future);
-  final prefs = ref.read(sharedPreferencesProvider);
-  final quoteService = ref.read(quoteServiceProvider);
-  return quoteService.pickDailyQuote(quotes, prefs, DateTime.now());
+  final quote = await ref
+      .read(quoteRepositoryProvider)
+      .getDailyQuote(DateTime.now());
+  if (quote == null) {
+    throw StateError('No daily quote available.');
+  }
+  return quote;
 });
 
 final categoryCountsProvider = FutureProvider<Map<String, int>>((ref) async {
-  final localQuotes = await ref.watch(allQuotesProvider.future);
-  final localCounts = _sortedTagCounts(localQuotes);
-
-  List<QuoteModel> mediaQuotes = const <QuoteModel>[];
-  try {
-    mediaQuotes = await ref
-        .read(mediaQuotesProvider.future)
-        .timeout(
-          const Duration(milliseconds: 900),
-          onTimeout: () => const <QuoteModel>[],
-        );
-  } catch (_) {
-    mediaQuotes = const <QuoteModel>[];
-  }
-  final mediaCounts = _sortedTagCounts(mediaQuotes);
-
-  return _mergeTagCounts(localCounts, mediaCounts);
+  final localCounts = await ref
+      .read(quoteRepositoryProvider)
+      .getTagsWithCounts();
+  return _mergeTagCounts(localCounts, const <String, int>{});
 });
 
 final authorCatalogProvider = FutureProvider<List<AuthorCatalogEntry>>((
   ref,
 ) async {
-  final quotes = await ref.watch(allQuotesProvider.future);
-  return _buildAuthorCatalog(quotes, now: DateTime.now());
+  final client = ref.read(supabaseClientProvider);
+  try {
+    final rows = await client
+        .from('authors')
+        .select(
+          'name,canonical_name,total_quotes,avg_popularity_score,total_likes,author_score',
+        )
+        .order('author_score', ascending: false)
+        .order('avg_popularity_score', ascending: false)
+        .order('total_quotes', ascending: false)
+        .limit(600);
+    return _buildAuthorCatalogFromAuthorRows(rows);
+  } catch (_) {
+    final quotes = await ref.watch(allQuotesProvider.future);
+    return _buildAuthorCatalog(quotes, now: DateTime.now());
+  }
 });
+
+final attributionSourceCatalogProvider =
+    FutureProvider<List<AttributionSourceEntry>>((ref) async {
+      final client = ref.read(supabaseClientProvider);
+      try {
+        final rows = await client
+            .from('authors')
+            .select(
+              'name,canonical_name,total_quotes,avg_popularity_score,total_likes,author_score',
+            )
+            .order('author_score', ascending: false)
+            .order('avg_popularity_score', ascending: false)
+            .order('total_quotes', ascending: false)
+            .limit(600);
+        return _buildAttributionSourceCatalogFromAuthorRows(rows);
+      } catch (_) {
+        final quotes = await ref.watch(allQuotesProvider.future);
+        return _buildAttributionSourceCatalog(quotes, now: DateTime.now());
+      }
+    });
 
 final authorCatalogEntryProvider =
     FutureProvider.family<AuthorCatalogEntry?, String>((ref, authorKey) async {
@@ -148,23 +214,74 @@ final authorCatalogEntryProvider =
       return null;
     });
 
+final attributionSourceEntryProvider =
+    FutureProvider.family<AttributionSourceEntry?, String>((
+      ref,
+      sourceKey,
+    ) async {
+      final catalog = await ref.watch(attributionSourceCatalogProvider.future);
+      final target = normalizeAuthorKey(sourceKey);
+      for (final entry in catalog) {
+        if (entry.sourceKey == target) return entry;
+      }
+      return null;
+    });
+
 final moodTagsProvider = FutureProvider<List<String>>((ref) async {
-  final allQuotes = await ref.watch(allQuotesProvider.future);
+  final counts = await ref.watch(moodCountsProvider.future);
   return moodAllowlist
-      .where((mood) => _quotesForMood(allQuotes, mood).isNotEmpty)
+      .where((mood) => (counts[mood] ?? 0) > 0)
       .toList(growable: false);
 });
 
 final moodCountsProvider = FutureProvider<Map<String, int>>((ref) async {
-  final allQuotes = await ref.watch(allQuotesProvider.future);
-  final counts = <String, int>{};
-  for (final mood in moodAllowlist) {
-    final matched = _quotesForMood(allQuotes, mood);
-    if (matched.isNotEmpty) {
-      counts[mood] = matched.length;
+  final counts = await ref.read(quoteRepositoryProvider).getMoodCounts();
+  return {
+    for (final mood in moodAllowlist)
+      if ((counts[mood] ?? 0) > 0) mood: counts[mood]!,
+  };
+});
+
+final crawlRunQuotesProvider = FutureProvider.family<CrawlRunQuoteBatch?, int>((
+  ref,
+  runId,
+) async {
+  if (runId <= 0) return null;
+
+  final client = ref.read(supabaseClientProvider);
+  try {
+    final rows = await client
+        .from('ingestion_runs')
+        .select('id,quotes_inserted,completed_at,metadata')
+        .eq('id', runId)
+        .limit(1);
+    if (rows.isEmpty) {
+      return null;
     }
+
+    final row = _asDynamicMap(rows.first);
+    if (row.isEmpty) {
+      return null;
+    }
+
+    final metadata = _asDynamicMap(row['metadata']);
+    final insertedIds = _stringList(metadata['inserted_quote_ids']);
+    final quotes = await ref
+        .read(quoteRepositoryProvider)
+        .getQuotesByIds(insertedIds);
+    final completedAt = DateTime.tryParse(
+      (row['completed_at'] ?? '').toString().trim(),
+    );
+
+    return CrawlRunQuoteBatch(
+      runId: runId,
+      completedAt: completedAt,
+      quotesAdded: _asInt(row['quotes_inserted']),
+      quotes: quotes,
+    );
+  } catch (_) {
+    return null;
   }
-  return counts;
 });
 
 final quotesByFilterProvider =
@@ -177,14 +294,31 @@ final quotesByFilterProvider =
         final searchQuotes = await ref.watch(allQuotesProvider.future);
         return SearchService(searchQuotes).searchQuotes(tag, limit: 200);
       }
-      final allQuotes = await ref.watch(allQuotesWithMediaProvider.future);
+      if (filter.isCrawl) {
+        final runId = int.tryParse(tag) ?? 0;
+        final batch = await ref.watch(crawlRunQuotesProvider(runId).future);
+        return batch?.quotes ?? const <QuoteModel>[];
+      }
       if (tag.isEmpty || tag == 'all') {
-        return allQuotes;
+        return ref.watch(allQuotesWithMediaProvider.future);
       }
       if (filter.isAuthor) {
-        final filtered = allQuotes
-            .where((quote) => _matchesAuthor(quote, tag))
-            .toList(growable: false);
+        final filtered = await ref
+            .read(quoteRepositoryProvider)
+            .getQuotesByAuthor(tag, offset: 0, limit: 600);
+        final monthKey = _monthKey(DateTime.now());
+        filtered.sort(
+          (a, b) => _authorQuoteSignal(
+            b,
+            monthKey: monthKey,
+          ).compareTo(_authorQuoteSignal(a, monthKey: monthKey)),
+        );
+        return filtered;
+      }
+      if (filter.isSource) {
+        final filtered = await ref
+            .read(quoteRepositoryProvider)
+            .getQuotesByAuthor(tag, offset: 0, limit: 600);
         final monthKey = _monthKey(DateTime.now());
         filtered.sort(
           (a, b) => _authorQuoteSignal(
@@ -195,9 +329,12 @@ final quotesByFilterProvider =
         return filtered;
       }
       if (filter.isMood) {
-        return _quotesForMood(allQuotes, tag);
+        return ref
+            .read(quoteRepositoryProvider)
+            .getQuotesByTag(tag, offset: 0, limit: 600);
       }
       if (tag == 'series' || tag == 'movies/series') {
+        final allQuotes = await ref.watch(allQuotesWithMediaProvider.future);
         return allQuotes
             .where(
               (quote) =>
@@ -205,9 +342,9 @@ final quotesByFilterProvider =
             )
             .toList(growable: false);
       }
-      return allQuotes
-          .where((quote) => _matchesTag(quote.revisedTags, tag))
-          .toList(growable: false);
+      return ref
+          .read(quoteRepositoryProvider)
+          .getQuotesByTag(tag, offset: 0, limit: 600);
     });
 
 final topLikedQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
@@ -274,6 +411,14 @@ final topAuthorsOfMonthProvider = FutureProvider<List<MonthlyAuthorSpotlight>>((
       .toList(growable: false);
 });
 
+final topAttributionSourcesProvider =
+    FutureProvider<List<AttributionSourceEntry>>((ref) async {
+      final catalog = await ref.watch(attributionSourceCatalogProvider.future);
+      final ordered = [...catalog]
+        ..sort((a, b) => b.discoveryScore.compareTo(a.discoveryScore));
+      return ordered.take(8).toList(growable: false);
+    });
+
 List<QuoteModel> _webInspiredPopularFallback(List<QuoteModel> quotes) {
   const authorPriority = [
     'albert einstein',
@@ -310,25 +455,6 @@ List<QuoteModel> _webInspiredPopularFallback(List<QuoteModel> quotes) {
   }
 
   return ranked;
-}
-
-Map<String, int> _sortedTagCounts(List<QuoteModel> quotes) {
-  final counts = <String, int>{};
-  for (final quote in quotes) {
-    for (final tag in quote.revisedTags) {
-      final normalized = tag.trim().toLowerCase();
-      if (normalized.isEmpty || normalized == 'all') continue;
-      counts.update(normalized, (v) => v + 1, ifAbsent: () => 1);
-    }
-  }
-
-  final sorted = counts.entries.toList()
-    ..sort((a, b) {
-      final byCount = b.value.compareTo(a.value);
-      if (byCount != 0) return byCount;
-      return a.key.compareTo(b.key);
-    });
-  return {for (final entry in sorted) entry.key: entry.value};
 }
 
 Map<String, int> _mergeTagCounts(
@@ -372,7 +498,9 @@ List<AuthorCatalogEntry> _buildAuthorCatalog(
     final key = normalizeAuthorKey(
       quote.canonicalAuthor.isNotEmpty ? quote.canonicalAuthor : quote.author,
     );
-    if (key.isEmpty || key == 'unknown') continue;
+    if (key.isEmpty || key == 'unknown' || isSourceStyleAttribution(key)) {
+      continue;
+    }
     grouped.putIfAbsent(key, () => <QuoteModel>[]).add(quote);
   }
 
@@ -447,6 +575,148 @@ List<AuthorCatalogEntry> _buildAuthorCatalog(
   return catalog;
 }
 
+List<AuthorCatalogEntry> _buildAuthorCatalogFromAuthorRows(dynamic rows) {
+  if (rows is! List) return const <AuthorCatalogEntry>[];
+  final catalog = <AuthorCatalogEntry>[];
+  for (final raw in rows.whereType<Map<String, dynamic>>()) {
+    final authorName = (raw['name'] ?? '').toString().trim();
+    final authorKey = normalizeAuthorKey(
+      (raw['canonical_name'] ?? raw['name'] ?? '').toString(),
+    );
+    if (authorName.isEmpty ||
+        authorKey.isEmpty ||
+        authorKey == 'unknown' ||
+        isSourceStyleAttribution(authorKey)) {
+      continue;
+    }
+    final quoteCount = _asInt(raw['total_quotes']);
+    final authorScore = _asDouble(raw['author_score']);
+    final avgPopularity = _asDouble(raw['avg_popularity_score']);
+    final totalLikes = _asInt(raw['total_likes']);
+    final discoveryScore =
+        (authorScore * 28) +
+        avgPopularity +
+        (math.log(quoteCount + 1) * 14) +
+        (totalLikes * 0.015);
+    final monthlyMomentumScore =
+        (authorScore * 30) +
+        (avgPopularity * 0.9) +
+        (math.log(quoteCount + 1) * 10) +
+        (totalLikes * 0.012);
+    catalog.add(
+      AuthorCatalogEntry(
+        authorKey: authorKey,
+        authorName: authorName,
+        quoteCount: quoteCount,
+        discoveryScore: discoveryScore,
+        monthlyMomentumScore: monthlyMomentumScore,
+        topQuotes: const <QuoteModel>[],
+      ),
+    );
+  }
+  catalog.sort((a, b) => b.discoveryScore.compareTo(a.discoveryScore));
+  return catalog;
+}
+
+List<AttributionSourceEntry> _buildAttributionSourceCatalog(
+  List<QuoteModel> quotes, {
+  DateTime? now,
+}) {
+  final monthKey = _monthKey(now ?? DateTime.now());
+  final grouped = <String, List<QuoteModel>>{};
+
+  for (final quote in quotes) {
+    final key = normalizeAuthorKey(
+      quote.canonicalAuthor.isNotEmpty ? quote.canonicalAuthor : quote.author,
+    );
+    if (key.isEmpty || key == 'unknown' || !isSourceStyleAttribution(key)) {
+      continue;
+    }
+    grouped.putIfAbsent(key, () => <QuoteModel>[]).add(quote);
+  }
+
+  final catalog = <AttributionSourceEntry>[];
+  for (final entry in grouped.entries) {
+    final sourceQuotes = [...entry.value]
+      ..sort(
+        (a, b) => _authorQuoteSignal(
+          b,
+          monthKey: monthKey,
+        ).compareTo(_authorQuoteSignal(a, monthKey: monthKey)),
+      );
+    if (sourceQuotes.isEmpty) continue;
+
+    final topQuotes = sourceQuotes.take(24).toList(growable: false);
+    final displayName = _displayAuthorForGroup(topQuotes);
+    final tagBreadth = topQuotes
+        .expand((quote) => quote.revisedTags)
+        .map((tag) => tag.trim().toLowerCase())
+        .where((tag) => tag.isNotEmpty)
+        .toSet()
+        .length;
+    final leadSignal = _authorQuoteSignal(topQuotes.first, monthKey: monthKey);
+    final score =
+        (leadSignal * 0.72) +
+        (math.log(sourceQuotes.length + 1) * 14.0) +
+        (math.sqrt(tagBreadth.toDouble()) * 4.0) +
+        ((Object.hash(entry.key, sourceQuotes.length) & 0x0F) / 100.0);
+
+    catalog.add(
+      AttributionSourceEntry(
+        sourceKey: entry.key,
+        sourceName: displayName,
+        quoteCount: sourceQuotes.length,
+        discoveryScore: score,
+        kindLabel: sourceStyleKindLabel(displayName),
+        topQuotes: topQuotes,
+      ),
+    );
+  }
+
+  catalog.sort((a, b) => b.discoveryScore.compareTo(a.discoveryScore));
+  return catalog;
+}
+
+List<AttributionSourceEntry> _buildAttributionSourceCatalogFromAuthorRows(
+  dynamic rows,
+) {
+  if (rows is! List) return const <AttributionSourceEntry>[];
+  final catalog = <AttributionSourceEntry>[];
+  for (final raw in rows.whereType<Map<String, dynamic>>()) {
+    final sourceName = (raw['name'] ?? '').toString().trim();
+    final sourceKey = normalizeAuthorKey(
+      (raw['canonical_name'] ?? raw['name'] ?? '').toString(),
+    );
+    if (sourceName.isEmpty ||
+        sourceKey.isEmpty ||
+        sourceKey == 'unknown' ||
+        !isSourceStyleAttribution(sourceKey)) {
+      continue;
+    }
+    final quoteCount = _asInt(raw['total_quotes']);
+    final authorScore = _asDouble(raw['author_score']);
+    final avgPopularity = _asDouble(raw['avg_popularity_score']);
+    final totalLikes = _asInt(raw['total_likes']);
+    final discoveryScore =
+        (authorScore * 26) +
+        avgPopularity +
+        (math.log(quoteCount + 1) * 12) +
+        (totalLikes * 0.012);
+    catalog.add(
+      AttributionSourceEntry(
+        sourceKey: sourceKey,
+        sourceName: sourceName,
+        quoteCount: quoteCount,
+        discoveryScore: discoveryScore,
+        kindLabel: sourceStyleKindLabel(sourceName),
+        topQuotes: const <QuoteModel>[],
+      ),
+    );
+  }
+  catalog.sort((a, b) => b.discoveryScore.compareTo(a.discoveryScore));
+  return catalog;
+}
+
 bool _matchesTag(List<String> quoteTags, String selectedTag) {
   final target = selectedTag.trim().toLowerCase();
   if (target.isEmpty || target == 'all') return true;
@@ -459,12 +729,36 @@ bool _matchesTag(List<String> quoteTags, String selectedTag) {
   return false;
 }
 
-bool _matchesAuthor(QuoteModel quote, String selectedAuthor) {
-  final target = normalizeAuthorKey(selectedAuthor);
-  if (target.isEmpty || target == 'all') return true;
-  final canonical = normalizeAuthorKey(quote.canonicalAuthor);
-  final author = normalizeAuthorKey(quote.author);
-  return canonical == target || author == target;
+int _asInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+double _asDouble(dynamic value) {
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+Map<String, dynamic> _asDynamicMap(dynamic value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return value.map((key, entry) => MapEntry(key.toString(), entry));
+  }
+  return const <String, dynamic>{};
+}
+
+List<String> _stringList(dynamic value) {
+  if (value is! List) {
+    return const <String>[];
+  }
+  return value
+      .map((item) => item.toString().trim())
+      .where((item) => item.isNotEmpty)
+      .toList(growable: false);
 }
 
 bool _matchesAnyTag(List<String> quoteTags, Set<String> selectedTags) {
@@ -481,6 +775,98 @@ String normalizeAuthorKey(String raw) {
       .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
+}
+
+const Set<String> _sourceStyleSingletons = {
+  'anonymous',
+  'proverb',
+  'maxim',
+  'slogan',
+  'aphorism',
+};
+
+const Set<String> _sourceStyleModifiers = {
+  'african',
+  'american',
+  'ancient',
+  'arab',
+  'biblical',
+  'british',
+  'buddhist',
+  'chinese',
+  'folk',
+  'french',
+  'greek',
+  'indian',
+  'irish',
+  'italian',
+  'japanese',
+  'jewish',
+  'latin',
+  'maori',
+  'medieval',
+  'old',
+  'persian',
+  'russian',
+  'scottish',
+  'spanish',
+  'traditional',
+  'turkish',
+  'victorian',
+  'wartime',
+  'zen',
+};
+
+const Set<String> _sourceStyleBases = {
+  'adage',
+  'aphorism',
+  'dictum',
+  'maxim',
+  'motto',
+  'proverb',
+  'saying',
+  'slogan',
+  'wisdom',
+};
+
+bool isSourceStyleAttribution(String raw) {
+  final normalized = normalizeAuthorKey(raw);
+  if (normalized.isEmpty || normalized == 'unknown') return false;
+  if (_sourceStyleSingletons.contains(normalized)) return true;
+  final words = normalized
+      .split(' ')
+      .where((part) => part.isNotEmpty)
+      .toList(growable: false);
+  if (words.isEmpty) return false;
+  if (!_sourceStyleBases.contains(words.last)) return false;
+  return words.take(words.length - 1).every(_sourceStyleModifiers.contains);
+}
+
+String sourceStyleKindLabel(String raw) {
+  final normalized = normalizeAuthorKey(raw);
+  if (normalized.contains('slogan')) return 'SLOGAN';
+  if (normalized.contains('saying')) return 'SAYING';
+  if (normalized.contains('maxim')) return 'MAXIM';
+  if (normalized.contains('wisdom')) return 'WISDOM';
+  if (normalized == 'anonymous') return 'ANONYMOUS';
+  return 'PROVERB';
+}
+
+String sourceStyleDescriptor(String raw) {
+  final normalized = normalizeAuthorKey(raw);
+  if (normalized.contains('slogan')) {
+    return 'Collective line carried through public memory';
+  }
+  if (normalized == 'anonymous') {
+    return 'Widely repeated without a single credited author';
+  }
+  if (normalized.contains('saying')) {
+    return 'Folk saying passed between generations';
+  }
+  if (normalized.contains('wisdom')) {
+    return 'Traditional wisdom gathered from shared experience';
+  }
+  return 'Traditional proverb carried through shared culture';
 }
 
 String _monthKey(DateTime value) {
@@ -551,93 +937,6 @@ List<QuoteModel> _mergeUniqueQuotes(
     output.add(quote);
   }
   return output;
-}
-
-const Map<String, List<String>> _moodKeywords = {
-  'motivated': [
-    'motivated',
-    'motivational',
-    'motivation',
-    'inspire',
-    'inspirational',
-    'discipline',
-    'success',
-    'goal',
-    'courage',
-    'perseverance',
-  ],
-  'calm': [
-    'calm',
-    'peace',
-    'peaceful',
-    'serenity',
-    'stillness',
-    'quiet',
-    'mindful',
-    'mindfulness',
-    'zen',
-    'breathe',
-  ],
-  'confident': ['confident', 'confidence', 'courage', 'bold', 'brave'],
-  'grateful': ['grateful', 'gratitude', 'thankful', 'blessing'],
-  'hopeful': ['hope', 'hopeful', 'faith', 'optimistic'],
-  'romantic': ['romance', 'romantic', 'love', 'heart'],
-  'stressed': ['stress', 'overwhelm', 'anxious', 'pressure', 'tired'],
-  'anxious': ['anxious', 'anxiety', 'worry', 'fear', 'panic'],
-  'happy': ['happy', 'happiness', 'joy', 'smile', 'delight'],
-  'sad': ['sad', 'grief', 'sorrow', 'hurt', 'tears'],
-  'angry': ['angry', 'anger', 'rage', 'furious', 'temper'],
-  'lonely': ['lonely', 'alone', 'solitude', 'isolation'],
-};
-
-List<QuoteModel> _quotesForMood(List<QuoteModel> quotes, String mood) {
-  final normalizedMood = mood.trim().toLowerCase();
-  final keywords = _moodKeywords[normalizedMood] ?? [normalizedMood];
-  final scored = <({QuoteModel quote, int score})>[];
-
-  for (final quote in quotes) {
-    final tags = quote.revisedTags.map((t) => t.toLowerCase()).toList();
-    final text = '${quote.quote} ${quote.author}'.toLowerCase();
-
-    var score = 0;
-    for (final tag in tags) {
-      if (tag == normalizedMood) {
-        score += 8;
-      }
-      for (final keyword in keywords) {
-        if (tag == keyword) {
-          score += 6;
-        } else if (tag.contains(keyword) || keyword.contains(tag)) {
-          score += 3;
-        }
-      }
-    }
-
-    for (final keyword in keywords) {
-      if (text.contains(keyword)) score += 1;
-    }
-
-    if (normalizedMood == 'motivated' &&
-        tags.any((t) => t.contains('inspir'))) {
-      score += 3;
-    }
-    if (normalizedMood == 'calm' &&
-        tags.any((t) => t.contains('spiritual') || t.contains('mind'))) {
-      score += 2;
-    }
-
-    if (score > 0) {
-      scored.add((quote: quote, score: score));
-    }
-  }
-
-  scored.sort((a, b) {
-    final byScore = b.score.compareTo(a.score);
-    if (byScore != 0) return byScore;
-    return a.quote.id.compareTo(b.quote.id);
-  });
-
-  return scored.map((e) => e.quote).toList(growable: false);
 }
 
 bool _isLikelyEnglishQuote(QuoteModel quote) {

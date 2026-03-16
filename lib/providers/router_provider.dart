@@ -6,6 +6,8 @@ import '../features/v3_settings/settings_screen.dart';
 import '../features/v3_notifications/in_app_notifications_screen.dart';
 import '../screens/author/authors_index_screen.dart';
 import '../screens/author/author_quotes_screen.dart';
+import '../screens/author/attribution_source_quotes_screen.dart';
+import '../screens/author/attribution_sources_index_screen.dart';
 import '../screens/category/category_screen.dart';
 import '../screens/mood/mood_screen.dart';
 import '../screens/saved/saved_quotes_screen.dart';
@@ -14,6 +16,7 @@ import '../screens/tabs/app_shell_scaffold.dart';
 import '../screens/tabs/explore_tab_screen.dart';
 import '../screens/tabs/library_tab_screen.dart';
 import '../screens/tabs/today_tab_screen.dart';
+import '../screens/updates/crawl_quotes_screen.dart';
 import '../screens/viewer/quote_viewer_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
@@ -107,6 +110,41 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             authorName:
                 state.uri.queryParameters['label'] ??
                 Uri.decodeComponent(state.pathParameters['authorKey'] ?? ''),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/sources',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: AttributionSourcesIndexScreen(
+            initialQuery: state.uri.queryParameters['q'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/sources/:sourceKey',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: AttributionSourceQuotesScreen(
+            sourceKey: Uri.decodeComponent(
+              state.pathParameters['sourceKey'] ?? '',
+            ),
+            sourceName:
+                state.uri.queryParameters['label'] ??
+                Uri.decodeComponent(state.pathParameters['sourceKey'] ?? ''),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/updates/crawl/:runId',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => _buildTransitionPage(
+          key: state.pageKey,
+          child: CrawlQuotesScreen(
+            runId: int.tryParse(state.pathParameters['runId'] ?? '') ?? 0,
           ),
         ),
       ),

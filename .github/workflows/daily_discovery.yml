@@ -1,4 +1,5 @@
 name: Daily discovery crawl
+run-name: Daily discovery - ${{ inputs.trigger || 'manual' }}
 
 on:
   workflow_dispatch:
@@ -37,9 +38,18 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Install importer dependencies
         run: pip install -r importer/requirements.txt
+
+      - name: Restore canonical source cache
+        uses: actions/cache@v4
+        with:
+          path: .canonical_wikimedia
+          key: canonical-wikimedia-${{ runner.os }}-${{ hashFiles('importer/wikiquote_ingest.py', 'importer/wikiquote_parser.py', 'importer/wikiquote_category_mapper.py') }}
+          restore-keys: |
+            canonical-wikimedia-${{ runner.os }}-
 
       - name: Validate runtime secrets
         env:
@@ -55,4 +65,13 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PGSSLMODE: require
           QUOTEFLOW_INGEST_TRIGGER: ${{ inputs.trigger }}
-        run: python importer/wikiquote_ingest.py --discover --limit ${{ inputs.limit }} --min-quotes-goal ${{ inputs.min_quotes_goal }} --max-runtime-minutes ${{ inputs.max_runtime_minutes }} --commit
+          PYTHONUNBUFFERED: "1"
+        run: >-
+          python importer/wikiquote_ingest.py
+          --discover
+          --canonical-cache-dir .canonical_wikimedia/wikiquote
+          --canonical-cache-max-age-hours 168
+          --limit ${{ inputs.limit }}
+          --min-quotes-goal ${{ inputs.min_quotes_goal }}
+          --max-runtime-minutes ${{ inputs.max_runtime_minutes }}
+          --commit

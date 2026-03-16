@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import bz2
 import json
 import math
 import os
 import re
 import time
-from dataclasses import dataclass
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote as urlquote
 
@@ -41,8 +44,13 @@ WIKIQUOTE_API_URL = "https://en.wikiquote.org/w/api.php"
 WIKIQUOTE_LICENSE = "CC BY-SA 4.0"
 DISCOVERY_NOTIFICATION_TYPE = "discovery_summary"
 DISCOVERY_NOTIFICATION_ROUTE = "/updates"
+DISCOVERY_CRAWL_ROUTE_BASE = "/updates/crawl"
 APP_NOTIFICATION_RETENTION_LIMIT = 10
 REQUEST_INTERVAL_SECONDS = 0.9
+DEFAULT_CANONICAL_CACHE_DIR = ".canonical_wikimedia/wikiquote"
+DEFAULT_CANONICAL_CACHE_MAX_AGE_HOURS = 24 * 14
+DEFAULT_WIKIQUOTE_DUMP_DIR = ".canonical_wikimedia/dumps"
+DEFAULT_WIKIQUOTE_DUMP_URL = "https://dumps.wikimedia.org/enwikiquote/latest/enwikiquote-latest-pages-articles.xml.bz2"
 MAX_PARSE_WIKITEXT_CHARS = 300_000
 MAX_PARSE_WIKITEXT_LINES = 6_000
 MAX_PAGES_QUEUE_SIZE = 50_000
@@ -312,8 +320,26 @@ CURATED_AUTHOR_SEED_TITLES = list(
 )
 
 DEFAULT_SEEDS = list(CURATED_CATEGORY_DISPLAY)
+CURATED_SOURCE_DISPLAY_NAMES = [
+    "Proverbs",
+    "Chinese proverbs",
+    "Japanese proverbs",
+    "Latin proverbs",
+    "English proverbs",
+    "English proverbs (alphabetically by proverb)",
+    "Irish proverbs",
+    "French proverbs",
+    "Hindi proverbs",
+    "Dutch proverbs",
+    "Armenian proverbs",
+    "Romanian proverbs",
+    "Finnish proverbs",
+    "Anonymous",
+    "Slogans",
+]
 SOURCE_PRESTIGE = {
     "authors": 5,
+    "sources": 4,
     "speeches": 5,
     "literature": 4,
     "films": 4,
@@ -322,6 +348,7 @@ SOURCE_PRESTIGE = {
 }
 SEED_REGISTRY = {
     "authors": CURATED_AUTHOR_SEED_TITLES,
+    "sources": CURATED_SOURCE_DISPLAY_NAMES,
     "topics": list(CURATED_CATEGORY_DISPLAY),
 }
 TOP_QUOTES_PER_PAGE = 3
@@ -336,10 +363,11 @@ DISCOVERY_ZERO_INSERT_STREAK_LIMIT = 8
 LINK_FETCH_RATE_LIMIT_COOLDOWN_SECONDS = 180
 LINK_FETCH_LOG_INTERVAL_SECONDS = 45
 HIGH_CULTURAL_SOURCE_TYPES = {"speeches", "literature", "films"}
-MEDIUM_CULTURAL_SOURCE_TYPES = {"authors", "tv_shows"}
+MEDIUM_CULTURAL_SOURCE_TYPES = {"authors", "sources", "tv_shows"}
 HIGH_QUALITY_LINK_BONUS = 2
 TOPIC_PAGE_MATCH_BONUS = 2
 TOP_AUTHOR_PRIORITY_BONUS = 3
+TOP_SOURCE_PRIORITY_BONUS = 2
 TOP_TOPIC_PRIORITY_BONUS = 1
 CLUSTER_SIMILARITY_THRESHOLD = 0.75
 SAFE_DATABASE_STORAGE_BYTES = int(0.49 * (1024**3))
@@ -362,6 +390,36 @@ CURATED_AUTHOR_PRIORITY_BY_CANONICAL = {
 CURATED_TOPIC_PRIORITY_BY_SLUG = {
     normalize_text(title): index
     for index, title in enumerate(DEFAULT_SEEDS)
+}
+CURATED_SOURCE_PRIORITY_BY_SLUG = {
+    normalize_text(title): index
+    for index, title in enumerate(CURATED_SOURCE_DISPLAY_NAMES)
+}
+ICONIC_PHRASE_EXPECTED_AUTHORS = {
+    "the only thing we have to fear is fear itself": {"franklin d roosevelt", "franklin delano roosevelt"},
+    "i think therefore i am": {"rene descartes", "ren descates", "descartes"},
+    "that which does not kill us makes us stronger": {"friedrich nietzsche", "nietzsche"},
+    "to be or not to be": {"william shakespeare", "shakespeare"},
+    "the unexamined life is not worth living": {"socrates"},
+    "knowledge is power": {"francis bacon", "bacon"},
+    "stay hungry stay foolish": {"steve jobs"},
+    "the journey of a thousand miles begins with a single step": {"laozi", "lao tzu", "confucius"},
+    "time is money": {"benjamin franklin", "franklin"},
+    "the pen is mightier than the sword": {"edward bulwer lytton", "bulwer lytton"},
+    "fortune favors the bold": {"virgil"},
+    "i have a dream": {"martin luther king jr", "martin luther king"},
+    "be the change": {"mahatma gandhi", "gandhi"},
+    "imagination is more important than knowledge": {"albert einstein", "einstein"},
+    "all animals are equal": {"george orwell", "orwell"},
+    "be yourself everyone else is already taken": {"oscar wilde", "wilde"},
+}
+ICONIC_PHRASE_EXPECTED_AUTHORS = {
+    phrase: {
+        canonicalize_author(name)
+        for name in authors
+        if canonicalize_author(name)
+    }
+    for phrase, authors in ICONIC_PHRASE_EXPECTED_AUTHORS.items()
 }
 SOURCE_PRESTIGE_HINTS = {
     "speeches": (
@@ -460,6 +518,7 @@ class IngestStats:
     database_size_bytes_after: int = 0
     quotes_table_bytes_after: int = 0
     runtime_budget_reached: bool = False
+    inserted_quote_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -536,6 +595,18 @@ class DiscoveredPage:
     page_title: str
     page_type: str
     page_priority: int
+
+
+@dataclass(frozen=True)
+class CanonicalPageSnapshot:
+    title: str
+    wikitext: str
+    categories: list[str]
+    source_url: str
+    fetched_at: str
+    provider: str = "wikimedia"
+    transport: str = "mediawiki_api"
+    revision_id: int | None = None
 
 
 class WikiquoteRateLimitError(RuntimeError):
@@ -833,6 +904,11 @@ def parse_args() -> argparse.Namespace:
         help="Delete already-stored rows that fail the strict parser rules",
     )
     parser.add_argument(
+        "--hydrate-canonical-cache-from-dump",
+        action="store_true",
+        help="Load canonical Wikimedia page snapshots from the official Wikiquote XML dump before parsing",
+    )
+    parser.add_argument(
         "--dedupe-quotes",
         action="store_true",
         help="Merge stored quote variants that share the same normalized quote hash",
@@ -938,6 +1014,44 @@ def parse_args() -> argparse.Namespace:
         "--user-agent",
         default="QuoteFlowIngest/2.1 (Wikiquote MediaWiki API; rate-limited)",
         help="User-Agent for MediaWiki API requests",
+    )
+    parser.add_argument(
+        "--canonical-cache-dir",
+        default=DEFAULT_CANONICAL_CACHE_DIR,
+        help="Local cache directory for canonical Wikimedia page snapshots",
+    )
+    parser.add_argument(
+        "--canonical-cache-max-age-hours",
+        type=int,
+        default=DEFAULT_CANONICAL_CACHE_MAX_AGE_HOURS,
+        help="Maximum age for cached Wikimedia page snapshots before refresh",
+    )
+    parser.add_argument(
+        "--refresh-canonical-cache",
+        action="store_true",
+        help="Force refresh canonical Wikimedia page snapshots instead of reusing cache",
+    )
+    parser.add_argument(
+        "--dump-file",
+        default="",
+        help="Path to a local enwikiquote XML dump (.bz2). If omitted, the latest official dump URL is used/downloaded",
+    )
+    parser.add_argument(
+        "--dump-url",
+        default=DEFAULT_WIKIQUOTE_DUMP_URL,
+        help="Official Wikimedia dump URL used when --dump-file is not provided",
+    )
+    parser.add_argument(
+        "--dump-seeds-only",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="When hydrating from dump, cache only the configured seed pages instead of the full dump",
+    )
+    parser.add_argument(
+        "--dump-limit",
+        type=int,
+        default=0,
+        help="Optional maximum number of dump pages to cache during one hydration run",
     )
     return parser.parse_args()
 
@@ -1261,6 +1375,225 @@ def _parse_retry_after_seconds(value: Any) -> float | None:
     return parsed
 
 
+def _canonical_cache_key(title: str) -> str:
+    return compute_quote_hash_from_normalized(normalize_text(title))
+
+
+class CanonicalSourceStore:
+    def __init__(
+        self,
+        *,
+        cache_dir: str,
+        max_age_hours: int,
+        refresh: bool = False,
+    ) -> None:
+        self._cache_dir = Path(cache_dir).resolve()
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._max_age = timedelta(hours=max(1, int(max_age_hours)))
+        self._refresh = refresh
+
+    def get_page(self, api: "WikiquoteApi", title: str) -> CanonicalPageSnapshot:
+        cache_path = self._cache_path(title)
+        cached = None if self._refresh else self._load_snapshot(cache_path, title=title, allow_stale=False)
+        if cached is not None:
+            return cached
+
+        stale_cached = self._load_snapshot(cache_path, title=title, allow_stale=True)
+        try:
+            snapshot = api.fetch_page_snapshot(title)
+        except Exception:
+            if stale_cached is not None:
+                return stale_cached
+            raise
+
+        self._write_snapshot(cache_path, snapshot)
+        return snapshot
+
+    def store_snapshot(self, snapshot: CanonicalPageSnapshot) -> None:
+        self._write_snapshot(self._cache_path(snapshot.title), snapshot)
+
+    def _cache_path(self, title: str) -> Path:
+        return self._cache_dir / f"{_canonical_cache_key(title)}.json"
+
+    def _load_snapshot(
+        self,
+        path: Path,
+        *,
+        title: str,
+        allow_stale: bool,
+    ) -> CanonicalPageSnapshot | None:
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        if str(payload.get("title") or "").strip() != title:
+            return None
+        fetched_at_raw = str(payload.get("fetched_at") or "").strip()
+        try:
+            fetched_at = datetime.fromisoformat(fetched_at_raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - fetched_at.astimezone(timezone.utc)
+        if age > self._max_age and not allow_stale:
+            return None
+        wikitext = str(payload.get("wikitext") or "")
+        if not wikitext:
+            return None
+        categories = payload.get("categories") or []
+        if not isinstance(categories, list):
+            categories = []
+        return CanonicalPageSnapshot(
+            title=title,
+            wikitext=wikitext,
+            categories=sorted({str(item).strip() for item in categories if str(item).strip()}),
+            source_url=str(payload.get("source_url") or build_source_url(title)),
+            fetched_at=fetched_at.astimezone(timezone.utc).isoformat(),
+            provider=str(payload.get("provider") or "wikimedia"),
+            transport=str(payload.get("transport") or "mediawiki_api"),
+            revision_id=int(payload["revision_id"]) if payload.get("revision_id") is not None else None,
+        )
+
+    def _write_snapshot(self, path: Path, snapshot: CanonicalPageSnapshot) -> None:
+        payload = {
+            "title": snapshot.title,
+            "wikitext": snapshot.wikitext,
+            "categories": snapshot.categories,
+            "source_url": snapshot.source_url,
+            "fetched_at": snapshot.fetched_at,
+            "provider": snapshot.provider,
+            "transport": snapshot.transport,
+            "revision_id": snapshot.revision_id,
+        }
+        temp_path = path.with_suffix(".tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        temp_path.replace(path)
+
+
+def _xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def resolve_dump_file_path(dump_file: str | None, dump_url: str) -> Path:
+    if dump_file:
+        return Path(dump_file).resolve()
+    filename = dump_url.rstrip("/").rsplit("/", 1)[-1]
+    return (Path(DEFAULT_WIKIQUOTE_DUMP_DIR).resolve() / filename)
+
+
+def ensure_wikimedia_dump_file(dump_file: str | None, dump_url: str) -> Path:
+    dump_path = resolve_dump_file_path(dump_file, dump_url)
+    if dump_path.exists():
+        return dump_path
+
+    dump_path.parent.mkdir(parents=True, exist_ok=True)
+    with requests.get(dump_url, stream=True, timeout=90) as response:
+        response.raise_for_status()
+        temp_path = dump_path.with_suffix(dump_path.suffix + ".tmp")
+        with temp_path.open("wb") as handle:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                handle.write(chunk)
+        temp_path.replace(dump_path)
+    return dump_path
+
+
+def iter_wikimedia_dump_pages(dump_path: Path) -> Any:
+    with bz2.open(dump_path, "rb") as handle:
+        context = ET.iterparse(handle, events=("end",))
+        for _, elem in context:
+            if _xml_local_name(elem.tag) != "page":
+                continue
+
+            title = ""
+            namespace = ""
+            text = ""
+            revision_id: int | None = None
+            is_redirect = False
+
+            for child in list(elem):
+                child_name = _xml_local_name(child.tag)
+                if child_name == "title":
+                    title = str(child.text or "").strip()
+                elif child_name == "ns":
+                    namespace = str(child.text or "").strip()
+                elif child_name == "redirect":
+                    is_redirect = True
+                elif child_name == "revision":
+                    for revision_child in list(child):
+                        revision_name = _xml_local_name(revision_child.tag)
+                        if revision_name == "id" and revision_id is None:
+                            try:
+                                revision_id = int(str(revision_child.text or "").strip())
+                            except ValueError:
+                                revision_id = None
+                        elif revision_name == "text":
+                            text = str(revision_child.text or "")
+
+            yield {
+                "title": title,
+                "namespace": namespace,
+                "text": text,
+                "revision_id": revision_id,
+                "is_redirect": is_redirect,
+            }
+            elem.clear()
+
+
+def hydrate_canonical_cache_from_dump(
+    *,
+    canonical_store: CanonicalSourceStore,
+    dump_path: Path,
+    titles_filter: set[str] | None = None,
+    limit: int = 0,
+) -> int:
+    target_titles = {normalize_text(title) for title in titles_filter or set() if normalize_text(title)}
+    remaining_titles = set(target_titles)
+    inserted = 0
+
+    for row in iter_wikimedia_dump_pages(dump_path):
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        if str(row.get("namespace") or "").strip() != "0":
+            continue
+        if bool(row.get("is_redirect")):
+            continue
+        normalized_title = normalize_text(title)
+        if target_titles and normalized_title not in target_titles:
+            continue
+
+        wikitext = str(row.get("text") or "")
+        if not wikitext.strip():
+            continue
+
+        canonical_store.store_snapshot(
+            CanonicalPageSnapshot(
+                title=title,
+                wikitext=wikitext,
+                categories=extract_page_categories(wikitext),
+                source_url=build_source_url(title),
+                fetched_at=datetime.now(timezone.utc).isoformat(),
+                transport="wikimedia_dump",
+                revision_id=row.get("revision_id"),
+            )
+        )
+        inserted += 1
+        remaining_titles.discard(normalized_title)
+        if limit > 0 and inserted >= limit:
+            break
+        if target_titles and not remaining_titles:
+            break
+
+    return inserted
+
+
 class WikiquoteApi:
     def __init__(
         self,
@@ -1370,7 +1703,7 @@ class WikiquoteApi:
 
         return output
 
-    def fetch_page(self, title: str) -> tuple[str, list[str]]:
+    def fetch_page_snapshot(self, title: str) -> CanonicalPageSnapshot:
         payload = self.get_json(
             {
                 "action": "query",
@@ -1384,15 +1717,33 @@ class WikiquoteApi:
 
         pages = ((payload.get("query") or {}).get("pages") or {})
         if not isinstance(pages, dict) or not pages:
-            return ("", [])
+            return CanonicalPageSnapshot(
+                title=title,
+                wikitext="",
+                categories=[],
+                source_url=build_source_url(title),
+                fetched_at=datetime.now(timezone.utc).isoformat(),
+            )
 
         page = next(iter(pages.values()))
         if not isinstance(page, dict):
-            return ("", [])
+            return CanonicalPageSnapshot(
+                title=title,
+                wikitext="",
+                categories=[],
+                source_url=build_source_url(title),
+                fetched_at=datetime.now(timezone.utc).isoformat(),
+            )
 
         revisions = page.get("revisions") or []
         if not isinstance(revisions, list) or not revisions:
-            return ("", [])
+            return CanonicalPageSnapshot(
+                title=title,
+                wikitext="",
+                categories=[],
+                source_url=build_source_url(title),
+                fetched_at=datetime.now(timezone.utc).isoformat(),
+            )
 
         revision0 = revisions[0] if isinstance(revisions[0], dict) else {}
         slots = revision0.get("slots") or {}
@@ -1412,7 +1763,24 @@ class WikiquoteApi:
                 continue
             api_categories.append(normalize_text(title_value.split(":", 1)[1]))
 
-        return (text, api_categories)
+        revision_id = revision0.get("revid") if isinstance(revision0, dict) else None
+        try:
+            revision_id_int = int(revision_id) if revision_id is not None else None
+        except (TypeError, ValueError):
+            revision_id_int = None
+
+        return CanonicalPageSnapshot(
+            title=title,
+            wikitext=text,
+            categories=sorted(set(api_categories)),
+            source_url=build_source_url(title),
+            fetched_at=datetime.now(timezone.utc).isoformat(),
+            revision_id=revision_id_int,
+        )
+
+    def fetch_page(self, title: str) -> tuple[str, list[str]]:
+        snapshot = self.fetch_page_snapshot(title)
+        return (snapshot.wikitext, snapshot.categories)
 
     def fetch_page_links(self, title: str, limit: int) -> list[str]:
         output: list[str] = []
@@ -1505,6 +1873,11 @@ def main() -> None:
         user_agent=args.user_agent,
         min_interval_seconds=REQUEST_INTERVAL_SECONDS,
     )
+    canonical_store = CanonicalSourceStore(
+        cache_dir=args.canonical_cache_dir,
+        max_age_hours=args.canonical_cache_max_age_hours,
+        refresh=args.refresh_canonical_cache,
+    )
     stats = IngestStats()
     min_quotes_goal = resolve_min_quotes_goal(args)
     runtime_deadline = resolve_runtime_deadline(args)
@@ -1512,6 +1885,18 @@ def main() -> None:
     if args.bootstrap:
         min_score = max(min_score, MIN_QUOTE_SCORE_BOOTSTRAP)
     top_quotes_limit = TOP_QUOTES_PER_PAGE_BOOTSTRAP if args.bootstrap else TOP_QUOTES_PER_PAGE
+
+    if args.hydrate_canonical_cache_from_dump:
+        dump_path = ensure_wikimedia_dump_file(args.dump_file or None, args.dump_url)
+        hydrated_count = hydrate_canonical_cache_from_dump(
+            canonical_store=canonical_store,
+            dump_path=dump_path,
+            titles_filter={entry.title for entry in SEED_ENTRIES} if args.dump_seeds_only else None,
+            limit=max(0, int(args.dump_limit or 0)),
+        )
+        print("\n[CANONICAL CACHE] Wikimedia dump hydration summary")
+        print(f"dump_path={dump_path}")
+        print(f"pages_cached={hydrated_count}")
 
     if args.reset_dataset:
         with get_connection() as conn:
@@ -1583,6 +1968,7 @@ def main() -> None:
         if args.bootstrap:
             run_bootstrap_dry(
                 api=api,
+                canonical_store=canonical_store,
                 seeds=seeds,
                 max_pages_per_run=max_pages_per_run,
                 max_quotes_per_page=args.max_quotes_per_page,
@@ -1593,6 +1979,7 @@ def main() -> None:
         else:
             run_dry(
                 api=api,
+                canonical_store=canonical_store,
                 seeds=seeds,
                 max_pages_per_run=max_pages_per_run,
                 max_seed_members=max_seed_members,
@@ -1707,6 +2094,7 @@ def main() -> None:
                 process_page(
                     cur=cur,
                     api=api,
+                    canonical_store=canonical_store,
                     page_row=page_row,
                     seeds=seeds,
                     max_quotes_per_page=args.max_quotes_per_page,
@@ -1763,7 +2151,7 @@ def main() -> None:
             stats.quotes_total_after = end_metrics.quote_count
             stats.database_size_bytes_after = end_metrics.database_bytes
             stats.quotes_table_bytes_after = end_metrics.quotes_table_bytes
-            record_ingestion_run(
+            ingestion_run_id = record_ingestion_run(
                 cur=cur,
                 run_type=resolve_run_type(args),
                 trigger_source=trigger_source,
@@ -1778,6 +2166,7 @@ def main() -> None:
                     stats=stats,
                     trigger_source=trigger_source,
                     min_quotes_goal=min_quotes_goal,
+                    ingestion_run_id=ingestion_run_id,
                 )
             conn.commit()
 
@@ -1824,6 +2213,7 @@ def discovery_enabled_for_run(
 
 def run_dry(
     api: WikiquoteApi,
+    canonical_store: CanonicalSourceStore,
     seeds: list[str],
     max_pages_per_run: int,
     max_seed_members: int,
@@ -1879,7 +2269,8 @@ def run_dry(
     stats.seed_pages_enqueued = len(queued)
 
     for page_row in queued[:max_pages_per_run]:
-        text, api_categories = api.fetch_page(page_row["page_title"])
+        snapshot = canonical_store.get_page(api, page_row["page_title"])
+        text, api_categories = snapshot.wikitext, snapshot.categories
         if not text:
             stats.pages_failed += 1
             continue
@@ -1979,6 +2370,7 @@ def run_dry(
 
 def run_bootstrap_dry(
     api: WikiquoteApi,
+    canonical_store: CanonicalSourceStore,
     seeds: list[str],
     max_pages_per_run: int,
     max_quotes_per_page: int,
@@ -2000,7 +2392,8 @@ def run_bootstrap_dry(
     stats.seed_pages_enqueued = len(queued)
 
     for page_row in queued:
-        text, api_categories = api.fetch_page(page_row["page_title"])
+        snapshot = canonical_store.get_page(api, page_row["page_title"])
+        text, api_categories = snapshot.wikitext, snapshot.categories
         if not text:
             stats.pages_failed += 1
             continue
@@ -2279,8 +2672,9 @@ def record_ingestion_run(
     min_quotes_goal: int,
     started_at: datetime,
     completed_at: datetime,
-) -> None:
+) -> int | None:
     goal_met = min_quotes_goal <= 0 or stats.quotes_inserted >= min_quotes_goal
+    inserted_quote_ids = stats.inserted_quote_ids[:500]
     metadata = {
         "seed_pages_enqueued": stats.seed_pages_enqueued,
         "pages_failed": stats.pages_failed,
@@ -2300,6 +2694,7 @@ def record_ingestion_run(
         "min_quotes_goal": min_quotes_goal,
         "goal_met": goal_met,
         "runtime_budget_reached": stats.runtime_budget_reached,
+        "inserted_quote_ids": inserted_quote_ids,
     }
     cur.execute(
         """
@@ -2333,6 +2728,7 @@ def record_ingestion_run(
           %s,
           %s::jsonb
         )
+        returning id
         """,
         (
           run_type,
@@ -2350,6 +2746,9 @@ def record_ingestion_run(
           json.dumps(metadata),
         ),
     )
+    row = cur.fetchone() or {}
+    run_id = row.get("id")
+    return int(run_id) if run_id is not None else None
 
 
 def create_discovery_app_notification(
@@ -2358,6 +2757,7 @@ def create_discovery_app_notification(
     stats: IngestStats,
     trigger_source: str,
     min_quotes_goal: int,
+    ingestion_run_id: int | None,
 ) -> None:
     title, body = build_discovery_notification_copy(
         quotes_added=stats.quotes_inserted,
@@ -2367,6 +2767,7 @@ def create_discovery_app_notification(
         runtime_budget_reached_flag=stats.runtime_budget_reached,
     )
     goal_met = min_quotes_goal <= 0 or stats.quotes_inserted >= min_quotes_goal
+    inserted_quote_ids = stats.inserted_quote_ids[:500]
     metadata = {
         "quotes_added": stats.quotes_inserted,
         "total_quotes": stats.quotes_total_after,
@@ -2380,7 +2781,14 @@ def create_discovery_app_notification(
         "min_quotes_goal": min_quotes_goal,
         "goal_met": goal_met,
         "runtime_budget_reached": stats.runtime_budget_reached,
+        "ingestion_run_id": ingestion_run_id,
+        "inserted_quote_ids": inserted_quote_ids,
     }
+    action_route = (
+        f"{DISCOVERY_CRAWL_ROUTE_BASE}/{ingestion_run_id}"
+        if ingestion_run_id is not None
+        else DISCOVERY_NOTIFICATION_ROUTE
+    )
     cur.execute(
         """
         insert into public.app_notifications (
@@ -2396,7 +2804,7 @@ def create_discovery_app_notification(
             DISCOVERY_NOTIFICATION_TYPE,
             title,
             body,
-            DISCOVERY_NOTIFICATION_ROUTE,
+            action_route,
             json.dumps(metadata),
         ),
     )
@@ -2634,7 +3042,19 @@ def topic_seed_priority_bonus(page_title: str) -> int:
     return max(1, TOP_TOPIC_PRIORITY_BONUS + (1 if rank < 12 else 0))
 
 
+def source_seed_priority_bonus(page_title: str) -> int:
+    rank = CURATED_SOURCE_PRIORITY_BY_SLUG.get(normalize_text(page_title))
+    if rank is None:
+        return 0
+    if rank < 5:
+        return TOP_SOURCE_PRIORITY_BONUS + 1
+    return TOP_SOURCE_PRIORITY_BONUS
+
+
 def seed_priority_bonus(page_title: str, page_type: str) -> int:
+    seed_entry = SEED_ENTRY_BY_TITLE.get(normalize_text(page_title))
+    if seed_entry is not None and seed_entry.source_type == "sources":
+        return source_seed_priority_bonus(page_title)
     if page_type == "author":
         return author_seed_priority_bonus(page_title)
     return topic_seed_priority_bonus(page_title)
@@ -2649,6 +3069,115 @@ def author_rank_score(canonical_author: str) -> int:
     if rank < 75:
         return 3
     return 2
+
+
+_SOURCE_STYLE_SINGLETONS = {
+    "anonymous",
+    "proverb",
+    "maxim",
+    "slogan",
+    "aphorism",
+}
+_SOURCE_STYLE_MODIFIERS = {
+    "african",
+    "american",
+    "ancient",
+    "arab",
+    "armenian",
+    "biblical",
+    "british",
+    "buddhist",
+    "chinese",
+    "dutch",
+    "english",
+    "finnish",
+    "folk",
+    "french",
+    "greek",
+    "hindi",
+    "indian",
+    "irish",
+    "italian",
+    "japanese",
+    "jewish",
+    "latin",
+    "old",
+    "persian",
+    "romanian",
+    "russian",
+    "scottish",
+    "spanish",
+    "traditional",
+    "wartime",
+    "zen",
+}
+_SOURCE_STYLE_BASES = {
+    "adage",
+    "aphorism",
+    "dictum",
+    "maxim",
+    "motto",
+    "proverb",
+    "proverbs",
+    "saying",
+    "sayings",
+    "slogan",
+    "slogans",
+    "wisdom",
+}
+
+
+def is_source_style_author(value: str | None) -> bool:
+    normalized = canonicalize_author(value or "")
+    if not normalized:
+        return False
+    if normalized in _SOURCE_STYLE_SINGLETONS:
+        return True
+    words = [word for word in normalized.split() if word]
+    if not words or words[-1] not in _SOURCE_STYLE_BASES:
+        return False
+    return all(word in _SOURCE_STYLE_MODIFIERS for word in words[:-1])
+
+
+def normalize_source_style_display(value: str | None) -> str:
+    display = normalize_author_display(value or "")
+    if not display:
+        return ""
+    display = re.sub(r"\s*\([^)]*\)\s*", " ", display)
+    display = re.sub(r"\s+", " ", display).strip()
+    exact_replacements = {
+        "Proverbs": "Proverb",
+        "Sayings": "Saying",
+        "Slogans": "Slogan",
+        "Maxims": "Maxim",
+        "Adages": "Adage",
+    }
+    if display in exact_replacements:
+        return exact_replacements[display]
+    replacements = {
+        " proverbs": " proverb",
+        " sayings": " saying",
+        " slogans": " slogan",
+        " maxims": " maxim",
+        " adages": " adage",
+    }
+    lowered = display.lower()
+    for suffix, replacement in replacements.items():
+        if lowered.endswith(suffix):
+            return f"{display[: -len(suffix)]}{replacement}".strip()
+    return display
+
+
+def iconic_phrase_owner_mismatch(text: str, canonical_author: str) -> bool:
+    normalized_text = normalize_quote_text(text)
+    if not normalized_text or not canonical_author:
+        return False
+    for phrase, expected_authors in ICONIC_PHRASE_EXPECTED_AUTHORS.items():
+        if phrase not in normalized_text:
+            continue
+        if canonical_author not in expected_authors:
+            return True
+    return False
 
 
 def resolve_source_prestige(
@@ -2981,6 +3510,7 @@ def ensure_target_discovery_queue(
 def process_page(
     cur: Any,
     api: WikiquoteApi,
+    canonical_store: CanonicalSourceStore,
     page_row: dict[str, Any],
     seeds: list[str],
     max_quotes_per_page: int,
@@ -2998,7 +3528,8 @@ def process_page(
     page_title = str(page_row["page_title"])
 
     try:
-        wikitext, api_categories = api.fetch_page(page_title)
+        snapshot = canonical_store.get_page(api, page_title)
+        wikitext, api_categories = snapshot.wikitext, snapshot.categories
         if not wikitext:
             raise RuntimeError("empty_wikitext")
     except Exception as error:  # pragma: no cover
@@ -3037,6 +3568,9 @@ def process_page(
         max_candidates=(
             max(max_quotes_per_page, 75)
             if mapping.page_type == "author" and resolved_source_prestige >= SOURCE_PRESTIGE["authors"]
+            else max(max_quotes_per_page, 90)
+            if SEED_ENTRY_BY_TITLE.get(normalize_text(page_title)) is not None
+            and SEED_ENTRY_BY_TITLE.get(normalize_text(page_title)).source_type == "sources"
             else max_quotes_per_page
         ),
     )
@@ -3066,7 +3600,7 @@ def process_page(
         )
         stats.pruned_quotes += prune_result.deleted_count
 
-    inserted, duplicates = upsert_quotes(
+    inserted, duplicates, inserted_quote_ids = upsert_quotes(
         cur=cur,
         records=build_result.records,
         cluster_index=cluster_index,
@@ -3085,6 +3619,7 @@ def process_page(
     stats.pages_processed += 1
     stats.quotes_parsed += len(quote_candidates)
     stats.quotes_inserted += inserted
+    stats.inserted_quote_ids.extend(inserted_quote_ids)
     stats.inserted_top_quotes += accepted_quotes
     stats.duplicates_skipped += duplicates
     stats.quotes_rejected += build_result.rejected_total
@@ -3233,6 +3768,11 @@ def author_reputation_score(canonical_author: str, page_title: str, page_type: s
     ranked_score = author_rank_score(canonical_author)
     if ranked_score > 0:
         return ranked_score
+    if is_source_style_author(canonical_author):
+        seed_entry = SEED_ENTRY_BY_TITLE.get(normalize_text(page_title))
+        if seed_entry is not None and seed_entry.source_type == "sources":
+            return 2
+        return 1
     if canonical_author in GLOBAL_AUTHOR_REPUTATION:
         return 2
     page_author = canonicalize_author(normalize_author_display(page_title))
@@ -3315,6 +3855,12 @@ def passes_memorability_gate(
     if popularity.cross_page_frequency_score >= 4:
         return True
     if (
+        popularity.parser_quality_score >= 2
+        and popularity.aphorism_structure_score >= 4
+        and len(text) <= 120
+    ):
+        return True
+    if (
         popularity.parser_quality_score >= 4
         and popularity.aphorism_structure_score >= 5
         and len(text) <= 120
@@ -3322,8 +3868,23 @@ def passes_memorability_gate(
         return True
     if (
         popularity.author_reputation_score >= 4
-        and popularity.parser_quality_score >= 4
+        and popularity.parser_quality_score >= 1
         and popularity.aphorism_structure_score >= 4
+        and len(text) <= 120
+    ):
+        return True
+    if (
+        popularity.author_reputation_score >= 3
+        and popularity.parser_quality_score >= 2
+        and popularity.aphorism_structure_score >= 4
+        and len(text) <= 110
+    ):
+        return True
+    if (
+        source_prestige >= SOURCE_PRESTIGE["sources"]
+        and popularity.author_reputation_score >= 2
+        and popularity.parser_quality_score >= 1
+        and popularity.aphorism_structure_score >= 3
         and len(text) <= 120
     ):
         return True
@@ -3358,6 +3919,12 @@ def build_quote_records(
     result = QuoteBuildResult(records=[])
     page_author = normalize_author_display(page_title)
     page_canonical_author = canonicalize_author(page_author)
+    source_seed_entry = SEED_ENTRY_BY_TITLE.get(normalize_text(page_title))
+    page_source_author = normalize_source_style_display(page_title)
+    page_source_canonical = canonicalize_author(page_source_author)
+    page_is_source_seed = (
+        source_seed_entry is not None and source_seed_entry.source_type == "sources"
+    )
 
     for candidate in quote_candidates:
         text = clean_quote_display_text(candidate.text)
@@ -3378,6 +3945,9 @@ def build_quote_records(
             attribution_style = "page_author"
         elif candidate.extracted_author is not None:
             author_display = normalize_author_display(candidate.extracted_author)
+        elif page_is_source_seed and page_source_canonical and is_source_style_author(page_source_canonical):
+            author_display = page_source_author
+            attribution_style = "page_source"
         else:
             _record_rejection(result, "low_confidence")
             continue
@@ -3405,6 +3975,9 @@ def build_quote_records(
 
         canonical_author = canonicalize_author(author_display)
         if not canonical_author:
+            _record_rejection(result, "bad_author")
+            continue
+        if iconic_phrase_owner_mismatch(text, canonical_author):
             _record_rejection(result, "bad_author")
             continue
 
@@ -3547,12 +4120,13 @@ def upsert_quotes(
     cur: Any,
     records: list[QuoteRecord],
     cluster_index: QuoteClusterIndex | None = None,
-) -> tuple[int, int]:
+) -> tuple[int, int, list[str]]:
     if not records:
-        return (0, 0)
+        return (0, 0, [])
 
     inserted = 0
     duplicates = 0
+    inserted_quote_ids: list[str] = []
     for record in records:
         if cluster_index is not None:
             matched_cluster, _ = cluster_index.find_best_match(
@@ -3609,9 +4183,11 @@ def upsert_quotes(
             )
         if is_insert:
             inserted += 1
+            if quote_id:
+                inserted_quote_ids.append(quote_id)
         else:
             duplicates += 1
-    return (inserted, duplicates)
+    return (inserted, duplicates, inserted_quote_ids)
 
 
 def refresh_author_stats(cur: Any, records: list[QuoteRecord]) -> None:

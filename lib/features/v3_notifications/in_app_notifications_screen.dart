@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/v3_explore/discovery_category_utils.dart';
-import '../../providers/quote_providers.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/flow_responsive.dart';
 import '../../widgets/editorial_background.dart';
@@ -456,93 +454,99 @@ class _NotificationCard extends ConsumerWidget {
         : item.prunedQuotes > 0
         ? Icons.layers_clear_rounded
         : Icons.update_rounded;
-    final quotes = ref.watch(allQuotesProvider).valueOrNull ?? const [];
-    final recentCategory = _isDiscoveryNotification(item)
-        ? pickRecentDiscoveryCategory(quotes)
-        : null;
+    final canOpenCrawlList =
+        _isDiscoveryNotification(item) &&
+        item.quotesAdded > 0 &&
+        item.actionRoute.trim().isNotEmpty &&
+        item.actionRoute.trim() != '/updates';
 
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        compact ? 10 : 12,
-        compact ? 10 : 12,
-        compact ? 10 : 12,
-        compact ? 10 : 12,
-      ),
-      decoration: BoxDecoration(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(compact ? 16 : 18),
-        color: (colors.elevatedSurface).withValues(
-          alpha: compact ? 0.64 : 0.72,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 4,
-            height: compact ? 44 : 52,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              color: accentColor.withValues(alpha: emphasize ? 0.92 : 0.72),
+        onTap: canOpenCrawlList ? () => context.push(item.actionRoute) : null,
+        child: Ink(
+          padding: EdgeInsets.fromLTRB(
+            compact ? 10 : 12,
+            compact ? 10 : 12,
+            compact ? 10 : 12,
+            compact ? 10 : 12,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(compact ? 16 : 18),
+            color: (colors.elevatedSurface).withValues(
+              alpha: compact ? 0.64 : 0.72,
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 4,
+                height: compact ? 44 : 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: accentColor.withValues(alpha: emphasize ? 0.92 : 0.72),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      leadingIcon,
-                      size: compact ? 14 : 16,
-                      color: accentColor,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          leadingIcon,
+                          size: compact ? 14 : 16,
+                          color: accentColor,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _notificationHeadline(item),
+                            style:
+                                (compact
+                                        ? textTheme.titleSmall
+                                        : textTheme.titleMedium)
+                                    ?.copyWith(
+                                      color: colors.textPrimary,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.1,
+                                    ),
+                          ),
+                        ),
+                        const SizedBox(width: FlowSpace.xs),
+                        Text(
+                          _formatNotificationTimestamp(item.createdAt),
+                          style: textTheme.labelSmall?.copyWith(
+                            color: colors.textSecondary.withValues(alpha: 0.82),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        _notificationHeadline(item),
-                        style:
-                            (compact
-                                    ? textTheme.titleSmall
-                                    : textTheme.titleMedium)
-                                ?.copyWith(
-                                  color: colors.textPrimary,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.1,
-                                ),
-                      ),
-                    ),
-                    const SizedBox(width: FlowSpace.xs),
+                    const SizedBox(height: 4),
                     Text(
-                      _formatNotificationTimestamp(item.createdAt),
-                      style: textTheme.labelSmall?.copyWith(
-                        color: colors.textSecondary.withValues(alpha: 0.82),
+                      _notificationSummary(item),
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary.withValues(alpha: 0.94),
+                        height: 1.28,
                       ),
                     ),
+                    if (canOpenCrawlList) ...[
+                      const SizedBox(height: 8),
+                      _NotificationActionChip(
+                        label: 'Open newly added list',
+                        onTap: () => context.push(item.actionRoute),
+                      ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _notificationSummary(item),
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colors.textSecondary.withValues(alpha: 0.94),
-                    height: 1.28,
-                  ),
-                ),
-                if (recentCategory != null) ...[
-                  const SizedBox(height: 8),
-                  _NotificationActionChip(
-                    label: 'Open newly added list',
-                    onTap: () => context.push(
-                      '/categories/${Uri.encodeComponent(discoveryCategoryRouteTag(recentCategory))}',
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

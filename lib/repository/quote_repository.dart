@@ -370,6 +370,30 @@ class QuoteRepository {
     return {for (final entry in sorted) entry.key: entry.value};
   }
 
+  Future<Map<String, int>> getMoodCounts() async {
+    final cachedCounts = await _localCache.getMoodCounts();
+    if (cachedCounts.isNotEmpty) {
+      return cachedCounts;
+    }
+
+    final quotes = await getAllQuotes();
+    final counts = <String, int>{};
+    for (final quote in quotes) {
+      for (final mood in quote.moods) {
+        final normalized = mood.trim().toLowerCase();
+        if (normalized.isEmpty) continue;
+        counts.update(normalized, (v) => v + 1, ifAbsent: () => 1);
+      }
+    }
+    final sorted = counts.entries.toList()
+      ..sort((a, b) {
+        final byCount = b.value.compareTo(a.value);
+        if (byCount != 0) return byCount;
+        return a.key.compareTo(b.key);
+      });
+    return {for (final entry in sorted) entry.key: entry.value};
+  }
+
   Future<List<QuoteModel>> getQuotesByTag(
     String tag, {
     int offset = 0,
@@ -462,6 +486,105 @@ class QuoteRepository {
       preferredMood: moodAllowlist.contains(normalized) ? normalized : null,
       limit: limit,
     );
+  }
+
+  Future<List<QuoteModel>> getQuotesByAuthor(
+    String authorKey, {
+    int offset = 0,
+    int limit = 320,
+  }) async {
+    final normalized = authorKey.trim().toLowerCase();
+    if (normalized.isEmpty || normalized == 'all') {
+      return getQuotesPage(offset: offset, limit: limit);
+    }
+
+    final cached = await _localCache.getQuotesForAuthor(
+      authorKey: normalized,
+      limit: limit,
+      offset: offset,
+    );
+    if (cached.isNotEmpty) {
+      unawaited(_refreshFromNetworkIfStale());
+      return cached;
+    }
+
+    try {
+      final rows = await _client
+          .from('quotes')
+          .select(_modernQuoteFields)
+          .eq('canonical_author', normalized)
+          .order('virality_score', ascending: false)
+          .order('popularity_score', ascending: false)
+          .order('author_score', ascending: false)
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
+      final mapped = _mapQuoteRows(rows);
+      if (mapped.isNotEmpty) {
+        await _localCache.upsertQuotes(mapped);
+        return mapped;
+      }
+    } catch (error) {
+      debugPrint('Supabase getQuotesByAuthor failed for "$normalized": $error');
+    }
+
+    final all = await getAllQuotes();
+    return all
+        .where((quote) {
+          final canonical = quote.canonicalAuthor.trim().toLowerCase();
+          final author = quote.author
+              .toLowerCase()
+              .replaceAll(RegExp(r'[^a-z0-9\\s]'), ' ')
+              .replaceAll(RegExp(r'\\s+'), ' ')
+              .trim();
+          return canonical == normalized || author == normalized;
+        })
+        .skip(offset)
+        .take(limit)
+        .toList(growable: false);
+  }
+
+  Future<List<QuoteModel>> getQuotesByIds(Iterable<String> quoteIds) async {
+    final orderedIds = quoteIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (orderedIds.isEmpty) {
+      return const <QuoteModel>[];
+    }
+
+    final cached = await _localCache.getQuotesByIds(orderedIds);
+    final cachedIds = cached.map((quote) => quote.id).toSet();
+    if (cached.length == orderedIds.length) {
+      return cached;
+    }
+
+    final missingIds = orderedIds
+        .where((id) => !cachedIds.contains(id))
+        .toList(growable: false);
+    if (missingIds.isEmpty) {
+      return cached;
+    }
+
+    try {
+      final rows = await _client
+          .from('quotes')
+          .select(_modernQuoteFields)
+          .inFilter('id', missingIds);
+      final fetched = _mapQuoteRows(rows);
+      if (fetched.isNotEmpty) {
+        await _localCache.upsertQuotes(fetched);
+      }
+      final byId = <String, QuoteModel>{
+        for (final quote in [...cached, ...fetched]) quote.id: quote,
+      };
+      return orderedIds
+          .map((id) => byId[id])
+          .whereType<QuoteModel>()
+          .toList(growable: false);
+    } catch (error) {
+      debugPrint('Supabase getQuotesByIds failed: $error');
+      return cached;
+    }
   }
 
   Future<List<String>> getMoodTagsAvailable(List<String> allowlist) async {

@@ -354,6 +354,80 @@ class LocalQuoteCache {
     return rows.map(_quoteFromCacheRow).toList(growable: false);
   }
 
+  Future<List<QuoteModel>> getQuotesForAuthor({
+    required String authorKey,
+    int limit = 240,
+    int offset = 0,
+  }) async {
+    final normalized = authorKey.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return getTopQuotes(limit: limit, offset: offset);
+    }
+
+    final db = await _database();
+    if (db == null) {
+      final quotes = _memoryQuotes
+          .where((quote) => _effectiveCanonicalAuthor(quote) == normalized)
+          .toList(growable: false);
+      final sorted = _sortQuotes(quotes);
+      if (offset >= sorted.length) {
+        return const <QuoteModel>[];
+      }
+      final end = math.min(offset + limit, sorted.length);
+      return sorted.sublist(offset, end);
+    }
+
+    final rows = await db.query(
+      'quotes_cache',
+      where: 'canonical_author = ? or search_text like ?',
+      whereArgs: <Object>[normalized, '% $normalized%'],
+      orderBy: _rankOrderBy,
+      limit: limit,
+      offset: offset,
+    );
+    return rows.map(_quoteFromCacheRow).toList(growable: false);
+  }
+
+  Future<List<QuoteModel>> getQuotesByIds(Iterable<String> quoteIds) async {
+    final orderedIds = quoteIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (orderedIds.isEmpty) {
+      return const <QuoteModel>[];
+    }
+
+    final db = await _database();
+    if (db == null) {
+      final byId = <String, QuoteModel>{
+        for (final quote in _memoryQuotes) quote.id: quote,
+      };
+      return orderedIds
+          .map((id) => byId[id])
+          .whereType<QuoteModel>()
+          .toList(growable: false);
+    }
+
+    final placeholders = List<String>.filled(orderedIds.length, '?').join(',');
+    final rows = await db.rawQuery(
+      'select * from quotes_cache where id in ($placeholders)',
+      orderedIds.cast<Object>(),
+    );
+    if (rows.isEmpty) {
+      return const <QuoteModel>[];
+    }
+
+    final byId = <String, QuoteModel>{};
+    for (final row in rows) {
+      final quote = _quoteFromCacheRow(row);
+      byId[quote.id] = quote;
+    }
+    return orderedIds
+        .map((id) => byId[id])
+        .whereType<QuoteModel>()
+        .toList(growable: false);
+  }
+
   Future<void> replaceAllQuotes(List<QuoteModel> quotes) async {
     final unique = _dedupeById(quotes);
     final db = await _database();
@@ -474,6 +548,33 @@ class LocalQuoteCache {
       return counts;
     }
     return _countsFromMemoryQuotes();
+  }
+
+  Future<Map<String, int>> getMoodCounts() async {
+    final db = await _database();
+    if (db == null) {
+      return _moodCountsFromMemoryQuotes();
+    }
+
+    final rows = await db.rawQuery('''
+      select mood, count(*) as count
+      from quote_moods_cache
+      group by mood
+      order by count desc, mood asc
+    ''');
+    final counts = <String, int>{};
+    for (final row in rows) {
+      final mood = (row['mood'] ?? '').toString().trim().toLowerCase();
+      if (mood.isEmpty) {
+        continue;
+      }
+      final value = (row['count'] as int?) ?? 0;
+      counts[mood] = value;
+    }
+    if (counts.isNotEmpty) {
+      return counts;
+    }
+    return _moodCountsFromMemoryQuotes();
   }
 
   Future<void> cacheDailyQuote({
@@ -989,6 +1090,28 @@ class LocalQuoteCache {
           : quote.categories;
       for (final category in categories) {
         final normalized = category.trim().toLowerCase();
+        if (normalized.isEmpty) {
+          continue;
+        }
+        counts.update(normalized, (value) => value + 1, ifAbsent: () => 1);
+      }
+    }
+    final sorted = counts.entries.toList()
+      ..sort((a, b) {
+        final byCount = b.value.compareTo(a.value);
+        if (byCount != 0) {
+          return byCount;
+        }
+        return a.key.compareTo(b.key);
+      });
+    return <String, int>{for (final entry in sorted) entry.key: entry.value};
+  }
+
+  Map<String, int> _moodCountsFromMemoryQuotes() {
+    final counts = <String, int>{};
+    for (final quote in _memoryQuotes) {
+      for (final mood in quote.moods) {
+        final normalized = mood.trim().toLowerCase();
         if (normalized.isEmpty) {
           continue;
         }

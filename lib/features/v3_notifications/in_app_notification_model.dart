@@ -10,6 +10,7 @@ class InAppNotificationModel {
     required this.quotesAdded,
     required this.totalQuotes,
     required this.prunedQuotes,
+    required this.ingestionRunId,
   });
 
   final int id;
@@ -22,6 +23,7 @@ class InAppNotificationModel {
   final int quotesAdded;
   final int totalQuotes;
   final int prunedQuotes;
+  final int ingestionRunId;
 
   factory InAppNotificationModel.fromJson(Map<String, dynamic> json) {
     final metadata = _asMap(json['metadata']);
@@ -41,6 +43,7 @@ class InAppNotificationModel {
       quotesAdded: _toInt(metadata['quotes_added']),
       totalQuotes: _toInt(metadata['total_quotes']),
       prunedQuotes: _toInt(metadata['pruned_quotes']),
+      ingestionRunId: _toInt(metadata['ingestion_run_id']),
     );
   }
 
