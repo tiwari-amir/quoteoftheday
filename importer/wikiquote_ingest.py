@@ -42,7 +42,7 @@ WIKIQUOTE_LICENSE = "CC BY-SA 4.0"
 DISCOVERY_NOTIFICATION_TYPE = "discovery_summary"
 DISCOVERY_NOTIFICATION_ROUTE = "/updates"
 APP_NOTIFICATION_RETENTION_LIMIT = 10
-REQUEST_INTERVAL_SECONDS = 0.5
+REQUEST_INTERVAL_SECONDS = 0.9
 MAX_PARSE_WIKITEXT_CHARS = 300_000
 MAX_PARSE_WIKITEXT_LINES = 6_000
 MAX_PAGES_QUEUE_SIZE = 50_000
@@ -254,6 +254,41 @@ Warren Buffett
 """.splitlines()
     if item.strip()
 ]
+ICONIC_FIRST_WAVE_AUTHOR_DISPLAY_NAMES = [
+    "Oscar Wilde",
+    "Albert Einstein",
+    "Confucius",
+    "Friedrich Nietzsche",
+    "Socrates",
+    "William Shakespeare",
+    "Laozi",
+    "Francis Bacon",
+    "Benjamin Franklin",
+    "Mark Twain",
+    "Aristotle",
+    "Cicero",
+    "George Orwell",
+    "Maya Angelou",
+    "Martin Luther King Jr.",
+    "Mahatma Gandhi",
+    "Nelson Mandela",
+    "Theodore Roosevelt",
+    "Viktor Frankl",
+    "Marcus Aurelius",
+    "Seneca",
+    "Epictetus",
+    "Dalai Lama",
+    "Ralph Waldo Emerson",
+    "Henry David Thoreau",
+    "Steve Jobs",
+    "Franklin D. Roosevelt",
+    "Mother Teresa",
+    "J.R.R. Tolkien",
+    "Walt Disney",
+]
+AUTHOR_SEED_DISPLAY_NAMES = list(
+    dict.fromkeys([*ICONIC_FIRST_WAVE_AUTHOR_DISPLAY_NAMES, *CURATED_AUTHOR_DISPLAY_NAMES])
+)
 _AUTHOR_SEED_TITLE_ALIASES = {
     normalize_text("Siddhartha Gautama (Buddha)"): "Buddha",
     normalize_text("Tenzin Gyatso (Dalai Lama)"): "Dalai Lama",
@@ -271,7 +306,7 @@ def resolve_author_seed_title(author_name: str) -> str:
 CURATED_AUTHOR_SEED_TITLES = list(
     dict.fromkeys(
         resolve_author_seed_title(author_name)
-        for author_name in CURATED_AUTHOR_DISPLAY_NAMES
+        for author_name in AUTHOR_SEED_DISPLAY_NAMES
         if author_name.strip()
     )
 )
@@ -294,12 +329,18 @@ TOP_QUOTES_PER_PAGE_BOOTSTRAP = 3
 MIN_GLOBAL_POPULARITY_SCORE = 10
 MIN_QUOTE_SCORE_BOOTSTRAP = 10
 DISCOVERY_ENABLE_QUOTE_THRESHOLD = 1000
-DISCOVERY_PRIME_QUEUE_SIZE = 500
-DISCOVERY_LINKS_PER_PRESTIGE_PAGE = 40
+DISCOVERY_PRIME_QUEUE_SIZE = 120
+DISCOVERY_LINKS_PER_PRESTIGE_PAGE = 12
+DISCOVERY_PRESTIGE_SOURCE_PAGES_PER_RUN = 28
+DISCOVERY_ZERO_INSERT_STREAK_LIMIT = 8
+LINK_FETCH_RATE_LIMIT_COOLDOWN_SECONDS = 180
+LINK_FETCH_LOG_INTERVAL_SECONDS = 45
 HIGH_CULTURAL_SOURCE_TYPES = {"speeches", "literature", "films"}
 MEDIUM_CULTURAL_SOURCE_TYPES = {"authors", "tv_shows"}
 HIGH_QUALITY_LINK_BONUS = 2
 TOPIC_PAGE_MATCH_BONUS = 2
+TOP_AUTHOR_PRIORITY_BONUS = 3
+TOP_TOPIC_PRIORITY_BONUS = 1
 CLUSTER_SIMILARITY_THRESHOLD = 0.75
 SAFE_DATABASE_STORAGE_BYTES = int(0.49 * (1024**3))
 STORAGE_RECLAIM_BUFFER_BYTES = 2 * 1024 * 1024
@@ -308,6 +349,19 @@ MIN_PRUNE_BATCH_SIZE = 5
 MAX_PRUNE_BATCH_SIZE = 400
 CURATED_CATEGORY_DISPLAY_BY_SLUG = {
     normalize_text(label): label for label in CURATED_CATEGORY_DISPLAY
+}
+CURATED_AUTHOR_PRIORITY_BY_TITLE = {
+    normalize_text(title): index
+    for index, title in enumerate(CURATED_AUTHOR_SEED_TITLES)
+}
+CURATED_AUTHOR_PRIORITY_BY_CANONICAL = {
+    canonicalize_author(author_name): index
+    for index, author_name in enumerate(AUTHOR_SEED_DISPLAY_NAMES)
+    if canonicalize_author(author_name)
+}
+CURATED_TOPIC_PRIORITY_BY_SLUG = {
+    normalize_text(title): index
+    for index, title in enumerate(DEFAULT_SEEDS)
 }
 SOURCE_PRESTIGE_HINTS = {
     "speeches": (
@@ -482,6 +536,12 @@ class DiscoveredPage:
     page_title: str
     page_type: str
     page_priority: int
+
+
+class WikiquoteRateLimitError(RuntimeError):
+    def __init__(self, cooldown_seconds: float, message: str = "Wikiquote API rate limited") -> None:
+        super().__init__(message)
+        self.cooldown_seconds = max(15.0, float(cooldown_seconds))
 
 
 class QuoteClusterIndex:
@@ -1189,6 +1249,18 @@ def ensure_ingestion_notification_schema(cur: Any) -> None:
     )
 
 
+def _parse_retry_after_seconds(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
+
+
 class WikiquoteApi:
     def __init__(
         self,
@@ -1199,16 +1271,45 @@ class WikiquoteApi:
         self._session.headers.update({"User-Agent": user_agent})
         self._min_interval_seconds = min_interval_seconds
         self._last_request_time = 0.0
+        self._link_fetch_cooldown_until = 0.0
+        self._warning_times: dict[str, float] = {}
 
     def get_json(self, params: dict[str, Any]) -> dict[str, Any]:
-        self._throttle()
         payload = {"format": "json", **params}
-        response = self._session.get(WIKIQUOTE_API_URL, params=payload, timeout=18)
-        response.raise_for_status()
-        decoded = response.json()
-        if not isinstance(decoded, dict):
-            raise RuntimeError("Unexpected MediaWiki response type")
-        return decoded
+        retry_backoff = max(2.0, self._min_interval_seconds * 4)
+
+        for attempt in range(3):
+            self._throttle()
+            try:
+                response = self._session.get(WIKIQUOTE_API_URL, params=payload, timeout=18)
+            except requests.RequestException:
+                if attempt >= 2:
+                    raise
+                time.sleep(retry_backoff)
+                retry_backoff = min(retry_backoff * 2, 20.0)
+                continue
+
+            if response.status_code == 429:
+                retry_after = _parse_retry_after_seconds(response.headers.get("Retry-After"))
+                cooldown_seconds = max(
+                    retry_after or retry_backoff,
+                    self._min_interval_seconds * 6,
+                    8.0,
+                )
+                self.defer_link_fetches(max(cooldown_seconds * 2, LINK_FETCH_RATE_LIMIT_COOLDOWN_SECONDS))
+                if attempt >= 2:
+                    raise WikiquoteRateLimitError(cooldown_seconds)
+                time.sleep(cooldown_seconds)
+                retry_backoff = min(max(retry_backoff * 2, cooldown_seconds * 1.5), 24.0)
+                continue
+
+            response.raise_for_status()
+            decoded = response.json()
+            if not isinstance(decoded, dict):
+                raise RuntimeError("Unexpected MediaWiki response type")
+            return decoded
+
+        raise RuntimeError("MediaWiki request retries exhausted")
 
     def _throttle(self) -> None:
         now = time.monotonic()
@@ -1217,6 +1318,23 @@ class WikiquoteApi:
         if wait_for > 0:
             time.sleep(wait_for)
         self._last_request_time = time.monotonic()
+
+    def defer_link_fetches(self, cooldown_seconds: float) -> None:
+        self._link_fetch_cooldown_until = max(
+            self._link_fetch_cooldown_until,
+            time.monotonic() + max(15.0, cooldown_seconds),
+        )
+
+    def link_fetch_cooldown_remaining(self) -> float:
+        return max(0.0, self._link_fetch_cooldown_until - time.monotonic())
+
+    def should_log_warning(self, key: str) -> bool:
+        now = time.monotonic()
+        last_logged = self._warning_times.get(key, 0.0)
+        if now - last_logged < LINK_FETCH_LOG_INTERVAL_SECONDS:
+            return False
+        self._warning_times[key] = now
+        return True
 
     def fetch_category_members(self, category: str, limit: int) -> list[str]:
         output: list[str] = []
@@ -1348,10 +1466,25 @@ def safe_fetch_page_links(
 ) -> list[str]:
     if limit <= 0:
         return []
+    cooldown_remaining = api.link_fetch_cooldown_remaining()
+    if cooldown_remaining > 0:
+        if api.should_log_warning(f"{context}:cooldown"):
+            print(
+                f"[warn] {context} link fetch paused for ~{int(math.ceil(cooldown_remaining))}s after Wikiquote rate limits"
+            )
+        return []
     try:
         return api.fetch_page_links(title, limit=limit)
+    except WikiquoteRateLimitError as error:  # pragma: no cover
+        api.defer_link_fetches(error.cooldown_seconds)
+        if api.should_log_warning(f"{context}:rate_limit"):
+            print(
+                f"[warn] {context} link fetch rate-limited; pausing discovery link expansion for ~{int(math.ceil(error.cooldown_seconds))}s"
+            )
+        return []
     except Exception as error:  # pragma: no cover
-        print(f"[warn] {context} link fetch failed for {title!r}: {error}")
+        if api.should_log_warning(f"{context}:error"):
+            print(f"[warn] {context} link fetch failed for {title!r}: {error}")
         return []
 
 
@@ -2481,6 +2614,43 @@ def _context_matches_keyword(context: str, keywords: tuple[str, ...]) -> bool:
     )
 
 
+def author_seed_priority_bonus(page_title: str) -> int:
+    rank = CURATED_AUTHOR_PRIORITY_BY_TITLE.get(normalize_text(page_title))
+    if rank is None:
+        return 0
+    if rank < 25:
+        return TOP_AUTHOR_PRIORITY_BONUS + 2
+    if rank < 75:
+        return TOP_AUTHOR_PRIORITY_BONUS + 1
+    if rank < 150:
+        return TOP_AUTHOR_PRIORITY_BONUS
+    return 1
+
+
+def topic_seed_priority_bonus(page_title: str) -> int:
+    rank = CURATED_TOPIC_PRIORITY_BY_SLUG.get(normalize_text(page_title))
+    if rank is None:
+        return 0
+    return max(1, TOP_TOPIC_PRIORITY_BONUS + (1 if rank < 12 else 0))
+
+
+def seed_priority_bonus(page_title: str, page_type: str) -> int:
+    if page_type == "author":
+        return author_seed_priority_bonus(page_title)
+    return topic_seed_priority_bonus(page_title)
+
+
+def author_rank_score(canonical_author: str) -> int:
+    rank = CURATED_AUTHOR_PRIORITY_BY_CANONICAL.get(canonical_author)
+    if rank is None:
+        return 0
+    if rank < 25:
+        return 4
+    if rank < 75:
+        return 3
+    return 2
+
+
 def resolve_source_prestige(
     page_title: str,
     page_type: str,
@@ -2554,6 +2724,7 @@ def compute_page_priority(
 ) -> int:
     return (
         max(0, source_prestige)
+        + seed_priority_bonus(page_title, page_type)
         + topic_page_bonus(
             page_title,
             seed_categories=seed_categories,
@@ -2664,10 +2835,13 @@ def ensure_prestige_discovery_queue(
 
     budget = min(limit, queue_remaining)
     inserted_total = 0
-    for entry in SEED_ENTRIES:
+    zero_insert_streak = 0
+    for entry in SEED_ENTRIES[:DISCOVERY_PRESTIGE_SOURCE_PAGES_PER_RUN]:
         if runtime_budget_reached(deadline):
             break
         if inserted_total >= budget:
+            break
+        if zero_insert_streak >= DISCOVERY_ZERO_INSERT_STREAK_LIMIT:
             break
         discovered_links = safe_fetch_page_links(
             api,
@@ -2692,6 +2866,12 @@ def ensure_prestige_discovery_queue(
             discovered_rows=discovered_rows,
             limit=budget - inserted_total,
         )
+        if discovered_rows:
+            zero_insert_streak = 0
+        else:
+            zero_insert_streak += 1
+        if api.link_fetch_cooldown_remaining() > 0:
+            break
     return inserted_total
 
 
@@ -2739,6 +2919,8 @@ def ensure_high_yield_discovery_queue(
             break
         if inserted_total >= budget:
             break
+        if api.link_fetch_cooldown_remaining() > 0:
+            break
         parent_title = str(source_row.get("page_title") or "").strip()
         if not parent_title:
             continue
@@ -2766,6 +2948,8 @@ def ensure_high_yield_discovery_queue(
             discovered_rows=discovered_rows,
             limit=budget - inserted_total,
         )
+        if api.link_fetch_cooldown_remaining() > 0:
+            break
     return inserted_total
 
 
@@ -2850,7 +3034,11 @@ def process_page(
 
     quote_candidates = extract_quote_candidates(
         parse_text,
-        max_candidates=max_quotes_per_page,
+        max_candidates=(
+            max(max_quotes_per_page, 75)
+            if mapping.page_type == "author" and resolved_source_prestige >= SOURCE_PRESTIGE["authors"]
+            else max_quotes_per_page
+        ),
     )
     candidate_normalized_hashes = collect_candidate_normalized_hashes(quote_candidates)
     build_result = build_quote_records(
@@ -3042,6 +3230,9 @@ def cultural_source_score(page_title: str, page_type: str, source_prestige: int)
 
 
 def author_reputation_score(canonical_author: str, page_title: str, page_type: str) -> int:
+    ranked_score = author_rank_score(canonical_author)
+    if ranked_score > 0:
+        return ranked_score
     if canonical_author in GLOBAL_AUTHOR_REPUTATION:
         return 2
     page_author = canonicalize_author(normalize_author_display(page_title))
@@ -3110,6 +3301,43 @@ def compute_global_popularity_score(
     )
 
 
+def passes_memorability_gate(
+    *,
+    text: str,
+    page_type: str,
+    source_prestige: int,
+    popularity: GlobalPopularityBreakdown,
+) -> bool:
+    if popularity.occurrence_count >= 3:
+        return True
+    if popularity.iconic_phrase_score >= 6:
+        return True
+    if popularity.cross_page_frequency_score >= 4:
+        return True
+    if (
+        popularity.parser_quality_score >= 4
+        and popularity.aphorism_structure_score >= 5
+        and len(text) <= 120
+    ):
+        return True
+    if (
+        popularity.author_reputation_score >= 4
+        and popularity.parser_quality_score >= 4
+        and popularity.aphorism_structure_score >= 4
+        and len(text) <= 120
+    ):
+        return True
+    if (
+        page_type != "author"
+        and source_prestige >= 4
+        and popularity.parser_quality_score >= 4
+        and popularity.aphorism_structure_score >= 4
+        and len(text) <= 130
+    ):
+        return True
+    return False
+
+
 def build_quote_records(
     page_title: str,
     page_type: str,
@@ -3125,7 +3353,7 @@ def build_quote_records(
     frequency_tracker: QuoteFrequencyTracker | None,
 ) -> QuoteBuildResult:
     source_url = build_source_url(page_title)
-    candidates: list[tuple[int, int, int, int, int, int, int, int, QuoteRecord]] = []
+    candidates: list[tuple[int, int, int, int, int, int, int, int, int, QuoteRecord]] = []
     seen_normalized_quote_hashes = set()
     result = QuoteBuildResult(records=[])
     page_author = normalize_author_display(page_title)
@@ -3215,7 +3443,13 @@ def build_quote_records(
         resolved_moods = list(quote_mapping.moods)
         length_tier = classify_length_tier(text)
         accepted_by_frequency = 1 if occurrence_count >= 3 else 0
-        accepted = 1 if (popularity.total >= min_score or accepted_by_frequency) else 0
+        memorability_gate = passes_memorability_gate(
+            text=text,
+            page_type=page_type,
+            source_prestige=source_prestige,
+            popularity=popularity,
+        )
+        accepted = 1 if ((popularity.total >= min_score and memorability_gate) or accepted_by_frequency) else 0
 
         candidates.append(
             (
@@ -3226,6 +3460,7 @@ def build_quote_records(
                 popularity.cross_page_frequency_score,
                 popularity.iconic_phrase_score,
                 popularity.aphorism_structure_score,
+                popularity.author_reputation_score,
                 popularity.parser_quality_score,
                 QuoteRecord(
                     text=text,
@@ -3262,13 +3497,14 @@ def build_quote_records(
             item[5],
             item[6],
             item[7],
-            -abs(len(item[8].text) - 96),
+            item[8],
+            -abs(len(item[9].text) - 96),
         ),
         reverse=True,
     )
 
     selected: list[QuoteRecord] = []
-    for index, (accepted, _, _, _, _, _, _, _, record) in enumerate(candidates):
+    for index, (accepted, _, _, _, _, _, _, _, _, record) in enumerate(candidates):
         if not accepted:
             remaining = len(candidates) - index
             result.rejected_total += remaining

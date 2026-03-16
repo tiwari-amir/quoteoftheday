@@ -59,23 +59,45 @@ _PUBLISHER_RE = re.compile(
     re.IGNORECASE,
 )
 _COMMENTARY_RE = re.compile(
-    r"\b(?:letter to|often misquoted|misattributed|incorrectly attributed|"
-    r"wrongly attributed|as quoted in|from the book|published in|written in|"
-    r"according to|see also|source:|note:)\b",
+    r"\b(?:letter to|often misquoted|misquoted|misattributed|"
+    r"incorrectly attributed|wrongly attributed|as quoted in|from the book|"
+    r"published in|written in|according to|see also|source:|note:|"
+    r"internet quote|internet paraphrase|variant translation by)\b",
     re.IGNORECASE,
 )
 _EXPLANATORY_START_RE = re.compile(
-    r"^(?:in philosophy|in literature|in religion|the term|this quote|one of the)\b",
+    r"^(?:in philosophy|in literature|in religion|the term|this quote|one of the|"
+    r"according to|from the book|as quoted in)\b",
     re.IGNORECASE,
 )
 _LEADING_VARIANT_INTRO_RE = re.compile(
     r"^(?:[\[(]\s*)?"
-    r"(?:"
+    r"(?:" 
     r"(?:sometimes|often|commonly|frequently|widely|also)\s+"
     r"(?:paraphrased|quoted|rendered)(?:\s+as)?"
+    r"|(?:variant\s+)?translation(?:\s+by\s+[^:]{1,80})?"
+    r"|translated(?:\s+by\s+[^:]{1,80})?"
+    r"|translation"
     r")"
     r"(?:\s*[\])])?"
     r"[\s,:;\-]*",
+    re.IGNORECASE,
+)
+_HARD_COMMENTARY_PREFIX_RE = re.compile(
+    r"^(?:[\[(]\s*)?"
+    r"(?:(?:sometimes|often|commonly|widely)\s+misquoted(?:\s+on\s+the\s+internet)?|"
+    r"(?:sometimes|often|commonly|widely)\s+misattributed(?:\s+on\s+the\s+internet)?|"
+    r"misquoted(?:\s+on\s+the\s+internet)?|misattributed(?:\s+on\s+the\s+internet)?|"
+    r"incorrectly attributed|wrongly attributed|internet paraphrase|"
+    r"commonly attributed(?:\s+to)?|often attributed(?:\s+to)?|"
+    r"attributed(?:\s+to)?|quote investigator)\b",
+    re.IGNORECASE,
+)
+_BIBLIOGRAPHY_RE = re.compile(
+    r"^(?:[A-Z][A-Za-z .'\-]{2,80},\s*[\"“][^\"”]{4,180}[\"”](?:,|\s+in\b)|"
+    r".+\bin\s+[A-Z][A-Za-z .'\-]{2,80}\s*\((?:ed|eds)\.?\)|"
+    r".+\b(?:companion to|companion of|journal|review|university press|"
+    r"cambridge companion|oxford companion)\b)",
     re.IGNORECASE,
 )
 _MISQUOTE_HEADING_RE = re.compile(
@@ -89,7 +111,7 @@ _IGNORED_HEADING_RE = re.compile(
 )
 _TITLE_WORD_RE = re.compile(r"^[A-Z][a-z]+(?:-[A-Z][a-z]+)?\.?$")
 _NON_ASCII_REJECTION_RATIO = 0.30
-_MIN_QUOTE_LENGTH = 35
+_MIN_QUOTE_LENGTH = 10
 _MAX_QUOTE_LENGTH = 220
 _CANDIDATE_EXTRACTION_THRESHOLD = 2
 _KNOWN_MONONYMS = {
@@ -121,11 +143,81 @@ _HIGH_QUALITY_PAGE_WHITELIST = {
     "oscar wilde",
 }
 _ICONIC_PHRASE_BONUSES = {
-    "stay hungry": 4,
-    "be the change": 4,
-    "i have a dream": 4,
-    "knowledge is power": 3,
-    "time is money": 3,
+    "the only thing we have to fear is fear itself": 8,
+    "i think therefore i am": 8,
+    "that which does not kill us makes us stronger": 8,
+    "to be or not to be": 8,
+    "the unexamined life is not worth living": 8,
+    "knowledge is power": 8,
+    "stay hungry stay foolish": 8,
+    "the journey of a thousand miles begins with a single step": 8,
+    "time is money": 7,
+    "the pen is mightier than the sword": 7,
+    "fortune favors the bold": 7,
+    "i have a dream": 7,
+    "be the change": 7,
+    "imagination is more important than knowledge": 7,
+    "all animals are equal": 7,
+    "it always seems impossible until its done": 7,
+    "carpe diem": 7,
+    "the truth will set you free": 7,
+    "to thine own self be true": 7,
+    "hell is other people": 7,
+    "power tends to corrupt": 7,
+    "those who cannot remember the past are condemned to repeat it": 7,
+    "what we think we become": 7,
+    "not all those who wander are lost": 7,
+    "do or do not there is no try": 7,
+    "keep calm and carry on": 7,
+    "the mind is everything what you think you become": 7,
+    "success is not final failure is not fatal": 7,
+    "simplicity is the ultimate sophistication": 7,
+    "where there is love there is life": 7,
+    "if you can dream it you can do it": 7,
+    "believe you can and youre halfway there": 7,
+    "it does not matter how slowly you go as long as you do not stop": 7,
+    "quality is not an act it is a habit": 7,
+    "a room without books is like a body without a soul": 7,
+    "nothing will work unless you do": 7,
+    "the only constant in life is change": 7,
+    "a goal without a plan is just a wish": 7,
+    "your time is limited so dont waste it living someone elses life": 7,
+    "be yourself everyone else is already taken": 7,
+    "in the middle of difficulty lies opportunity": 6,
+    "the only true wisdom is in knowing you know nothing": 6,
+    "one small step for man one giant leap for mankind": 6,
+    "life is what happens when youre busy making other plans": 6,
+    "if you judge people you have no time to love them": 6,
+    "the only limit to our realization of tomorrow is our doubts of today": 6,
+    "the greatest glory in living lies not in never falling but in rising every time we fall": 6,
+    "you miss 100 of the shots you dont take": 6,
+    "the purpose of our lives is to be happy": 6,
+    "the secret of getting ahead is getting started": 6,
+    "dream big and dare to fail": 6,
+    "what we know is a drop what we dont know is an ocean": 6,
+    "act as if what you do makes a difference it does": 6,
+    "the best way to predict the future is to create it": 6,
+    "if you tell the truth you dont have to remember anything": 6,
+    "well done is better than well said": 6,
+    "the only impossible journey is the one you never begin": 6,
+    "turn your wounds into wisdom": 6,
+    "everything you can imagine is real": 6,
+    "the way to get started is to quit talking and begin doing": 6,
+    "do what you can with what you have where you are": 6,
+    "fall seven times and stand up eight": 6,
+    "happiness depends upon ourselves": 6,
+    "he who has a why to live can bear almost any how": 6,
+    "a person who never made a mistake never tried anything new": 6,
+    "great minds discuss ideas": 6,
+    "if you want to lift yourself up lift up someone else": 6,
+    "the future belongs to those who believe in the beauty of their dreams": 6,
+    "we become what we think about": 6,
+    "everything has beauty but not everyone sees it": 6,
+    "life is really simple but we insist on making it complicated": 6,
+    "opportunity is missed by most people because it is dressed in overalls": 6,
+    "when the going gets tough the tough get going": 6,
+    "the purpose of life is a life of purpose": 6,
+    "start where you are use what you have do what you can": 6,
 }
 _MEMORABLE_LENGTH_RANGE = (50, 120)
 _DENSITY_PENALTIES = {
@@ -282,7 +374,7 @@ def extract_quote_candidates(wikitext: str, max_candidates: int = 60) -> list[Qu
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
-        output.append((_candidate_extraction_score(candidate), candidate))
+        output.append((_candidate_priority_score(candidate), candidate))
 
     cleaned = _preclean_wikitext(wikitext)
     lines = cleaned.splitlines()
@@ -316,14 +408,20 @@ def extract_quote_candidates(wikitext: str, max_candidates: int = 60) -> list[Qu
             continue
         seen.add(normalized)
 
-        score = _candidate_extraction_score(candidate)
+        score = _candidate_priority_score(candidate)
         if score < _CANDIDATE_EXTRACTION_THRESHOLD:
             continue
         output.append((score, candidate))
-        if len(output) >= max_candidates * 4:
+        if len(output) >= max(max_candidates * 10, 160):
             break
 
-    output.sort(key=lambda item: item[0], reverse=True)
+    output.sort(
+        key=lambda item: (
+            item[0],
+            -abs(len(sanitize_quote_text(item[1].text)) - 88),
+        ),
+        reverse=True,
+    )
     return [candidate for _, candidate in output[:max_candidates]]
 
 
@@ -479,12 +577,17 @@ def sanitize_quote_text(text: str) -> str:
     previous = None
     while previous != value:
         previous = value
+        if _HARD_COMMENTARY_PREFIX_RE.match(value):
+            break
         value = _LEADING_VARIANT_INTRO_RE.sub("", value).strip()
         value = value.lstrip(" ,:;-").strip()
         value = _strip_trailing_source_metadata(value)
         if len(value) >= 2 and value[0] in {'"', "'"} and value[-1] == value[0]:
             value = value[1:-1].strip()
 
+    value = re.sub(r'^["\'](?=\w)', "", value)
+    value = re.sub(r'(?<=\w)["\']([.!?])$', r"\1", value)
+    value = re.sub(r'(?<=\w)["\']$', "", value)
     value = value.strip('" ')
     value = re.sub(r"\s+", " ", value).strip()
     return value
@@ -598,7 +701,11 @@ def iconicity_phrase_bonus(text: str) -> int:
     normalized = normalize_text_for_hash(text)
     bonus = 0
     for phrase, phrase_bonus in _ICONIC_PHRASE_BONUSES.items():
-        if phrase in normalized:
+        if not phrase:
+            continue
+        if normalized == phrase:
+            bonus += phrase_bonus + 2
+        elif phrase in normalized:
             bonus += phrase_bonus
     return bonus
 
@@ -934,6 +1041,8 @@ def _classify_extraction_rejection(text: str, *, in_quote_section: bool) -> str 
         return "metadata"
     if _is_mostly_metadata_line(value):
         return "metadata"
+    if _HARD_COMMENTARY_PREFIX_RE.match(value):
+        return "commentary"
     if _EXPLANATORY_START_RE.match(value):
         return "commentary"
     if _COMMENTARY_RE.search(value):
@@ -949,6 +1058,8 @@ def _classify_quote_rejection(text: str) -> str | None:
         return "metadata"
     if len(value) < _MIN_QUOTE_LENGTH or len(value) > _MAX_QUOTE_LENGTH:
         return "metadata"
+    if _HARD_COMMENTARY_PREFIX_RE.match(value):
+        return "commentary"
     if not _has_sentence_punctuation(value):
         return "metadata"
     if not _healthy_letter_ratio(value):
@@ -990,6 +1101,27 @@ def _candidate_extraction_score(candidate: QuoteCandidate) -> int:
         score += 1
     if _has_sentence_punctuation(candidate.text):
         score += 1
+    return score
+
+
+def _candidate_priority_score(candidate: QuoteCandidate) -> int:
+    cleaned = sanitize_quote_text(candidate.text)
+    score = _candidate_extraction_score(candidate) * 10
+    score += iconicity_phrase_bonus(cleaned) * 6
+    score += aphorism_structure_score(cleaned) * 2
+
+    if 10 <= len(cleaned) <= 140:
+        score += 4
+    elif len(cleaned) <= 180:
+        score += 1
+
+    if _HARD_COMMENTARY_PREFIX_RE.match(cleaned):
+        score -= 20
+    if _is_mostly_metadata_line(cleaned):
+        score -= 12
+    if len(cleaned) > 180:
+        score -= 4
+
     return score
 
 
@@ -1116,7 +1248,11 @@ def _is_mostly_metadata_line(text: str) -> bool:
     lowered = value.lower()
     if not value:
         return True
+    if _BIBLIOGRAPHY_RE.search(value):
+        return True
     if lowered.startswith(("source:", "note:", "published in", "written in")):
+        return True
+    if _HARD_COMMENTARY_PREFIX_RE.match(value):
         return True
     if _URL_RE.search(value) or _ISBN_RE.search(value):
         return True
