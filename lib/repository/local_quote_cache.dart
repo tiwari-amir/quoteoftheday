@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/quote_model.dart';
+import '../features/v3_search/search_service.dart';
 
 class LocalQuoteCache {
   LocalQuoteCache._();
@@ -426,6 +427,110 @@ class LocalQuoteCache {
         .map((id) => byId[id])
         .whereType<QuoteModel>()
         .toList(growable: false);
+  }
+
+  Future<List<QuoteModel>> searchQuotes({
+    required String query,
+    Set<String>? scopeQuoteIds,
+    String? lengthFilter,
+    String? tagFilter,
+    int limit = 100,
+  }) async {
+    final normalizedQuery = query.trim().toLowerCase();
+    final normalizedScope = scopeQuoteIds
+        ?.map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final normalizedLength = lengthFilter?.trim().toLowerCase();
+    final normalizedTag = tagFilter?.trim().toLowerCase();
+    final safeLimit = math.max(1, limit);
+
+    final db = await _database();
+    if (db == null) {
+      final scopedQuotes = normalizedScope == null
+          ? _memoryQuotes
+          : _memoryQuotes
+                .where((quote) => normalizedScope.contains(quote.id))
+                .toList(growable: false);
+      return SearchService(scopedQuotes).searchQuotes(
+        normalizedQuery,
+        lengthFilter: normalizedLength,
+        tagFilter: normalizedTag,
+        limit: safeLimit,
+      );
+    }
+
+    if (normalizedQuery.isEmpty &&
+        (normalizedScope == null || normalizedScope.isEmpty) &&
+        (normalizedLength == null || normalizedLength.isEmpty) &&
+        (normalizedTag == null || normalizedTag.isEmpty)) {
+      return getTopQuotes(limit: safeLimit);
+    }
+
+    final whereClauses = <String>[];
+    final args = <Object>[];
+
+    if (normalizedScope != null && normalizedScope.isNotEmpty) {
+      final placeholders = List<String>.filled(
+        normalizedScope.length,
+        '?',
+      ).join(',');
+      whereClauses.add('qc.id in ($placeholders)');
+      args.addAll(normalizedScope);
+    }
+
+    if (normalizedLength == 'short' ||
+        normalizedLength == 'medium' ||
+        normalizedLength == 'long') {
+      whereClauses.add('qc.length_tier = ?');
+      args.add(normalizedLength!);
+    }
+
+    if (normalizedTag != null && normalizedTag.isNotEmpty) {
+      whereClauses.add('qc.tags_json like ?');
+      args.add('%"$normalizedTag"%');
+    }
+
+    final tokens = normalizedQuery
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+    for (final token in tokens) {
+      whereClauses.add('qc.search_text like ?');
+      args.add('%$token%');
+    }
+
+    final sql = StringBuffer()
+      ..write('select ')
+      ..write('qc.* from quotes_cache qc');
+    if (whereClauses.isNotEmpty) {
+      sql
+        ..write(' where ')
+        ..write(whereClauses.join(' and '));
+    }
+    sql
+      ..write(' order by ')
+      ..write(_rankOrderByWithAlias('qc'))
+      ..write(' limit ?');
+    final candidateLimit = math.max(safeLimit * 4, math.max(40, safeLimit));
+    args.add(candidateLimit);
+
+    final rows = await db.rawQuery(sql.toString(), args);
+    final candidates = rows.map(_quoteFromCacheRow).toList(growable: false);
+    if (candidates.isEmpty) {
+      return const <QuoteModel>[];
+    }
+
+    if (normalizedQuery.isEmpty) {
+      return candidates.take(safeLimit).toList(growable: false);
+    }
+
+    return SearchService(candidates).searchQuotes(
+      normalizedQuery,
+      lengthFilter: normalizedLength,
+      tagFilter: normalizedTag,
+      limit: safeLimit,
+    );
   }
 
   Future<void> replaceAllQuotes(List<QuoteModel> quotes) async {

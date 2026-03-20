@@ -10,7 +10,6 @@ import '../services/author_wiki_service.dart';
 import '../services/free_media_quotes_service.dart';
 import '../services/internet_best_quote_service.dart';
 import '../services/quote_service.dart';
-import '../features/v3_search/search_service.dart';
 import 'supabase_provider.dart';
 
 class MonthlyAuthorSpotlight {
@@ -83,6 +82,29 @@ class CrawlRunQuoteBatch {
   final List<QuoteModel> quotes;
 }
 
+class QuoteSearchRequest {
+  const QuoteSearchRequest({
+    required this.query,
+    this.tagFilter,
+    this.limit = 100,
+  });
+
+  final String query;
+  final String? tagFilter;
+  final int limit;
+
+  @override
+  bool operator ==(Object other) {
+    return other is QuoteSearchRequest &&
+        other.query == query &&
+        other.tagFilter == tagFilter &&
+        other.limit == limit;
+  }
+
+  @override
+  int get hashCode => Object.hash(query, tagFilter, limit);
+}
+
 final quoteRepositoryProvider = Provider<QuoteRepository>((ref) {
   return QuoteRepository(client: ref.read(supabaseClientProvider));
 });
@@ -123,6 +145,21 @@ final exploreDiscoveryQuotesProvider = FutureProvider<List<QuoteModel>>((
       .getQuotesPage(offset: 0, limit: 180);
   return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
 });
+
+final quoteSearchResultsProvider =
+    FutureProvider.family<List<QuoteModel>, QuoteSearchRequest>((
+      ref,
+      request,
+    ) async {
+      final quotes = await ref
+          .read(quoteRepositoryProvider)
+          .searchQuotes(
+            query: request.query,
+            tagFilter: request.tagFilter,
+            limit: request.limit,
+          );
+      return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
+    });
 
 final mediaQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   try {
@@ -291,8 +328,9 @@ final quotesByFilterProvider =
     ) async {
       final tag = filter.tag.trim().toLowerCase();
       if (filter.isSearch) {
-        final searchQuotes = await ref.watch(allQuotesProvider.future);
-        return SearchService(searchQuotes).searchQuotes(tag, limit: 200);
+        return ref
+            .read(quoteRepositoryProvider)
+            .searchQuotes(query: tag, limit: 200);
       }
       if (filter.isCrawl) {
         final runId = int.tryParse(tag) ?? 0;

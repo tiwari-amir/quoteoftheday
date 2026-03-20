@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/quote_model.dart';
 import 'quote_providers.dart';
 import 'storage_provider.dart';
 import 'supabase_provider.dart';
@@ -60,16 +61,12 @@ class SavedQuotesNotifier extends StateNotifier<Set<String>> {
         .read(quoteRepositoryProvider)
         .getSavedQuoteIds(userId);
     var merged = {...saved, ...local};
-    final availableQuotes = await _ref
-        .read(quoteRepositoryProvider)
-        .getAllQuotes();
+    final availableQuotes = merged.isEmpty
+        ? const <QuoteModel>[]
+        : await _ref.read(quoteRepositoryProvider).getQuotesByIds(merged);
     final availableIds = availableQuotes.map((quote) => quote.id).toSet();
-    final staleIds = availableIds.isEmpty
-        ? <String>{}
-        : merged.difference(availableIds);
-    if (availableIds.isNotEmpty) {
-      merged = merged.intersection(availableIds);
-    }
+    final staleIds = merged.difference(availableIds);
+    merged = merged.intersection(availableIds);
     state = merged;
 
     if (local.difference(saved).isNotEmpty) {
@@ -92,7 +89,6 @@ class SavedQuotesNotifier extends StateNotifier<Set<String>> {
   Future<void> refresh() => _load();
 
   Future<void> pruneUnavailable(Set<String> availableIds) async {
-    if (availableIds.isEmpty) return;
     final staleIds = state.difference(availableIds);
     if (staleIds.isEmpty) return;
 
@@ -168,3 +164,8 @@ final savedQuoteIdsProvider =
     StateNotifierProvider<SavedQuotesNotifier, Set<String>>(
       (ref) => SavedQuotesNotifier(ref),
     );
+
+final savedQuoteModelsProvider = FutureProvider<List<QuoteModel>>((ref) async {
+  final ids = ref.watch(savedQuoteIdsProvider);
+  return ref.read(quoteRepositoryProvider).getQuotesByIds(ids);
+});

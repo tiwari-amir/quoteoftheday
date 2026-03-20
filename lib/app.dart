@@ -79,6 +79,8 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp>
   Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
+    ref.read(quoteRepositoryProvider);
+    ref.read(allQuotesProvider);
     ref.watch(authBootstrapProvider);
     ref.watch(streakProvider);
     ref.watch(inAppNotificationsBootstrapProvider);

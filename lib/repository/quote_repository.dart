@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants.dart';
 import '../models/quote_model.dart';
 import '../services/quote_selection_service.dart';
+import '../features/v3_search/search_service.dart';
 import 'local_quote_cache.dart';
 
 class QuoteRepository {
@@ -58,7 +59,7 @@ class QuoteRepository {
       final cached = await _localCache.getAllQuotes();
       if (cached.isNotEmpty) {
         unawaited(_refreshFromNetworkIfStale());
-        return _rankAllQuotes(cached);
+        return cached;
       }
     } catch (error, stack) {
       debugPrint('Local quote cache read failed: $error');
@@ -157,7 +158,6 @@ class QuoteRepository {
 
       var cachedQuotes = await _localCache.getAllQuotes();
       if (cachedQuotes.isNotEmpty) {
-        cachedQuotes = await _rankAllQuotes(cachedQuotes);
         _quotesCache ??= cachedQuotes;
         _warmExplorePrefetch(cachedQuotes);
         await _prefetchStartupCollections(cachedQuotes);
@@ -585,6 +585,49 @@ class QuoteRepository {
       debugPrint('Supabase getQuotesByIds failed: $error');
       return cached;
     }
+  }
+
+  Future<List<QuoteModel>> searchQuotes({
+    required String query,
+    Set<String>? scopeQuoteIds,
+    String? lengthFilter,
+    String? tagFilter,
+    int limit = 100,
+  }) async {
+    final normalizedQuery = query.trim();
+    final normalizedScope = scopeQuoteIds
+        ?.map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    final cached = await _localCache.searchQuotes(
+      query: normalizedQuery,
+      scopeQuoteIds: normalizedScope,
+      lengthFilter: lengthFilter,
+      tagFilter: tagFilter,
+      limit: limit,
+    );
+    if (cached.isNotEmpty ||
+        normalizedQuery.isNotEmpty ||
+        (normalizedScope != null && normalizedScope.isNotEmpty) ||
+        (lengthFilter?.trim().isNotEmpty ?? false) ||
+        (tagFilter?.trim().isNotEmpty ?? false)) {
+      unawaited(_refreshFromNetworkIfStale());
+      return cached;
+    }
+
+    final all = await getAllQuotes();
+    final scoped = normalizedScope == null
+        ? all
+        : all
+              .where((quote) => normalizedScope.contains(quote.id))
+              .toList(growable: false);
+    return SearchService(scoped).searchQuotes(
+      normalizedQuery,
+      lengthFilter: lengthFilter,
+      tagFilter: tagFilter,
+      limit: limit,
+    );
   }
 
   Future<List<String>> getMoodTagsAvailable(List<String> allowlist) async {

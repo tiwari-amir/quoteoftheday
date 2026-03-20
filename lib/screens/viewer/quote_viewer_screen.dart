@@ -457,17 +457,9 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     ref.watch(appBackgroundThemeProvider);
     final normalizedType = _filter.type.toLowerCase();
     final quotesAsync = normalizedType == 'saved'
-        ? ref.watch(allQuotesProvider).whenData((all) {
-            return all
-                .where((q) => savedIds.contains(q.id))
-                .toList(growable: false);
-          })
+        ? ref.watch(savedQuoteModelsProvider)
         : normalizedType == 'liked'
-        ? ref.watch(allQuotesProvider).whenData((all) {
-            return all
-                .where((q) => likedIds.contains(q.id))
-                .toList(growable: false);
-          })
+        ? ref.watch(likedQuoteModelsProvider)
         : ref.watch(quotesByFilterProvider(_filter));
     final service = ref.read(quoteServiceProvider);
     final scheme = Theme.of(context).colorScheme;

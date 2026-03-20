@@ -9,7 +9,6 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
 import '../../features/v3_explore/discovery_category_utils.dart';
 import '../../features/v3_search/search_result_groups.dart';
-import '../../features/v3_search/search_service.dart';
 import '../../models/quote_model.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/storage_provider.dart';
@@ -41,8 +40,6 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
 
   String _query = '';
   String? _tagFilter;
-  SearchService? _searchService;
-  String _quotesSignature = '';
   List<String> _recentSearches = const <String>[];
   bool _searchPanelPinned = false;
   bool _preserveSearchPanelOnFocusLoss = false;
@@ -184,9 +181,19 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
   Widget build(BuildContext context) {
     final inSearchMode =
         _searchFocusNode.hasFocus || _query.isNotEmpty || _searchPanelPinned;
-    final quotesAsync = ref.watch(
-      inSearchMode ? allQuotesProvider : exploreDiscoveryQuotesProvider,
-    );
+    final quotesAsync = inSearchMode
+        ? _query.isEmpty
+              ? const AsyncData<List<QuoteModel>>(<QuoteModel>[])
+              : ref.watch(
+                  quoteSearchResultsProvider(
+                    QuoteSearchRequest(
+                      query: _query,
+                      tagFilter: _tagFilter,
+                      limit: 80,
+                    ),
+                  ),
+                )
+        : ref.watch(exploreDiscoveryQuotesProvider);
     final categoryCountsAsync = ref.watch(categoryCountsProvider);
     final moodsAsync = ref.watch(moodCountsProvider);
     final topAuthorsAsync = ref.watch(topAuthorsOfMonthProvider);
@@ -232,15 +239,9 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
                   ),
                   child: quotesAsync.when(
                     data: (quotes) {
-                      _ensureExploreCaches(quotes);
-                      final searchService = _searchService!;
                       final searchResults = _query.isEmpty
                           ? const <QuoteModel>[]
-                          : searchService.searchQuotes(
-                              _query,
-                              tagFilter: _tagFilter,
-                              limit: 80,
-                            );
+                          : quotes;
                       return ListView(
                         physics: const BouncingScrollPhysics(),
                         children: [
@@ -381,18 +382,6 @@ class _ExploreTabScreenState extends ConsumerState<ExploreTabScreen> {
         ],
       ),
     );
-  }
-
-  void _ensureExploreCaches(List<QuoteModel> quotes) {
-    final signature = _quotesSignatureFor(quotes);
-    if (_quotesSignature == signature && _searchService != null) return;
-    _quotesSignature = signature;
-    _searchService = SearchService(quotes);
-  }
-
-  String _quotesSignatureFor(List<QuoteModel> quotes) {
-    if (quotes.isEmpty) return '0';
-    return '${quotes.length}:${quotes.first.id}:${quotes.last.id}';
   }
 
   Future<void> _showMoodModeSheet(String mood) async {

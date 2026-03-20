@@ -2030,10 +2030,12 @@ def main() -> None:
                 stale_before=stale_before,
                 max_retries=args.max_retries,
             )
-            if discovery_enabled and min_quotes_goal > 0:
-                seeded = ensure_target_discovery_queue(
+            if discovery_enabled and (min_quotes_goal > 0 or not pending_pages_available):
+                seeded = ensure_discovery_work_queue(
                     cur=cur,
                     api=api,
+                    stale_before=stale_before,
+                    max_retries=args.max_retries,
                     limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
                     deadline=runtime_deadline,
                 )
@@ -2041,27 +2043,6 @@ def main() -> None:
                     stats.seed_pages_enqueued += seeded
                     conn.commit()
                     pending_pages_available = True
-                elif not pending_pages_available:
-                    fallback_seeded = ensure_discovery_fallback_queue(cur=cur)
-                    if fallback_seeded > 0:
-                        stats.seed_pages_enqueued += fallback_seeded
-                        conn.commit()
-                        pending_pages_available = True
-            elif discovery_enabled and not pending_pages_available:
-                seeded = ensure_target_discovery_queue(
-                    cur=cur,
-                    api=api,
-                    limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
-                    deadline=runtime_deadline,
-                )
-                if seeded > 0:
-                    stats.seed_pages_enqueued += seeded
-                    conn.commit()
-                else:
-                    fallback_seeded = ensure_discovery_fallback_queue(cur=cur)
-                    if fallback_seeded > 0:
-                        stats.seed_pages_enqueued += fallback_seeded
-                        conn.commit()
 
             for index in range(max_pages_per_run):
                 if runtime_budget_reached(runtime_deadline):
@@ -2084,9 +2065,11 @@ def main() -> None:
                 )
                 if page_row is None:
                     if discovery_enabled:
-                        seeded = ensure_target_discovery_queue(
+                        seeded = ensure_discovery_work_queue(
                             cur=cur,
                             api=api,
+                            stale_before=stale_before,
+                            max_retries=args.max_retries,
                             limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
                             deadline=runtime_deadline,
                         )
@@ -2098,16 +2081,6 @@ def main() -> None:
                                 stale_before=stale_before,
                                 max_retries=args.max_retries,
                             )
-                        else:
-                            fallback_seeded = ensure_discovery_fallback_queue(cur=cur)
-                            if fallback_seeded > 0:
-                                stats.seed_pages_enqueued += fallback_seeded
-                                conn.commit()
-                                page_row = pull_next_page(
-                                    cur=cur,
-                                    stale_before=stale_before,
-                                    max_retries=args.max_retries,
-                                )
                 if page_row is None:
                     break
 
@@ -2145,9 +2118,11 @@ def main() -> None:
                         quote_count=quote_count,
                     )
                     if discovery_enabled:
-                        seeded = ensure_target_discovery_queue(
+                        seeded = ensure_discovery_work_queue(
                             cur=cur,
                             api=api,
+                            stale_before=stale_before,
+                            max_retries=args.max_retries,
                             limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
                             deadline=runtime_deadline,
                         )
@@ -3599,6 +3574,38 @@ def ensure_discovery_fallback_queue(cur: Any) -> int:
         if not was_pending:
             inserted += 1
     return inserted
+
+
+def ensure_discovery_work_queue(
+    *,
+    cur: Any,
+    api: WikiquoteApi,
+    stale_before: datetime,
+    max_retries: int,
+    limit: int,
+    deadline: float | None = None,
+) -> int:
+    if has_pending_pages(cur=cur, stale_before=stale_before, max_retries=max_retries):
+        return 0
+
+    seeded = ensure_target_discovery_queue(
+        cur=cur,
+        api=api,
+        limit=limit,
+        deadline=deadline,
+    )
+    if seeded > 0:
+        return seeded
+    if has_pending_pages(cur=cur, stale_before=stale_before, max_retries=max_retries):
+        return 1
+
+    fallback_seeded = ensure_discovery_fallback_queue(cur=cur)
+    if fallback_seeded > 0:
+        return fallback_seeded
+    if has_pending_pages(cur=cur, stale_before=stale_before, max_retries=max_retries):
+        return 1
+
+    return 0
 
 
 def process_page(

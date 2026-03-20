@@ -307,10 +307,9 @@ class NotificationSettingsNotifier
       final savedIds = _ref.read(savedQuoteIdsProvider);
       if (savedIds.isEmpty) return null;
 
-      final allQuotes = await _ref.read(allQuotesProvider.future);
-      final savedQuotes = allQuotes
-          .where((q) => savedIds.contains(q.id))
-          .toList(growable: false);
+      final savedQuotes = await _ref
+          .read(quoteRepositoryProvider)
+          .getQuotesByIds(savedIds);
       if (savedQuotes.isEmpty) return null;
 
       final quote = _pickRandom(savedQuotes);

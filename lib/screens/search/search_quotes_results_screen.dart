@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/v3_search/search_service.dart';
 import '../../models/quote_model.dart';
 import '../../providers/quote_providers.dart';
 import '../../theme/design_tokens.dart';
@@ -21,7 +20,13 @@ class SearchQuotesResultsScreen extends ConsumerWidget {
     final layout = FlowLayoutInfo.of(context);
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
     final normalizedQuery = query.trim();
-    final quotesAsync = ref.watch(allQuotesProvider);
+    final resultsAsync = normalizedQuery.isEmpty
+        ? const AsyncData<List<QuoteModel>>(<QuoteModel>[])
+        : ref.watch(
+            quoteSearchResultsProvider(
+              QuoteSearchRequest(query: normalizedQuery, limit: 200),
+            ),
+          );
 
     return Scaffold(
       floatingActionButton: normalizedQuery.isEmpty
@@ -89,13 +94,8 @@ class SearchQuotesResultsScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: FlowSpace.md),
                       Expanded(
-                        child: quotesAsync.when(
-                          data: (quotes) {
-                            final results = normalizedQuery.isEmpty
-                                ? const <QuoteModel>[]
-                                : SearchService(
-                                    quotes,
-                                  ).searchQuotes(normalizedQuery, limit: 200);
+                        child: resultsAsync.when(
+                          data: (results) {
                             if (results.isEmpty) {
                               return Center(
                                 child: Text(

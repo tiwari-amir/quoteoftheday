@@ -24,6 +24,35 @@ import '../../widgets/premium/premium_components.dart';
 
 enum _LibraryMode { saved, liked }
 
+class _LibraryQuoteBundle {
+  const _LibraryQuoteBundle({
+    required this.savedQuotes,
+    required this.likedQuotes,
+  });
+
+  final List<QuoteModel> savedQuotes;
+  final List<QuoteModel> likedQuotes;
+
+  List<QuoteModel> get allQuotes {
+    final byId = <String, QuoteModel>{};
+    for (final quote in [...savedQuotes, ...likedQuotes]) {
+      byId[quote.id] = quote;
+    }
+    return byId.values.toList(growable: false);
+  }
+}
+
+final _libraryQuoteBundleProvider = FutureProvider<_LibraryQuoteBundle>((
+  ref,
+) async {
+  final savedQuotes = await ref.watch(savedQuoteModelsProvider.future);
+  final likedQuotes = await ref.watch(likedQuoteModelsProvider.future);
+  return _LibraryQuoteBundle(
+    savedQuotes: savedQuotes,
+    likedQuotes: likedQuotes,
+  );
+});
+
 class LibraryTabScreen extends ConsumerStatefulWidget {
   const LibraryTabScreen({super.key});
 
@@ -110,7 +139,7 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                 .toSet(),
           );
 
-    final quotesAsync = ref.watch(allQuotesProvider);
+    final libraryQuotesAsync = ref.watch(_libraryQuoteBundleProvider);
     final scrolledCount = ref.watch(
       viewerProgressProvider.select((state) => state.scrolledCount),
     );
@@ -136,32 +165,35 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                     layout.horizontalPadding,
                     layout.isCompact ? FlowSpace.lg : FlowSpace.xl,
                   ),
-                  child: quotesAsync.when(
-                    data: (quotes) {
-                      final availableQuoteIds = quotes
+                  child: libraryQuotesAsync.when(
+                    data: (bundle) {
+                      final savedQuotes = bundle.savedQuotes;
+                      final likedQuotes = bundle.likedQuotes;
+                      final quotes = bundle.allQuotes;
+                      final allAvailableSavedIds = savedQuotes
                           .map((quote) => quote.id)
                           .toSet();
                       final availableSavedIds = scopedSavedIds.intersection(
-                        availableQuoteIds,
+                        allAvailableSavedIds,
                       );
-                      final availableLikedIds = likedIds.intersection(
-                        availableQuoteIds,
-                      );
+                      final availableLikedIds = likedQuotes
+                          .map((quote) => quote.id)
+                          .toSet();
                       final activeIds = _mode == _LibraryMode.saved
                           ? availableSavedIds
                           : availableLikedIds;
-                      final staleSavedIds = scopedSavedIds.difference(
-                        availableQuoteIds,
+                      final staleSavedIds = savedIds.difference(
+                        allAvailableSavedIds,
                       );
                       final staleLikedIds = likedIds.difference(
-                        availableQuoteIds,
+                        availableLikedIds,
                       );
                       if (staleSavedIds.isNotEmpty) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           unawaited(
                             ref
                                 .read(savedQuoteIdsProvider.notifier)
-                                .pruneUnavailable(availableQuoteIds),
+                                .pruneUnavailable(allAvailableSavedIds),
                           );
                         });
                       }
@@ -170,7 +202,7 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                           unawaited(
                             ref
                                 .read(likedQuoteIdsProvider.notifier)
-                                .pruneUnavailable(availableQuoteIds),
+                                .pruneUnavailable(availableLikedIds),
                           );
                         });
                       }
@@ -180,7 +212,7 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                         _searchQuery,
                       );
                       final searchResults = _filterQuotes(
-                        quotes,
+                        savedQuotes,
                         availableSavedIds,
                         _searchQuery,
                       );
@@ -197,7 +229,7 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                         hasFocusedShelf: hasFocusedShelf,
                       );
                       final libraryIds = <String>{
-                        ...availableSavedIds,
+                        ...allAvailableSavedIds,
                         ...availableLikedIds,
                       };
                       final libraryQuotes = _quotesForIds(quotes, libraryIds);
@@ -223,9 +255,9 @@ class _LibraryTabScreenState extends ConsumerState<LibraryTabScreen> {
                         service: ref.read(quoteServiceProvider),
                       );
                       final collectionSummaries = _buildCollectionSummaries(
-                        quotes: quotes,
-                        availableSavedIds: availableSavedIds,
-                        availableQuoteIds: availableQuoteIds,
+                        quotes: savedQuotes,
+                        availableSavedIds: allAvailableSavedIds,
+                        availableQuoteIds: allAvailableSavedIds,
                         collections: collections,
                         collectionsNotifier: collectionsNotifier,
                         service: ref.read(quoteServiceProvider),

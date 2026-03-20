@@ -33,8 +33,7 @@ class SettingsActions {
 
   Future<void> exportSavedQuotes({required bool isWeb}) async {
     final ids = _ref.read(savedQuoteIdsProvider);
-    final quotes = await _ref.read(allQuotesProvider.future);
-    final saved = quotes.where((q) => ids.contains(q.id)).toList(growable: false);
+    final saved = await _ref.read(quoteRepositoryProvider).getQuotesByIds(ids);
 
     final text = saved.map((q) => '${q.quote} - ${q.author}').join('\n\n');
 
