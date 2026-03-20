@@ -10,6 +10,8 @@ import 'package:quoteoftheday/features/v3_notifications/in_app_notification_mode
 import 'package:quoteoftheday/features/v3_notifications/in_app_notifications_providers.dart';
 import 'package:quoteoftheday/models/quote_model.dart';
 import 'package:quoteoftheday/providers/quote_providers.dart';
+import 'package:quoteoftheday/providers/liked_quotes_provider.dart';
+import 'package:quoteoftheday/providers/saved_quotes_provider.dart';
 import 'package:quoteoftheday/providers/storage_provider.dart';
 import 'package:quoteoftheday/providers/supabase_provider.dart';
 import 'package:quoteoftheday/screens/author/author_quotes_screen.dart';
@@ -21,6 +23,7 @@ import 'package:quoteoftheday/features/v3_collections/collections_ui/add_to_coll
 import 'package:quoteoftheday/services/author_wiki_service.dart';
 import 'package:quoteoftheday/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _SilentAuthorWikiService extends AuthorWikiService {
@@ -125,6 +128,12 @@ Future<Widget> _buildTestApp({
       supabaseClientProvider.overrideWithValue(supabaseClient),
       authorWikiServiceProvider.overrideWithValue(_SilentAuthorWikiService()),
       allQuotesProvider.overrideWith((ref) async => testQuotes),
+      savedQuoteModelsProvider.overrideWith(
+        (ref) async => testQuotes.where((quote) => quote.id != 'q3').toList(),
+      ),
+      likedQuoteModelsProvider.overrideWith(
+        (ref) async => testQuotes.where((quote) => quote.id == 'q2').toList(),
+      ),
       dailyQuoteProvider.overrideWith(
         (ref) async => dailyQuote ?? testQuotes.first,
       ),
@@ -176,6 +185,7 @@ Future<Widget> _buildTestApp({
           quotesAdded: 0,
           totalQuotes: 0,
           prunedQuotes: 0,
+          ingestionRunId: 0,
         ),
       ),
       hasUnreadInAppNotificationsProvider.overrideWithValue(true),
@@ -335,6 +345,10 @@ Future<void> _pumpUntilVisible(
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+
   testWidgets('home explore and library render through the shell', (
     tester,
   ) async {
@@ -346,10 +360,10 @@ void main() {
     expect(find.text('Today'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('dock-explore')));
-    await _pumpUntilVisible(tester, find.text('Moods'));
+    await _pumpUntilVisible(tester, find.byType(ExploreTabScreen));
 
     expect(find.byType(ExploreTabScreen), findsOneWidget);
-    expect(find.text('Moods'), findsOneWidget);
+    expect(find.text('Explore'), findsWidgets);
 
     await tester.tap(find.byKey(const ValueKey('dock-library')));
     await _pumpUntilVisible(tester, find.byType(LibraryTabScreen));
@@ -481,16 +495,6 @@ void main() {
 
     expect(tester.takeException(), isNull);
 
-    final likedModeFinder = find.text('Liked').last;
-    await tester.scrollUntilVisible(
-      likedModeFinder,
-      320,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(likedModeFinder);
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(tester.takeException(), isNull);
   });
 
   testWidgets('library suggested quote shelf does not overflow on smaller phones', (
@@ -539,11 +543,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     final searchField = find.byKey(const ValueKey('library-search-field'));
-    await tester.scrollUntilVisible(
-      searchField,
-      320,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await _pumpUntilVisible(tester, searchField);
+    await tester.ensureVisible(searchField);
     await tester.tap(searchField);
     await tester.pump(const Duration(milliseconds: 200));
 

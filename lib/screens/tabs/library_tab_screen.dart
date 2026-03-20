@@ -972,9 +972,9 @@ double _libraryCommandDeckExtent(
   required bool hasFocusedShelf,
 }) {
   if (hasFocusedShelf) {
-    return layout.isCompact ? 168 : 152;
+    return layout.isCompact ? 188 : 152;
   }
-  return layout.isCompact ? 106 : 96;
+  return layout.isCompact ? 128 : 96;
 }
 
 class _LibraryAuthorSignal {
