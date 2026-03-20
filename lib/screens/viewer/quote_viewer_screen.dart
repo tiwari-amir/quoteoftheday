@@ -104,7 +104,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   }
 
   void _syncQuotes(List<QuoteModel> quotes) {
-    final signature = quotes.map((q) => q.id).join('|');
+    final signature = _quoteDatasetSignature(quotes);
     if (signature == _datasetSignature) return;
 
     _datasetSignature = signature;
@@ -291,6 +291,14 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     });
     _rebuildDeck(preferredQuoteId: currentQuoteId, keepCurrentQuote: false);
     _armControlsFade();
+  }
+
+  String _quoteDatasetSignature(List<QuoteModel> quotes) {
+    var hash = 17;
+    for (final quote in quotes) {
+      hash = 0x1fffffff & (hash * 31 + quote.id.hashCode);
+    }
+    return '${quotes.length}:$hash';
   }
 
   void _onPageChanged(int index) {

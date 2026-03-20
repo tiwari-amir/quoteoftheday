@@ -2041,6 +2041,12 @@ def main() -> None:
                     stats.seed_pages_enqueued += seeded
                     conn.commit()
                     pending_pages_available = True
+                elif not pending_pages_available:
+                    fallback_seeded = ensure_discovery_fallback_queue(cur=cur)
+                    if fallback_seeded > 0:
+                        stats.seed_pages_enqueued += fallback_seeded
+                        conn.commit()
+                        pending_pages_available = True
             elif discovery_enabled and not pending_pages_available:
                 seeded = ensure_target_discovery_queue(
                     cur=cur,
@@ -2051,6 +2057,11 @@ def main() -> None:
                 if seeded > 0:
                     stats.seed_pages_enqueued += seeded
                     conn.commit()
+                else:
+                    fallback_seeded = ensure_discovery_fallback_queue(cur=cur)
+                    if fallback_seeded > 0:
+                        stats.seed_pages_enqueued += fallback_seeded
+                        conn.commit()
 
             for index in range(max_pages_per_run):
                 if runtime_budget_reached(runtime_deadline):
@@ -2087,6 +2098,16 @@ def main() -> None:
                                 stale_before=stale_before,
                                 max_retries=args.max_retries,
                             )
+                        else:
+                            fallback_seeded = ensure_discovery_fallback_queue(cur=cur)
+                            if fallback_seeded > 0:
+                                stats.seed_pages_enqueued += fallback_seeded
+                                conn.commit()
+                                page_row = pull_next_page(
+                                    cur=cur,
+                                    stale_before=stale_before,
+                                    max_retries=args.max_retries,
+                                )
                 if page_row is None:
                     break
 
@@ -3505,6 +3526,79 @@ def ensure_target_discovery_queue(
         limit=limit,
         deadline=deadline,
     )
+
+
+def ensure_discovery_fallback_queue(cur: Any) -> int:
+    inserted = 0
+    for entry in SEED_ENTRIES:
+        target_priority = compute_page_priority(
+            page_title=entry.title,
+            page_type=entry.page_type,
+            source_prestige=entry.prestige,
+            quote_density=0,
+            linked_from_high_quality_page=False,
+        )
+        cur.execute(
+            """
+            select
+              id,
+              processed,
+              skipped,
+              retry_count
+            from public.pages_queue
+            where page_title = %s
+            limit 1
+            """,
+            (entry.title,),
+        )
+        existing = cur.fetchone()
+        if existing is None:
+            cur.execute(
+                """
+                insert into public.pages_queue (
+                  page_title,
+                  page_type,
+                  page_priority,
+                  quote_density,
+                  processed,
+                  skipped,
+                  retry_count,
+                  last_checked,
+                  last_error
+                )
+                values (%s, %s, %s, 0, false, false, 0, null, null)
+                """,
+                (entry.title, entry.page_type, target_priority),
+            )
+            inserted += 1
+            continue
+
+        was_pending = (
+            not bool(existing.get("processed"))
+            and not bool(existing.get("skipped"))
+            and int(existing.get("retry_count") or 0) == 0
+        )
+        cur.execute(
+            """
+            update public.pages_queue
+            set page_type = %s,
+                page_priority = greatest(page_priority, %s),
+                processed = false,
+                skipped = false,
+                retry_count = 0,
+                last_checked = null,
+                last_error = null
+            where id = %s
+            """,
+            (
+                entry.page_type,
+                target_priority,
+                int(existing.get("id")),
+            ),
+        )
+        if not was_pending:
+            inserted += 1
+    return inserted
 
 
 def process_page(

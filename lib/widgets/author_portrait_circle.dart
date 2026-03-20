@@ -20,16 +20,20 @@ class AuthorPortraitCircle extends ConsumerWidget {
     required this.author,
     this.size = 56,
     this.interactive = true,
+    this.fetchProfile = false,
   });
 
   final String author;
   final double size;
   final bool interactive;
+  final bool fetchProfile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    final profileAsync = ref.watch(_authorPortraitProvider(author));
+    final profileAsync = fetchProfile
+        ? ref.watch(_authorPortraitProvider(author))
+        : const AsyncData<AuthorWikiProfile?>(null);
     final portrait = SizedBox(
       width: size,
       height: size,
@@ -53,16 +57,21 @@ class AuthorPortraitCircle extends ConsumerWidget {
             data: (profile) {
               final imageUrl = profile?.imageUrl?.trim();
               if (imageUrl == null || imageUrl.isEmpty) {
-                return _AuthorPortraitFallback(colors: colors);
+                return _AuthorPortraitFallback(colors: colors, author: author);
               }
               return AdaptiveAuthorImage(
                 imageUrl: imageUrl,
-                placeholder: _AuthorPortraitFallback(colors: colors),
-                error: _AuthorPortraitFallback(colors: colors),
+                placeholder: _AuthorPortraitFallback(
+                  colors: colors,
+                  author: author,
+                ),
+                error: _AuthorPortraitFallback(colors: colors, author: author),
               );
             },
-            loading: () => _AuthorPortraitFallback(colors: colors),
-            error: (_, _) => _AuthorPortraitFallback(colors: colors),
+            loading: () =>
+                _AuthorPortraitFallback(colors: colors, author: author),
+            error: (_, _) =>
+                _AuthorPortraitFallback(colors: colors, author: author),
           ),
         ),
       ),
@@ -89,16 +98,20 @@ class AuthorPortraitFill extends ConsumerWidget {
     required this.author,
     this.borderRadius = 18,
     this.interactive = true,
+    this.fetchProfile = true,
   });
 
   final String author;
   final double borderRadius;
   final bool interactive;
+  final bool fetchProfile;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    final profileAsync = ref.watch(_authorPortraitProvider(author));
+    final profileAsync = fetchProfile
+        ? ref.watch(_authorPortraitProvider(author))
+        : const AsyncData<AuthorWikiProfile?>(null);
     final portrait = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(borderRadius),
@@ -117,16 +130,27 @@ class AuthorPortraitFill extends ConsumerWidget {
           data: (profile) {
             final imageUrl = profile?.imageUrl?.trim();
             if (imageUrl == null || imageUrl.isEmpty) {
-              return _AuthorPortraitRectFallback(colors: colors);
+              return _AuthorPortraitRectFallback(
+                colors: colors,
+                author: author,
+              );
             }
             return AdaptiveAuthorImage(
               imageUrl: imageUrl,
-              placeholder: _AuthorPortraitRectFallback(colors: colors),
-              error: _AuthorPortraitRectFallback(colors: colors),
+              placeholder: _AuthorPortraitRectFallback(
+                colors: colors,
+                author: author,
+              ),
+              error: _AuthorPortraitRectFallback(
+                colors: colors,
+                author: author,
+              ),
             );
           },
-          loading: () => _AuthorPortraitRectFallback(colors: colors),
-          error: (_, _) => _AuthorPortraitRectFallback(colors: colors),
+          loading: () =>
+              _AuthorPortraitRectFallback(colors: colors, author: author),
+          error: (_, _) =>
+              _AuthorPortraitRectFallback(colors: colors, author: author),
         ),
       ),
     );
@@ -147,12 +171,14 @@ class AuthorPortraitFill extends ConsumerWidget {
 }
 
 class _AuthorPortraitFallback extends StatelessWidget {
-  const _AuthorPortraitFallback({required this.colors});
+  const _AuthorPortraitFallback({required this.colors, required this.author});
 
   final FlowColorTokens? colors;
+  final String author;
 
   @override
   Widget build(BuildContext context) {
+    final initials = _authorInitials(author);
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -165,11 +191,13 @@ class _AuthorPortraitFallback extends StatelessWidget {
         ),
       ),
       child: Center(
-        child: Icon(
-          Icons.person_outline_rounded,
-          size: 22,
-          color:
-              colors?.textSecondary.withValues(alpha: 0.94) ?? Colors.white70,
+        child: Text(
+          initials,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: colors?.textPrimary.withValues(alpha: 0.94) ?? Colors.white,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.3,
+          ),
         ),
       ),
     );
@@ -177,12 +205,17 @@ class _AuthorPortraitFallback extends StatelessWidget {
 }
 
 class _AuthorPortraitRectFallback extends StatelessWidget {
-  const _AuthorPortraitRectFallback({required this.colors});
+  const _AuthorPortraitRectFallback({
+    required this.colors,
+    required this.author,
+  });
 
   final FlowColorTokens? colors;
+  final String author;
 
   @override
   Widget build(BuildContext context) {
+    final initials = _authorInitials(author);
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -195,13 +228,31 @@ class _AuthorPortraitRectFallback extends StatelessWidget {
         ),
       ),
       child: Center(
-        child: Icon(
-          Icons.person_outline_rounded,
-          size: 26,
-          color:
-              colors?.textSecondary.withValues(alpha: 0.94) ?? Colors.white70,
+        child: Text(
+          initials,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: colors?.textPrimary.withValues(alpha: 0.94) ?? Colors.white,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+          ),
         ),
       ),
     );
   }
+}
+
+String _authorInitials(String rawAuthor) {
+  final parts = rawAuthor
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .toList(growable: false);
+  if (parts.isEmpty) {
+    return 'Q';
+  }
+  if (parts.length == 1) {
+    return parts.first.substring(0, 1).toUpperCase();
+  }
+  return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+      .toUpperCase();
 }

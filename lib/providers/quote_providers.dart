@@ -300,7 +300,7 @@ final quotesByFilterProvider =
         return batch?.quotes ?? const <QuoteModel>[];
       }
       if (tag.isEmpty || tag == 'all') {
-        return ref.watch(allQuotesWithMediaProvider.future);
+        return ref.watch(allQuotesProvider.future);
       }
       if (filter.isAuthor) {
         final filtered = await ref

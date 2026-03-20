@@ -305,6 +305,7 @@ class _AuthorHero extends StatelessWidget {
                       author: authorName,
                       size: portraitSize,
                       interactive: false,
+                      fetchProfile: true,
                     ),
                     SizedBox(height: isTight ? 10 : FlowSpace.md),
                     AutoSizeText(
