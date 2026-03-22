@@ -5,46 +5,11 @@ import 'package:flutter/material.dart';
 import '../features/v3_background/background_theme_provider.dart';
 import '../theme/design_tokens.dart';
 
-class AppBackground extends StatefulWidget {
+class AppBackground extends StatelessWidget {
   const AppBackground({super.key, this.seed = 0, this.motionScale = 1.0});
 
   final int seed;
   final double motionScale;
-
-  @override
-  State<AppBackground> createState() => _AppBackgroundState();
-}
-
-class _AppBackgroundState extends State<AppBackground>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 72),
-  )..repeat();
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      if (!_controller.isAnimating) {
-        _controller.repeat();
-      }
-      return;
-    }
-    _controller.stop();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,33 +19,26 @@ class _AppBackgroundState extends State<AppBackground>
 
     return IgnorePointer(
       child: RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            return CustomPaint(
-              painter: _CinematicBackgroundPainter(
-                progress: _controller.value,
-                seed: widget.seed,
-                motionScale: widget.motionScale,
-                mood: flow?.mood ?? AppBackgroundTheme.spaceGalaxies,
-                background: colors?.background ?? const Color(0xFF020406),
-                atmosphereTop:
-                    gradients?.atmosphereTop ?? const Color(0xFF091016),
-                atmosphereBottom:
-                    gradients?.atmosphereBottom ?? const Color(0xFF020304),
-                atmosphereHighlight:
-                    gradients?.atmosphereHighlight ?? const Color(0xFF322316),
-                accentPrimary:
-                    gradients?.accentStart ?? const Color(0xFFD4AB66),
-                accentSecondary:
-                    gradients?.accentEnd ?? const Color(0xFFF1DAB1),
-                mistTint: (colors?.textPrimary ?? Colors.white).withValues(
-                  alpha: 0.08,
-                ),
-              ),
-              child: const SizedBox.expand(),
-            );
-          },
+        child: CustomPaint(
+          painter: _CinematicBackgroundPainter(
+            progress: ((seed % 1000).abs() / 1000).clamp(0.0, 1.0),
+            seed: seed,
+            motionScale: motionScale,
+            mood: flow?.mood ?? AppBackgroundTheme.spaceGalaxies,
+            background: colors?.background ?? const Color(0xFF020406),
+            atmosphereTop: gradients?.atmosphereTop ?? const Color(0xFF091016),
+            atmosphereBottom:
+                gradients?.atmosphereBottom ?? const Color(0xFF020304),
+            atmosphereHighlight:
+                gradients?.atmosphereHighlight ?? const Color(0xFF322316),
+            accentPrimary: gradients?.accentStart ?? const Color(0xFFD4AB66),
+            accentSecondary:
+                gradients?.accentEnd ?? const Color(0xFFF1DAB1),
+            mistTint: (colors?.textPrimary ?? Colors.white).withValues(
+              alpha: 0.08,
+            ),
+          ),
+          child: const SizedBox.expand(),
         ),
       ),
     );

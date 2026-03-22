@@ -19,6 +19,8 @@ class AuthorWikiProfile {
 }
 
 class AuthorWikiService {
+  AuthorWikiService();
+
   static const Map<String, String> _aliases = {
     'osho': 'Rajneesh',
     'ghandi': 'Mahatma Gandhi',
@@ -40,7 +42,39 @@ class AuthorWikiService {
     'born',
   ];
 
+  final Map<String, Future<AuthorWikiProfile?>> _inFlight =
+      <String, Future<AuthorWikiProfile?>>{};
+  final Map<String, AuthorWikiProfile?> _cache = <String, AuthorWikiProfile?>{};
+
   Future<AuthorWikiProfile?> fetchAuthor(String author) async {
+    final normalizedAuthor = _normalize(author);
+    if (normalizedAuthor.isEmpty) return null;
+
+    final cached = _cache[normalizedAuthor];
+    if (_cache.containsKey(normalizedAuthor)) {
+      return cached;
+    }
+
+    final existing = _inFlight[normalizedAuthor];
+    if (existing != null) {
+      return existing;
+    }
+
+    final future = _fetchAuthorInternal(author, normalizedAuthor);
+    _inFlight[normalizedAuthor] = future;
+    try {
+      final resolved = await future;
+      _cache[normalizedAuthor] = resolved;
+      return resolved;
+    } finally {
+      _inFlight.remove(normalizedAuthor);
+    }
+  }
+
+  Future<AuthorWikiProfile?> _fetchAuthorInternal(
+    String author,
+    String normalizedAuthor,
+  ) async {
     final candidates = searchCandidates(author);
     if (candidates.isEmpty) return null;
 

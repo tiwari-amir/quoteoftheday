@@ -15,7 +15,7 @@ const _kInAppNotificationsLastSeenId = 'in_app_notifications.last_seen_id';
 const _kInAppNotificationsLastAlertedId =
     'in_app_notifications.last_alerted_id';
 const _kMaxStartupAlertAge = Duration(hours: 36);
-const _kNotificationsPollInterval = Duration(seconds: 6);
+const _kNotificationsPollInterval = Duration(seconds: 20);
 
 class InAppNotificationPreferences {
   const InAppNotificationPreferences({
@@ -186,11 +186,11 @@ class InAppNotificationsRealtimeBridge {
     }
 
     try {
-      await _ref.read(quoteRepositoryProvider).refreshNow();
-      _ref.invalidate(allQuotesProvider);
-      _ref.invalidate(allQuotesWithMediaProvider);
+      await _ref.read(quoteRepositoryProvider).refreshLatestNow();
+      _ref.invalidate(primaryViewerQuotesProvider);
       _ref.invalidate(categoryCountsProvider);
       _ref.invalidate(moodCountsProvider);
+      _ref.invalidate(exploreDiscoveryQuotesProvider);
       _ref.invalidate(topLikedQuotesProvider);
       _ref.invalidate(dailyQuoteProvider);
     } catch (_) {

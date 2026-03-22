@@ -15,9 +15,7 @@ import 'local_quote_cache.dart';
 class QuoteRepository {
   QuoteRepository({required SupabaseClient client, LocalQuoteCache? localCache})
     : _client = client,
-      _localCache = localCache ?? LocalQuoteCache.instance {
-    _scheduleStartupWarmup();
-  }
+      _localCache = localCache ?? LocalQuoteCache.instance;
 
   final SupabaseClient _client;
   final LocalQuoteCache _localCache;
@@ -36,6 +34,20 @@ class QuoteRepository {
   final Map<String, QuoteModel> _dailyQuoteMemory = <String, QuoteModel>{};
   Future<void>? _startupWarmupInFlight;
 
+  Future<void> warmStartupLight() {
+    if (_startupWarmupInFlight != null) {
+      return _startupWarmupInFlight!;
+    }
+
+    final future = _primeStartupState();
+    _startupWarmupInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_startupWarmupInFlight, future)) {
+        _startupWarmupInFlight = null;
+      }
+    });
+  }
+
   Future<List<QuoteModel>> getAllQuotes() async {
     if (_quotesCache != null) {
       unawaited(_refreshFromNetworkIfStale());
@@ -52,6 +64,25 @@ class QuoteRepository {
     } finally {
       _quotesInFlight = null;
     }
+  }
+
+  Future<List<QuoteModel>> getPrimaryFeedQuotes({int limit = 320}) async {
+    final safeLimit = math.max(limit, _networkPageSize);
+    final cached = await _localCache.getTopQuotes(limit: safeLimit, offset: 0);
+    if (cached.isNotEmpty) {
+      unawaited(_refreshFromNetworkIfStale());
+      return cached;
+    }
+
+    final remote = await _fetchQuotesPage(from: 0, limit: safeLimit);
+    if (remote.isNotEmpty) {
+      await _localCache.upsertQuotes(remote);
+      await _localCache.setLastSyncAt(DateTime.now().toUtc());
+      return remote;
+    }
+
+    final all = await getAllQuotes();
+    return all.take(safeLimit).toList(growable: false);
   }
 
   Future<List<QuoteModel>> _loadQuotesCacheFirst() async {
@@ -132,18 +163,40 @@ class QuoteRepository {
     }
   }
 
-  void _scheduleStartupWarmup() {
-    if (_startupWarmupInFlight != null) return;
-    final future = _runStartupWarmup();
-    _startupWarmupInFlight = future;
-    unawaited(
-      future.whenComplete(() {
-        _startupWarmupInFlight = null;
-      }),
-    );
+  Future<void> refreshLatestNow({int limit = 240}) async {
+    final safeLimit = math.max(limit, _networkPageSize);
+    final remote = await _fetchQuotesPage(from: 0, limit: safeLimit);
+    if (remote.isEmpty) return;
+
+    await _localCache.upsertQuotes(remote);
+    await _localCache.setLastSyncAt(DateTime.now().toUtc());
+
+    if (_quotesCache != null) {
+      final merged = <String, QuoteModel>{
+        for (final quote in _quotesCache!) quote.id: quote,
+        for (final quote in remote) quote.id: quote,
+      };
+      final ordered = merged.values.toList(growable: false)
+        ..sort((a, b) {
+          final byVirality = _quoteViralityScore(
+            b,
+          ).compareTo(_quoteViralityScore(a));
+          if (byVirality != 0) return byVirality;
+          final byPopularity = _quotePopularityScore(
+            b,
+          ).compareTo(_quotePopularityScore(a));
+          if (byPopularity != 0) return byPopularity;
+          final byCreatedAt = (b.createdAt?.millisecondsSinceEpoch ?? 0)
+              .compareTo(a.createdAt?.millisecondsSinceEpoch ?? 0);
+          if (byCreatedAt != 0) return byCreatedAt;
+          return a.id.compareTo(b.id);
+        });
+      _quotesCache = ordered;
+      _warmExplorePrefetch(ordered);
+    }
   }
 
-  Future<void> _runStartupWarmup() async {
+  Future<void> _primeStartupState() async {
     try {
       final day = _yyyyMmDd(DateTime.now());
       final cachedDailyQuoteId = await _localCache.getDailyQuoteId(day);
@@ -156,30 +209,13 @@ class QuoteRepository {
         }
       }
 
-      var cachedQuotes = await _localCache.getAllQuotes();
+      final cachedQuotes = await _localCache.getTopQuotes(limit: 180);
       if (cachedQuotes.isNotEmpty) {
         _quotesCache ??= cachedQuotes;
         _warmExplorePrefetch(cachedQuotes);
-        await _prefetchStartupCollections(cachedQuotes);
-      }
-
-      if (cachedQuotes.isEmpty) {
-        final remoteQuotes = await _fetchAllQuotesFromSupabase();
-        if (remoteQuotes.isEmpty) return;
-        final rankedRemoteQuotes = await _rankAllQuotes(remoteQuotes);
-        _quotesCache = rankedRemoteQuotes;
-        _warmExplorePrefetch(rankedRemoteQuotes);
-        await _prefetchStartupCollections(rankedRemoteQuotes);
-        await _localCache.replaceAllQuotes(rankedRemoteQuotes);
-        await _localCache.setLastSyncAt(DateTime.now().toUtc());
-        cachedQuotes = rankedRemoteQuotes;
-      }
-
-      if (cachedQuotes.isNotEmpty) {
-        unawaited(_refreshFromNetworkIfStale());
       }
     } catch (error, stack) {
-      debugPrint('QuoteRepository startup warmup failed: $error');
+      debugPrint('QuoteRepository startup bootstrap failed: $error');
       debugPrint('$stack');
     }
   }
@@ -1088,6 +1124,30 @@ class QuoteRepository {
     final m = date.month.toString().padLeft(2, '0');
     final d = date.day.toString().padLeft(2, '0');
     return '${date.year}-$m-$d';
+  }
+
+  double _quoteViralityScore(QuoteModel quote) {
+    final score = quote.viralityScore;
+    if (score.isFinite && !score.isNaN && score > 0) {
+      return score;
+    }
+    return (quote.viewsCount * 0.1) +
+        (quote.likesCount * 1.5) +
+        (quote.savesCount * 2.0) +
+        (quote.sharesCount * 3.0);
+  }
+
+  int _quotePopularityScore(QuoteModel quote) {
+    if (quote.popularityScore > 0) {
+      return quote.popularityScore;
+    }
+    final length = quote.quote.trim().length;
+    final lengthBonus = length <= 80
+        ? 3
+        : length <= 160
+        ? 5
+        : 2;
+    return quote.likesCount + lengthBonus;
   }
 
   void _warmExplorePrefetch(List<QuoteModel> quotes) {

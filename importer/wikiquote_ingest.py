@@ -2039,6 +2039,13 @@ def main() -> None:
                     limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
                     deadline=runtime_deadline,
                 )
+                if seeded <= 0 and not pending_pages_available:
+                    seeded = ensure_seed_queue(
+                        cur=cur,
+                        api=api,
+                        seeds=seeds,
+                        max_seed_members=max_seed_members,
+                    )
                 if seeded > 0:
                     stats.seed_pages_enqueued += seeded
                     conn.commit()
@@ -2073,6 +2080,13 @@ def main() -> None:
                             limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
                             deadline=runtime_deadline,
                         )
+                        if seeded <= 0:
+                            seeded = ensure_seed_queue(
+                                cur=cur,
+                                api=api,
+                                seeds=seeds,
+                                max_seed_members=max_seed_members,
+                            )
                         if seeded > 0:
                             stats.seed_pages_enqueued += seeded
                             conn.commit()
@@ -2126,6 +2140,13 @@ def main() -> None:
                             limit=max(DISCOVERY_PRIME_QUEUE_SIZE, max_pages_per_run),
                             deadline=runtime_deadline,
                         )
+                        if seeded <= 0:
+                            seeded = ensure_seed_queue(
+                                cur=cur,
+                                api=api,
+                                seeds=seeds,
+                                max_seed_members=max_seed_members,
+                            )
                         if seeded > 0:
                             stats.seed_pages_enqueued += seeded
                             conn.commit()
@@ -2927,7 +2948,14 @@ def ensure_seed_queue(
           last_error
         )
         values (%s, %s, %s, 0, false, false, 0, null, null)
-        on conflict (page_title) do nothing
+        on conflict (page_title) do update
+          set page_type = excluded.page_type,
+              page_priority = greatest(public.pages_queue.page_priority, excluded.page_priority),
+              processed = false,
+              skipped = false,
+              retry_count = 0,
+              last_checked = null,
+              last_error = null
         """,
         rows,
     )

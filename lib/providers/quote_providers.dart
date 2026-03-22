@@ -137,6 +137,13 @@ final allQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
 });
 
+final primaryViewerQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
+  final quotes = await ref
+      .read(quoteRepositoryProvider)
+      .getPrimaryFeedQuotes(limit: 320);
+  return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
+});
+
 final exploreDiscoveryQuotesProvider = FutureProvider<List<QuoteModel>>((
   ref,
 ) async {
@@ -338,7 +345,7 @@ final quotesByFilterProvider =
         return batch?.quotes ?? const <QuoteModel>[];
       }
       if (tag.isEmpty || tag == 'all') {
-        return ref.watch(allQuotesProvider.future);
+        return ref.watch(primaryViewerQuotesProvider.future);
       }
       if (filter.isAuthor) {
         final filtered = await ref
@@ -387,23 +394,14 @@ final quotesByFilterProvider =
 
 final topLikedQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   final repo = ref.read(quoteRepositoryProvider);
-  final futures = await Future.wait([
-    ref.watch(allQuotesProvider.future),
-    repo.getMostLikedQuoteIds(limit: 12),
-  ]);
-  final allQuotes = futures[0] as List<QuoteModel>;
-  final topIds = futures[1] as List<String>;
-  final byId = {for (final q in allQuotes) q.id: q};
-
-  final likedQuotes = topIds
-      .map((id) => byId[id])
-      .whereType<QuoteModel>()
-      .toList(growable: false);
+  final topIds = await repo.getMostLikedQuoteIds(limit: 12);
+  final likedQuotes = await repo.getQuotesByIds(topIds);
   if (likedQuotes.length >= 6) {
     return likedQuotes;
   }
 
-  final fallback = _webInspiredPopularFallback(allQuotes);
+  final fallbackSeed = await repo.getPrimaryFeedQuotes(limit: 120);
+  final fallback = _webInspiredPopularFallback(fallbackSeed);
   final merged = <QuoteModel>[
     ...likedQuotes,
     ...fallback.where((q) => !topIds.contains(q.id)),
@@ -417,7 +415,9 @@ final internetBestQuoteProvider = FutureProvider<QuoteModel>((ref) async {
       .fetchBestQuoteOfAllTime();
   if (internet != null) return internet;
 
-  final localQuotes = await ref.read(quoteRepositoryProvider).getAllQuotes();
+  final localQuotes = await ref
+      .read(quoteRepositoryProvider)
+      .getPrimaryFeedQuotes(limit: 60);
   if (localQuotes.isEmpty) {
     throw StateError('No quotes available');
   }

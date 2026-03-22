@@ -11,7 +11,6 @@ import 'providers/quote_providers.dart';
 import 'providers/router_provider.dart';
 import 'providers/streak_provider.dart';
 import 'theme/app_theme.dart';
-import 'widgets/animated_gradient_background.dart';
 import 'widgets/splash_screen.dart';
 
 class QuoteOfTheDayApp extends ConsumerStatefulWidget {
@@ -30,6 +29,7 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _startAppBootstrap();
     _startNotificationBootstrap();
   }
 
@@ -48,10 +48,21 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp>
             .read(notificationSettingsProvider.notifier)
             .refreshForRuntimeStateChange();
         await ref.read(inAppNotificationsBootstrapProvider).syncNow();
-        await ref.read(quoteRepositoryProvider).refreshNow();
-        ref.invalidate(allQuotesProvider);
       } catch (error) {
         debugPrint('[App] Resume refresh failed: $error');
+      }
+    });
+  }
+
+  void _startAppBootstrap() {
+    Future<void>(() async {
+      try {
+        ref.read(streakProvider);
+        ref.read(inAppNotificationsBootstrapProvider);
+        await ref.read(authBootstrapProvider.future);
+        await ref.read(quoteRepositoryProvider).warmStartupLight();
+      } catch (error) {
+        debugPrint('[App] Startup bootstrap failed: $error');
       }
     });
   }
@@ -79,11 +90,6 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp>
   Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
-    ref.read(quoteRepositoryProvider);
-    ref.read(allQuotesProvider);
-    ref.watch(authBootstrapProvider);
-    ref.watch(streakProvider);
-    ref.watch(inAppNotificationsBootstrapProvider);
     ref.listen(notificationTapProvider, (previous, next) {
       final route = next.valueOrNull;
       if (route == null || route.isEmpty) return;
@@ -99,37 +105,6 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp>
         return Stack(
           children: [
             child ?? const SizedBox.shrink(),
-            Positioned.fill(
-              child: Listener(
-                behavior: HitTestBehavior.translucent,
-                onPointerDown: (event) {
-                  AnimatedGradientBackground.emitGlobalPointerDown(
-                    event.position,
-                  );
-                },
-                onPointerMove: (event) {
-                  AnimatedGradientBackground.emitGlobalPointerMove(
-                    event.position,
-                  );
-                },
-                onPointerHover: (event) {
-                  AnimatedGradientBackground.emitGlobalPointerMove(
-                    event.position,
-                  );
-                },
-                onPointerUp: (event) {
-                  AnimatedGradientBackground.emitGlobalPointerUp(
-                    event.position,
-                  );
-                },
-                onPointerCancel: (event) {
-                  AnimatedGradientBackground.emitGlobalPointerUp(
-                    event.position,
-                  );
-                },
-                child: const SizedBox.expand(),
-              ),
-            ),
             if (_showSplash)
               Positioned.fill(
                 child: AbsorbPointer(

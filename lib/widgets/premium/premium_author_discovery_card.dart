@@ -58,8 +58,7 @@ class PremiumAuthorDiscoveryCard extends ConsumerWidget {
     final visuals = _AuthorRankVisuals.forRank(rank, colors);
     final isRail = variant == PremiumAuthorDiscoveryCardVariant.rail;
     final compact = !isRail;
-
-    return ScaleTap(
+    final card = ScaleTap(
           onTap: onTap,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,16 +97,17 @@ class PremiumAuthorDiscoveryCard extends ConsumerWidget {
               ),
             ],
           ),
-        )
-        .animate(delay: (70 * animationIndex).ms)
-        .fadeIn(duration: 360.ms, curve: Curves.easeOutCubic)
-        .moveY(begin: 14, end: 0, duration: 360.ms, curve: Curves.easeOutCubic)
-        .scaleXY(
-          begin: 0.985,
-          end: 1,
-          duration: 360.ms,
-          curve: Curves.easeOutCubic,
         );
+
+    final shouldAnimate = isRail || animationIndex < 6;
+    if (!shouldAnimate) {
+      return card;
+    }
+
+    return card
+        .animate(delay: (60 * animationIndex).ms)
+        .fadeIn(duration: 300.ms, curve: Curves.easeOutCubic)
+        .moveY(begin: 10, end: 0, duration: 300.ms, curve: Curves.easeOutCubic);
   }
 }
 
@@ -236,14 +236,6 @@ class _AuthorArtworkTile extends StatelessWidget {
               ),
             ),
           ),
-        )
-        .animate()
-        .fadeIn(duration: 360.ms)
-        .scaleXY(
-          begin: 0.94,
-          end: 1,
-          duration: 420.ms,
-          curve: Curves.easeOutCubic,
         );
   }
 }

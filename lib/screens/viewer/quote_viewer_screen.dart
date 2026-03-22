@@ -2,13 +2,11 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../features/v3_background/background_theme_provider.dart';
 import '../../features/v3_collections/collections_ui/add_to_collection_sheet.dart';
 import '../../features/v3_share/story_share_sheet.dart';
 import '../../models/quote_model.dart';
@@ -43,7 +41,7 @@ class QuoteViewerScreen extends ConsumerStatefulWidget {
 
 class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   static const int _kAnchorCycle = 1000;
-  static const int _kMaxCachedCycles = 5;
+  static const int _kMaxCachedCycles = 3;
 
   late final QuoteViewerFilter _filter;
   late final PageController _pageController;
@@ -311,7 +309,6 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       _showControls = true;
     });
     _armControlsFade();
-    unawaited(SystemSound.play(SystemSoundType.click));
 
     if (index != previousIndex) {
       unawaited(_recordScrollProgress());
@@ -454,7 +451,6 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   Widget build(BuildContext context) {
     final savedIds = ref.watch(savedQuoteIdsProvider);
     final likedIds = ref.watch(likedQuoteIdsProvider);
-    ref.watch(appBackgroundThemeProvider);
     final normalizedType = _filter.type.toLowerCase();
     final quotesAsync = normalizedType == 'saved'
         ? ref.watch(savedQuoteModelsProvider)
@@ -506,7 +502,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                 child: PageView.builder(
                   controller: _pageController,
                   scrollDirection: Axis.vertical,
-                  allowImplicitScrolling: true,
+                  allowImplicitScrolling: false,
                   physics: const BouncingScrollPhysics(
                     parent: PageScrollPhysics(),
                   ),
