@@ -34,12 +34,12 @@ class QuoteRepository {
   final Map<String, QuoteModel> _dailyQuoteMemory = <String, QuoteModel>{};
   Future<void>? _startupWarmupInFlight;
 
-  Future<void> warmStartupLight() {
+  Future<void> warmStartupLight({int quoteLimit = 180}) {
     if (_startupWarmupInFlight != null) {
       return _startupWarmupInFlight!;
     }
 
-    final future = _primeStartupState();
+    final future = _primeStartupState(quoteLimit);
     _startupWarmupInFlight = future;
     return future.whenComplete(() {
       if (identical(_startupWarmupInFlight, future)) {
@@ -196,7 +196,7 @@ class QuoteRepository {
     }
   }
 
-  Future<void> _primeStartupState() async {
+  Future<void> _primeStartupState(int quoteLimit) async {
     try {
       final day = _yyyyMmDd(DateTime.now());
       final cachedDailyQuoteId = await _localCache.getDailyQuoteId(day);
@@ -209,7 +209,8 @@ class QuoteRepository {
         }
       }
 
-      final cachedQuotes = await _localCache.getTopQuotes(limit: 180);
+      final safeLimit = math.max(quoteLimit, 40);
+      final cachedQuotes = await _localCache.getTopQuotes(limit: safeLimit);
       if (cachedQuotes.isNotEmpty) {
         _quotesCache ??= cachedQuotes;
         _warmExplorePrefetch(cachedQuotes);

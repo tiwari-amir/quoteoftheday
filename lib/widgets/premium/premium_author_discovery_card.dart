@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 
+import '../../providers/performance_profile_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../services/author_wiki_service.dart';
 import '../../theme/design_tokens.dart';
@@ -45,7 +46,17 @@ class PremiumAuthorDiscoveryCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).extension<FlowThemeTokens>()?.colors;
-    final profileAsync = fetchProfile
+    final performanceProfile = ref.watch(appPerformanceProfileProvider);
+    final shouldFetchProfile =
+        fetchProfile &&
+        (variant == PremiumAuthorDiscoveryCardVariant.rail
+            ? animationIndex < performanceProfile.authorDiscoveryImageBudget
+            : animationIndex <
+                  (performanceProfile.authorDiscoveryImageBudget ~/ 2).clamp(
+                    2,
+                    8,
+                  ));
+    final profileAsync = shouldFetchProfile
         ? ref.watch(_authorDiscoveryProfileProvider(authorName))
         : null;
     final profile = profileAsync?.valueOrNull;
@@ -59,55 +70,65 @@ class PremiumAuthorDiscoveryCard extends ConsumerWidget {
     final isRail = variant == PremiumAuthorDiscoveryCardVariant.rail;
     final compact = !isRail;
     final card = ScaleTap(
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _AuthorArtworkTile(
-                authorName: authorName,
-                profile: profile,
-                rank: rank,
-                quoteCount: quoteCount,
-                roleLabel: roleLabel,
-                visuals: visuals,
-                compact: compact,
-              ),
-              SizedBox(height: compact ? 10 : 12),
-              AutoSizeText(
-                authorName,
-                maxLines: 2,
-                minFontSize: compact ? 12 : 13,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: colors?.textPrimary,
-                  fontSize: isRail ? 15.8 : 15.1,
-                  height: compact ? 1.06 : 1.08,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: compact ? 3 : 2),
-              Text(
-                descriptor,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colors?.textSecondary.withValues(alpha: 0.88),
-                  fontSize: isRail ? 11.3 : 10.9,
-                  height: compact ? 1.16 : 1.2,
-                ),
-              ),
-            ],
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _AuthorArtworkTile(
+            authorName: authorName,
+            profile: profile,
+            rank: rank,
+            quoteCount: quoteCount,
+            roleLabel: roleLabel,
+            visuals: visuals,
+            compact: compact,
+            animateRankStamp: performanceProfile.allowRichEntryAnimations,
           ),
-        );
+          SizedBox(height: compact ? 10 : 12),
+          AutoSizeText(
+            authorName,
+            maxLines: 2,
+            minFontSize: compact ? 12 : 13,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: colors?.textPrimary,
+              fontSize: isRail ? 15.8 : 15.1,
+              height: compact ? 1.06 : 1.08,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          SizedBox(height: compact ? 3 : 2),
+          Text(
+            descriptor,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colors?.textSecondary.withValues(alpha: 0.88),
+              fontSize: isRail ? 11.3 : 10.9,
+              height: compact ? 1.16 : 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
 
-    final shouldAnimate = isRail || animationIndex < 6;
+    final shouldAnimate =
+        performanceProfile.allowRichEntryAnimations &&
+        (isRail || animationIndex < 6);
     if (!shouldAnimate) {
-      return card;
+      return RepaintBoundary(child: card);
     }
 
-    return card
-        .animate(delay: (60 * animationIndex).ms)
-        .fadeIn(duration: 300.ms, curve: Curves.easeOutCubic)
-        .moveY(begin: 10, end: 0, duration: 300.ms, curve: Curves.easeOutCubic);
+    return RepaintBoundary(
+      child: card
+          .animate(delay: (60 * animationIndex).ms)
+          .fadeIn(duration: 300.ms, curve: Curves.easeOutCubic)
+          .moveY(
+            begin: 10,
+            end: 0,
+            duration: 300.ms,
+            curve: Curves.easeOutCubic,
+          ),
+    );
   }
 }
 
@@ -120,6 +141,7 @@ class _AuthorArtworkTile extends StatelessWidget {
     required this.roleLabel,
     required this.visuals,
     required this.compact,
+    required this.animateRankStamp,
   });
 
   final String authorName;
@@ -129,6 +151,7 @@ class _AuthorArtworkTile extends StatelessWidget {
   final String roleLabel;
   final _AuthorRankVisuals visuals;
   final bool compact;
+  final bool animateRankStamp;
 
   @override
   Widget build(BuildContext context) {
@@ -138,105 +161,106 @@ class _AuthorArtworkTile extends StatelessWidget {
     final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
     return AspectRatio(
-          aspectRatio: compact ? 1.14 : 1.02,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  visuals.surface.withValues(alpha: 0.98),
-                  (colors?.surface ?? const Color(0xFF0D141C)).withValues(
-                    alpha: 0.9,
-                  ),
-                ],
+      aspectRatio: compact ? 1.14 : 1.02,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              visuals.surface.withValues(alpha: 0.98),
+              (colors?.surface ?? const Color(0xFF0D141C)).withValues(
+                alpha: 0.9,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: compact ? 16 : 20,
-                  offset: const Offset(0, 10),
-                ),
-                BoxShadow(
-                  color: visuals.glow.withValues(alpha: compact ? 0.12 : 0.16),
-                  blurRadius: compact ? 18 : 22,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: radius,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (hasImage)
-                    AdaptiveAuthorImage(
-                      imageUrl: imageUrl,
-                      placeholder: _ArtworkFallback(
-                        authorName: authorName,
-                        visuals: visuals,
-                      ),
-                      error: _ArtworkFallback(
-                        authorName: authorName,
-                        visuals: visuals,
-                      ),
-                    )
-                  else
-                    _ArtworkFallback(authorName: authorName, visuals: visuals),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.06),
-                          Colors.black.withValues(alpha: 0.18),
-                          Colors.black.withValues(alpha: 0.48),
-                        ],
-                        stops: const [0.0, 0.56, 1.0],
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: compact ? 8 : 10,
-                    top: compact ? 8 : 10,
-                    child: _MicroRoleBadge(
-                      label: roleLabel,
-                      visuals: visuals,
-                      compact: compact,
-                    ),
-                  ),
-                  Positioned(
-                    right: compact ? 8 : 10,
-                    top: compact ? 8 : 10,
-                    child: _TinySignalDot(visuals: visuals, compact: compact),
-                  ),
-                  Positioned(
-                    left: compact ? 10 : 12,
-                    bottom: compact ? 10 : 12,
-                    child: _RankStamp(
-                      rank: rank,
-                      visuals: visuals,
-                      compact: compact,
-                    ),
-                  ),
-                  Positioned(
-                    right: compact ? 10 : 12,
-                    bottom: compact ? 10 : 12,
-                    child: _CountPill(
-                      label: quoteCount > 999
-                          ? '${(quoteCount / 1000).toStringAsFixed(1)}k'
-                          : '$quoteCount',
-                      visuals: visuals,
-                      compact: compact,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ],
           ),
-        );
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: compact ? 16 : 20,
+              offset: const Offset(0, 10),
+            ),
+            BoxShadow(
+              color: visuals.glow.withValues(alpha: compact ? 0.12 : 0.16),
+              blurRadius: compact ? 18 : 22,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (hasImage)
+                AdaptiveAuthorImage(
+                  imageUrl: imageUrl,
+                  placeholder: _ArtworkFallback(
+                    authorName: authorName,
+                    visuals: visuals,
+                  ),
+                  error: _ArtworkFallback(
+                    authorName: authorName,
+                    visuals: visuals,
+                  ),
+                )
+              else
+                _ArtworkFallback(authorName: authorName, visuals: visuals),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.06),
+                      Colors.black.withValues(alpha: 0.18),
+                      Colors.black.withValues(alpha: 0.48),
+                    ],
+                    stops: const [0.0, 0.56, 1.0],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: compact ? 8 : 10,
+                top: compact ? 8 : 10,
+                child: _MicroRoleBadge(
+                  label: roleLabel,
+                  visuals: visuals,
+                  compact: compact,
+                ),
+              ),
+              Positioned(
+                right: compact ? 8 : 10,
+                top: compact ? 8 : 10,
+                child: _TinySignalDot(visuals: visuals, compact: compact),
+              ),
+              Positioned(
+                left: compact ? 10 : 12,
+                bottom: compact ? 10 : 12,
+                child: _RankStamp(
+                  rank: rank,
+                  visuals: visuals,
+                  compact: compact,
+                  animate: animateRankStamp,
+                ),
+              ),
+              Positioned(
+                right: compact ? 10 : 12,
+                bottom: compact ? 10 : 12,
+                child: _CountPill(
+                  label: quoteCount > 999
+                      ? '${(quoteCount / 1000).toStringAsFixed(1)}k'
+                      : '$quoteCount',
+                  visuals: visuals,
+                  compact: compact,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -346,33 +370,39 @@ class _RankStamp extends StatelessWidget {
     required this.rank,
     required this.visuals,
     required this.compact,
+    required this.animate,
   });
 
   final int rank;
   final _AuthorRankVisuals visuals;
   final bool compact;
+  final bool animate;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 8 : 10,
-            vertical: compact ? 6 : 7,
-          ),
-          decoration: BoxDecoration(
-            color: visuals.glow,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            rank.toString().padLeft(2, '0'),
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: visuals.rankText,
-              fontSize: compact ? 14 : 16,
-              fontWeight: FontWeight.w800,
-              height: 1,
-            ),
-          ),
-        )
+    final stamp = Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 6 : 7,
+      ),
+      decoration: BoxDecoration(
+        color: visuals.glow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        rank.toString().padLeft(2, '0'),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: visuals.rankText,
+          fontSize: compact ? 14 : 16,
+          fontWeight: FontWeight.w800,
+          height: 1,
+        ),
+      ),
+    );
+    if (!animate) {
+      return stamp;
+    }
+    return stamp
         .animate(delay: 120.ms)
         .fadeIn(duration: 280.ms)
         .moveX(begin: -8, end: 0, duration: 280.ms, curve: Curves.easeOutCubic);

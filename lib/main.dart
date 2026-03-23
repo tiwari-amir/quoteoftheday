@@ -6,7 +6,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'core/supabase_config.dart';
 import 'features/v3_notifications/notifications_service.dart';
+import 'providers/performance_profile_provider.dart';
 import 'providers/storage_provider.dart';
+import 'services/device_performance_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,10 +20,17 @@ Future<void> main() async {
     anonKey: SupabaseConfig.anonKey,
   );
   final prefs = await SharedPreferences.getInstance();
+  final performanceProfile = await DevicePerformanceService().loadProfile();
+  final imageCache = PaintingBinding.instance.imageCache;
+  imageCache.maximumSize = performanceProfile.imageCacheEntries;
+  imageCache.maximumSizeBytes = performanceProfile.imageCacheBytes;
 
   runApp(
     ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        appPerformanceProfileProvider.overrideWithValue(performanceProfile),
+      ],
       child: const QuoteOfTheDayApp(),
     ),
   );

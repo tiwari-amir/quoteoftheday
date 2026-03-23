@@ -7,6 +7,7 @@ import 'features/v3_background/background_theme_provider.dart';
 import 'features/v3_notifications/in_app_notifications_providers.dart';
 import 'features/v3_notifications/notification_providers.dart';
 import 'providers/auth_bootstrap_provider.dart';
+import 'providers/performance_profile_provider.dart';
 import 'providers/quote_providers.dart';
 import 'providers/router_provider.dart';
 import 'providers/streak_provider.dart';
@@ -57,10 +58,15 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp>
   void _startAppBootstrap() {
     Future<void>(() async {
       try {
+        final performanceProfile = ref.read(appPerformanceProfileProvider);
         ref.read(streakProvider);
         ref.read(inAppNotificationsBootstrapProvider);
         await ref.read(authBootstrapProvider.future);
-        await ref.read(quoteRepositoryProvider).warmStartupLight();
+        await ref
+            .read(quoteRepositoryProvider)
+            .warmStartupLight(
+              quoteLimit: performanceProfile.startupWarmQuoteLimit,
+            );
       } catch (error) {
         debugPrint('[App] Startup bootstrap failed: $error');
       }
@@ -90,6 +96,7 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp>
   Widget build(BuildContext context) {
     final router = ref.watch(goRouterProvider);
     final backgroundTheme = ref.watch(appBackgroundThemeProvider);
+    final performanceProfile = ref.watch(appPerformanceProfileProvider);
     ref.listen(notificationTapProvider, (previous, next) {
       final route = next.valueOrNull;
       if (route == null || route.isEmpty) return;
@@ -108,7 +115,10 @@ class _QuoteOfTheDayAppState extends ConsumerState<QuoteOfTheDayApp>
             if (_showSplash)
               Positioned.fill(
                 child: AbsorbPointer(
-                  child: SplashScreen(onFinished: _handleSplashFinished),
+                  child: SplashScreen(
+                    onFinished: _handleSplashFinished,
+                    simpleMode: performanceProfile.useLiteRendering,
+                  ),
                 ),
               ),
           ],

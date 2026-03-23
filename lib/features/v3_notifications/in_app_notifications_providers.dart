@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../providers/performance_profile_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/storage_provider.dart';
 import '../../providers/supabase_provider.dart';
@@ -186,7 +187,10 @@ class InAppNotificationsRealtimeBridge {
     }
 
     try {
-      await _ref.read(quoteRepositoryProvider).refreshLatestNow();
+      final profile = _ref.read(appPerformanceProfileProvider);
+      await _ref
+          .read(quoteRepositoryProvider)
+          .refreshLatestNow(limit: profile.primaryFeedLimit);
       _ref.invalidate(primaryViewerQuotesProvider);
       _ref.invalidate(categoryCountsProvider);
       _ref.invalidate(moodCountsProvider);

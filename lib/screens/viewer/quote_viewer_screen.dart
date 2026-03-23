@@ -12,6 +12,7 @@ import '../../features/v3_share/story_share_sheet.dart';
 import '../../models/quote_model.dart';
 import '../../models/quote_viewer_filter.dart';
 import '../../providers/liked_quotes_provider.dart';
+import '../../providers/performance_profile_provider.dart';
 import '../../providers/streak_provider.dart';
 import '../../providers/quote_providers.dart';
 import '../../providers/saved_quotes_provider.dart';
@@ -41,7 +42,6 @@ class QuoteViewerScreen extends ConsumerStatefulWidget {
 
 class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   static const int _kAnchorCycle = 1000;
-  static const int _kMaxCachedCycles = 3;
 
   late final QuoteViewerFilter _filter;
   late final PageController _pageController;
@@ -117,6 +117,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   bool get _shouldRandomizeDeck => _shuffleEnabled || _isPrimaryScrollFeed;
   int get _cycleLength => _sourceQuotes.isEmpty ? 1 : _sourceQuotes.length;
   int get _anchorPage => _kAnchorCycle * _cycleLength;
+  int get _maxCachedCycles =>
+      ref.read(appPerformanceProfileProvider).viewerCycleCacheLimit;
   bool get _isAtDeckStart =>
       _sourceQuotes.isNotEmpty && _currentIndex == _anchorPage;
 
@@ -142,7 +144,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
   }
 
   void _pruneCycleCache(int aroundCycle) {
-    if (_cycleDeckCache.length <= _kMaxCachedCycles) {
+    if (_cycleDeckCache.length <= _maxCachedCycles) {
       return;
     }
 
@@ -150,7 +152,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
       ..sort(
         (a, b) => (a - aroundCycle).abs().compareTo((b - aroundCycle).abs()),
       );
-    final keep = orderedCycles.take(_kMaxCachedCycles).toSet();
+    final keep = orderedCycles.take(_maxCachedCycles).toSet();
     _cycleDeckCache.removeWhere((cycle, _) => !keep.contains(cycle));
   }
 
@@ -460,6 +462,7 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
     final service = ref.read(quoteServiceProvider);
     final scheme = Theme.of(context).colorScheme;
     final flow = Theme.of(context).extension<FlowThemeTokens>();
+    final performanceProfile = ref.watch(appPerformanceProfileProvider);
     final viewerAccent = flow?.colors.accent ?? scheme.primary;
     final layout = FlowLayoutInfo.of(context);
 
@@ -529,20 +532,21 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                           seed: quote.id.hashCode,
                           motionScale: 0.45,
                         ),
-                        Positioned.fill(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: RadialGradient(
-                                center: const Alignment(-0.2, -0.55),
-                                radius: 1.05,
-                                colors: [
-                                  viewerAccent.withValues(alpha: 0.16),
-                                  Colors.transparent,
-                                ],
+                        if (performanceProfile.allowDecorativeBackgroundPainter)
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: RadialGradient(
+                                  center: const Alignment(-0.2, -0.55),
+                                  radius: 1.05,
+                                  colors: [
+                                    viewerAccent.withValues(alpha: 0.16),
+                                    Colors.transparent,
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
                         Positioned.fill(
                           child: DecoratedBox(
                             decoration: BoxDecoration(
@@ -559,19 +563,20 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                             ),
                           ),
                         ),
-                        Positioned(
-                          left: -24,
-                          right: -24,
-                          bottom: -8,
-                          child: IgnorePointer(
-                            child: CustomPaint(
-                              size: const Size(double.infinity, 220),
-                              painter: _ViewerLandscapePainter(
-                                accent: viewerAccent,
+                        if (performanceProfile.allowDecorativeBackgroundPainter)
+                          Positioned(
+                            left: -24,
+                            right: -24,
+                            bottom: -8,
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                size: const Size(double.infinity, 220),
+                                painter: _ViewerLandscapePainter(
+                                  accent: viewerAccent,
+                                ),
                               ),
                             ),
                           ),
-                        ),
                         SafeArea(
                           child: Padding(
                             padding: EdgeInsets.fromLTRB(
@@ -596,6 +601,8 @@ class _QuoteViewerScreenState extends ConsumerState<QuoteViewerScreen> {
                                       .toList(growable: false),
                                   onAdvanceRequested: () =>
                                       _advanceFromLongQuote(index),
+                                  animate: performanceProfile
+                                      .allowRichEntryAnimations,
                                 ),
                               ),
                             ),
@@ -782,12 +789,14 @@ class _QuotePanel extends StatelessWidget {
     required this.authorLabel,
     required this.tags,
     required this.onAdvanceRequested,
+    required this.animate,
   });
 
   final QuoteModel quote;
   final String authorLabel;
   final List<String> tags;
   final VoidCallback onAdvanceRequested;
+  final bool animate;
 
   @override
   Widget build(BuildContext context) {
@@ -824,6 +833,10 @@ class _QuotePanel extends StatelessWidget {
           quoteLength: words,
         ),
       );
+    }
+
+    if (!animate) {
+      return quoteBody;
     }
 
     return quoteBody

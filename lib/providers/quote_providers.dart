@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants.dart';
 import '../models/quote_model.dart';
 import '../models/quote_viewer_filter.dart';
+import 'performance_profile_provider.dart';
 import '../repository/quote_repository.dart';
 import '../services/author_wiki_service.dart';
 import '../services/free_media_quotes_service.dart';
@@ -137,19 +138,23 @@ final allQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
   return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
 });
 
-final primaryViewerQuotesProvider = FutureProvider<List<QuoteModel>>((ref) async {
+final primaryViewerQuotesProvider = FutureProvider<List<QuoteModel>>((
+  ref,
+) async {
+  final profile = ref.watch(appPerformanceProfileProvider);
   final quotes = await ref
       .read(quoteRepositoryProvider)
-      .getPrimaryFeedQuotes(limit: 320);
+      .getPrimaryFeedQuotes(limit: profile.primaryFeedLimit);
   return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
 });
 
 final exploreDiscoveryQuotesProvider = FutureProvider<List<QuoteModel>>((
   ref,
 ) async {
+  final profile = ref.watch(appPerformanceProfileProvider);
   final quotes = await ref
       .read(quoteRepositoryProvider)
-      .getQuotesPage(offset: 0, limit: 180);
+      .getQuotesPage(offset: 0, limit: profile.exploreDiscoveryLimit);
   return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
 });
 
@@ -158,12 +163,13 @@ final quoteSearchResultsProvider =
       ref,
       request,
     ) async {
+      final profile = ref.watch(appPerformanceProfileProvider);
       final quotes = await ref
           .read(quoteRepositoryProvider)
           .searchQuotes(
             query: request.query,
             tagFilter: request.tagFilter,
-            limit: request.limit,
+            limit: math.min(request.limit, profile.searchResultLimit),
           );
       return quotes.where(_isLikelyEnglishQuote).toList(growable: false);
     });
@@ -211,6 +217,7 @@ final authorCatalogProvider = FutureProvider<List<AuthorCatalogEntry>>((
   ref,
 ) async {
   final client = ref.read(supabaseClientProvider);
+  final profile = ref.watch(appPerformanceProfileProvider);
   try {
     final rows = await client
         .from('authors')
@@ -220,7 +227,7 @@ final authorCatalogProvider = FutureProvider<List<AuthorCatalogEntry>>((
         .order('author_score', ascending: false)
         .order('avg_popularity_score', ascending: false)
         .order('total_quotes', ascending: false)
-        .limit(600);
+        .limit(profile.catalogQueryLimit);
     return _buildAuthorCatalogFromAuthorRows(rows);
   } catch (_) {
     final quotes = await ref.watch(allQuotesProvider.future);
@@ -231,6 +238,7 @@ final authorCatalogProvider = FutureProvider<List<AuthorCatalogEntry>>((
 final attributionSourceCatalogProvider =
     FutureProvider<List<AttributionSourceEntry>>((ref) async {
       final client = ref.read(supabaseClientProvider);
+      final profile = ref.watch(appPerformanceProfileProvider);
       try {
         final rows = await client
             .from('authors')
@@ -240,7 +248,7 @@ final attributionSourceCatalogProvider =
             .order('author_score', ascending: false)
             .order('avg_popularity_score', ascending: false)
             .order('total_quotes', ascending: false)
-            .limit(600);
+            .limit(profile.catalogQueryLimit);
         return _buildAttributionSourceCatalogFromAuthorRows(rows);
       } catch (_) {
         final quotes = await ref.watch(allQuotesProvider.future);

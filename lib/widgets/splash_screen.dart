@@ -5,9 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key, required this.onFinished});
+  const SplashScreen({
+    super.key,
+    required this.onFinished,
+    this.simpleMode = false,
+  });
 
   final VoidCallback onFinished;
+  final bool simpleMode;
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -79,6 +84,13 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
+    if (widget.simpleMode) {
+      _fallbackTimer = Timer(
+        const Duration(milliseconds: 650),
+        _finishIfNeeded,
+      );
+      return;
+    }
     _controller.addStatusListener((status) {
       if (status != AnimationStatus.completed) return;
       _finishIfNeeded();
@@ -97,6 +109,53 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.simpleMode) {
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              Color(0xFF04080D),
+              Color(0xFF0A1118),
+              Color(0xFF0C1720),
+            ],
+          ),
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(0, -0.16),
+                      radius: 1.05,
+                      colors: [
+                        const Color(0xFFD6A55C).withValues(alpha: 0.14),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Center(
+              child: Text(
+                'QuoteFlow',
+                style: GoogleFonts.cormorantGaramond(
+                  fontSize: 42,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFFF4E9D8),
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return RepaintBoundary(
       child: AnimatedBuilder(
         animation: _controller,
